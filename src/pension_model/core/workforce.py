@@ -8,24 +8,26 @@ Key Design Principles:
 - Stream year-by-year to avoid keeping all years in memory
 - Use long format for core data (one row = one entity)
 - Pure functions for calculation logic
+- Use plan adapter for plan-specific rules
 """
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import numpy as np
 import pandas as pd
 
-from pension_config.plan import MembershipClass, PlanConfig
+from pension_config.plan import MembershipClass
+from pension_config.adapters import PlanAdapter
 from pension_data.schemas import (
     WorkforceProjection,
     MortalityRate,
     WithdrawalRate,
     RetirementEligibility,
     EntrantProfile,
-    SalaryHeadcountRecord
+    SalaryHeadcountRecord,
 )
+
 from pension_tools.mortality import qx
-from pension_tools.withdrawal import get_withdrawal_rate
 
 
 @dataclass
@@ -44,15 +46,17 @@ class WorkforceProjector:
 
     The workforce model tracks members through states:
     Active -> Terminated -> (Refund | Retire) -> Death
+
+    Uses PlanAdapter for plan-specific business rules.
     """
 
-    def __init__(self, config: PlanConfig):
-        self.config = config
-        self.start_year = config.start_year
-        self.model_period = config.model_period
-        self.max_age = config.max_age
-        self.min_entry_age = config.min_entry_age
-        self.max_entry_age = config.max_entry_age
+    def __init__(self, adapter: PlanAdapter):
+        self.adapter = adapter
+        self.start_year = adapter.config.get('start_year', 2023)
+        self.model_period = adapter.config.get('model_period', 30)
+        self.max_age = adapter.config.get('max_age', 110)
+        self.min_entry_age = adapter.config.get('min_entry_age', 20)
+        self.max_entry_age = adapter.config.get('max_entry_age', 70)
 
     def get_age_range(self) -> range:
         """Get valid age range for projections."""
@@ -420,7 +424,7 @@ class WorkforceProjector:
         year: int
     ) -> pd.DataFrame:
         """Add newly terminated members to term population."""
-        # Age the newly terminated by 1 year
+        # Age newly terminated by 1 year
         new_term = active2term.copy()
         new_term['age'] = new_term['age'] + 1
         new_term['term_year'] = year
@@ -515,7 +519,7 @@ class WorkforceProjector:
         year: int
     ) -> pd.DataFrame:
         """Add newly retired members to retiree population."""
-        # Age the newly retired by 1 year
+        # Age newly retired by 1 year
         new_retire = term2retire.copy()
         new_retire['age'] = new_retire['age'] + 1
         new_retire['retire_year'] = year
@@ -545,7 +549,7 @@ class WorkforceProjector:
         pop_growth: float
     ) -> Dict[int, WorkforceState]:
         """
-        Project workforce over the entire model period.
+        Project workforce over entire model period.
 
         Args:
             salary_headcount: Salary/headcount data
@@ -598,7 +602,7 @@ class WorkforceProjector:
 
 
 def project_workforce(
-    config: PlanConfig,
+    adapter: PlanAdapter,
     membership_class: MembershipClass,
     salary_headcount: pd.DataFrame,
     mort_table: pd.DataFrame,
@@ -611,7 +615,7 @@ def project_workforce(
     Convenience function to project workforce for a membership class.
 
     Args:
-        config: Plan configuration
+        adapter: Plan adapter with plan-specific rules
         membership_class: Membership class to project
         salary_headcount: Salary/headcount data
         mort_table: Mortality rate table
@@ -623,7 +627,7 @@ def project_workforce(
     Returns:
         Dictionary mapping year to WorkforceState
     """
-    projector = WorkforceProjector(config)
+    projector = WorkforceProjector(adapter)
     return projector.project_workforce(
         salary_headcount,
         mort_table,
