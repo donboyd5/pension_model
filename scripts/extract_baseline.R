@@ -45,7 +45,7 @@ get_wf_data(class_name = "admin")
 get_wf_data(class_name = "eco")
 get_wf_data(class_name = "eso")
 get_wf_data(class_name = "judges")
-get_wf_data(class_name = "senior management")
+get_wf_data(class_name = "senior_management")
 
 # Get liability model
 regular_wf_data <- readRDS("regular_wf_data.rds")
@@ -143,7 +143,11 @@ input_params <- list(
   senior_management_outflow = senior_management_outflow_
 )
 
-write_json(input_params, "../../baseline_outputs/input_params.json", pretty = TRUE)
+write_json(
+  input_params,
+  "../../baseline_outputs/input_params.json",
+  pretty = TRUE
+)
 
 #################################################################
 ##                   Capture Salary Growth Table                 ##
@@ -153,7 +157,10 @@ cat("Capturing salary growth table...\n")
 
 # Salary growth table is already in salary_growth_table_ variable
 # Save it as CSV
-write_csv(salary_growth_table_, "../../baseline_outputs/salary_growth_table.csv")
+write_csv(
+  salary_growth_table_,
+  "../../baseline_outputs/salary_growth_table.csv"
+)
 
 cat("Salary growth table captured.\n")
 
@@ -165,15 +172,24 @@ cat("Capturing mortality tables...\n")
 
 # Save mortality tables for each class
 if (exists("regular_mort_table")) {
-  write_csv(regular_mort_table, "../../baseline_outputs/regular_mortality_rates.csv")
+  write_csv(
+    regular_mort_table,
+    "../../baseline_outputs/regular_mortality_rates.csv"
+  )
   cat("Saved regular mortality table\n")
 }
 if (exists("special_mort_table")) {
-  write_csv(special_mort_table, "../../baseline_outputs/special_mortality_rates.csv")
+  write_csv(
+    special_mort_table,
+    "../../baseline_outputs/special_mortality_rates.csv"
+  )
   cat("Saved special mortality table\n")
 }
 if (exists("admin_mort_table")) {
-  write_csv(admin_mort_table, "../../baseline_outputs/admin_mortality_rates.csv")
+  write_csv(
+    admin_mort_table,
+    "../../baseline_outputs/admin_mortality_rates.csv"
+  )
   cat("Saved admin mortality table\n")
 }
 if (exists("eco_mort_table")) {
@@ -185,11 +201,17 @@ if (exists("eso_mort_table")) {
   cat("Saved eso mortality table\n")
 }
 if (exists("judges_mort_table")) {
-  write_csv(judges_mort_table, "../../baseline_outputs/judges_mortality_rates.csv")
+  write_csv(
+    judges_mort_table,
+    "../../baseline_outputs/judges_mortality_rates.csv"
+  )
   cat("Saved judges mortality table\n")
 }
 if (exists("senior_management_mort_table")) {
-  write_csv(senior_management_mort_table, "../../baseline_outputs/senior_management_mortality_rates.csv")
+  write_csv(
+    senior_management_mort_table,
+    "../../baseline_outputs/senior_management_mortality_rates.csv"
+  )
   cat("Saved senior_management mortality table\n")
 }
 
@@ -203,31 +225,52 @@ cat("Capturing withdrawal rate tables...\n")
 
 # Save withdrawal rate tables for each class
 if (exists("regular_withdrawal_rate_table")) {
-  write_csv(regular_withdrawal_rate_table, "../../baseline_outputs/regular_withdrawal_rates.csv")
+  write_csv(
+    regular_withdrawal_rate_table,
+    "../../baseline_outputs/regular_withdrawal_rates.csv"
+  )
   cat("Saved regular withdrawal rate table\n")
 }
 if (exists("special_withdrawal_rate_table")) {
-  write_csv(special_withdrawal_rate_table, "../../baseline_outputs/special_withdrawal_rates.csv")
+  write_csv(
+    special_withdrawal_rate_table,
+    "../../baseline_outputs/special_withdrawal_rates.csv"
+  )
   cat("Saved special withdrawal rate table\n")
 }
 if (exists("admin_withdrawal_rate_table")) {
-  write_csv(admin_withdrawal_rate_table, "../../baseline_outputs/admin_withdrawal_rates.csv")
+  write_csv(
+    admin_withdrawal_rate_table,
+    "../../baseline_outputs/admin_withdrawal_rates.csv"
+  )
   cat("Saved admin withdrawal rate table\n")
 }
 if (exists("eco_withdrawal_rate_table")) {
-  write_csv(eco_withdrawal_rate_table, "../../baseline_outputs/eco_withdrawal_rates.csv")
+  write_csv(
+    eco_withdrawal_rate_table,
+    "../../baseline_outputs/eco_withdrawal_rates.csv"
+  )
   cat("Saved eco withdrawal rate table\n")
 }
 if (exists("eso_withdrawal_rate_table")) {
-  write_csv(eso_withdrawal_rate_table, "../../baseline_outputs/eso_withdrawal_rates.csv")
+  write_csv(
+    eso_withdrawal_rate_table,
+    "../../baseline_outputs/eso_withdrawal_rates.csv"
+  )
   cat("Saved eso withdrawal rate table\n")
 }
 if (exists("judges_withdrawal_rate_table")) {
-  write_csv(judges_withdrawal_rate_table, "../../baseline_outputs/judges_withdrawal_rates.csv")
+  write_csv(
+    judges_withdrawal_rate_table,
+    "../../baseline_outputs/judges_withdrawal_rates.csv"
+  )
   cat("Saved judges withdrawal rate table\n")
 }
 if (exists("senior_management_withdrawal_rate_table")) {
-  write_csv(senior_management_withdrawal_rate_table, "../../baseline_outputs/senior_management_withdrawal_rates.csv")
+  write_csv(
+    senior_management_withdrawal_rate_table,
+    "../../baseline_outputs/senior_management_withdrawal_rates.csv"
+  )
   cat("Saved senior_management withdrawal rate table\n")
 }
 
@@ -241,40 +284,46 @@ cat("Capturing retirement eligibility tables...\n")
 
 # Save retirement tables for each class
 if (exists("normal_retirement_tier_1_table")) {
-  write_csv(normal_retirement_tier_1_table, "../../baseline_outputs/regular_normal_retirement.csv")
+  write_csv(
+    normal_retirement_tier_1_table,
+    "../../baseline_outputs/regular_normal_retirement.csv"
+  )
   cat("Saved regular_normal retirement table\n")
 }
 if (exists("early_retirement_tier_1_table")) {
-  write_csv(early_retirement_tier_1_table, "../../baseline_outputs/regular_early_retirement.csv")
+  write_csv(
+    early_retirement_tier_1_table,
+    "../../baseline_outputs/regular_early_retirement.csv"
+  )
   cat("Saved regular_early retirement table\n")
 }
 if (exists("normal_retirement_tier_2_table")) {
-  write_csv(normal_retirement_tier_2_table, "../../baseline_outputs/special_normal_retirement.csv")
+  write_csv(
+    normal_retirement_tier_2_table,
+    "../../baseline_outputs/special_normal_retirement.csv"
+  )
   cat("Saved special_normal retirement table\n")
 }
 if (exists("early_retirement_tier_2_table")) {
-  write_csv(early_retirement_tier_2_table, "../../baseline_outputs/special_early_retirement.csv")
+  write_csv(
+    early_retirement_tier_2_table,
+    "../../baseline_outputs/special_early_retirement.csv"
+  )
   cat("Saved special_early retirement table\n")
 }
 if (exists("normal_retirement_tier_3_table")) {
-  write_csv(normal_retirement_tier_3_table, "../../baseline_outputs/admin_normal_retirement.csv")
+  write_csv(
+    normal_retirement_tier_3_table,
+    "../../baseline_outputs/admin_normal_retirement.csv"
+  )
   cat("Saved admin_normal retirement table\n")
 }
 if (exists("early_retirement_tier_3_table")) {
-  write_csv(early_retirement_tier_3_table, "../../baseline_outputs/admin_early_retirement.csv")
+  write_csv(
+    early_retirement_tier_3_table,
+    "../../baseline_outputs/admin_early_retirement.csv"
+  )
   cat("Saved admin_early retirement table\n")
-}
-if (exists("normal_retirement_tier_4_table")) {
-  write_csv(normal_retirement_tier_4_table, "../../baseline_outputs/eco_normal_retirement.csv")
-  cat("Saved eco_normal retirement table\n")
-}
-if (exists("normal_retirement_tier_5_table")) {
-  write_csv(normal_retirement_tier_5_table, "../../baseline_outputs/judges_normal_retirement.csv")
-  cat("Saved judges_normal retirement table\n")
-}
-if (exists("normal_retirement_tier_6_table")) {
-  write_csv(normal_retirement_tier_6_table, "../../baseline_outputs/senior_management_normal_retirement.csv")
-  cat("Saved senior_management_normal retirement table\n")
 }
 
 cat("Retirement eligibility tables captured.\n")
@@ -291,7 +340,10 @@ if (exists("regular_salary_table")) {
   cat("Saved regular_salary table\n")
 }
 if (exists("regular_headcount_table")) {
-  write_csv(regular_headcount_table, "../../baseline_outputs/regular_headcount.csv")
+  write_csv(
+    regular_headcount_table,
+    "../../baseline_outputs/regular_headcount.csv"
+  )
   cat("Saved regular_headcount table\n")
 }
 if (exists("special_salary_table")) {
@@ -299,7 +351,10 @@ if (exists("special_salary_table")) {
   cat("Saved special_salary table\n")
 }
 if (exists("special_headcount_table")) {
-  write_csv(special_headcount_table, "../../baseline_outputs/special_headcount.csv")
+  write_csv(
+    special_headcount_table,
+    "../../baseline_outputs/special_headcount.csv"
+  )
   cat("Saved special_headcount table\n")
 }
 if (exists("admin_salary_table")) {
@@ -323,15 +378,24 @@ if (exists("judges_salary_table")) {
   cat("Saved judges_salary table\n")
 }
 if (exists("judges_headcount_table")) {
-  write_csv(judges_headcount_table, "../../baseline_outputs/judges_headcount.csv")
+  write_csv(
+    judges_headcount_table,
+    "../../baseline_outputs/judges_headcount.csv"
+  )
   cat("Saved judges_headcount table\n")
 }
 if (exists("senior_management_salary_table")) {
-  write_csv(senior_management_salary_table, "../../baseline_outputs/senior_management_salary.csv")
+  write_csv(
+    senior_management_salary_table,
+    "../../baseline_outputs/senior_management_salary.csv"
+  )
   cat("Saved senior_management_salary table\n")
 }
 if (exists("senior_management_headcount_table")) {
-  write_csv(senior_management_headcount_table, "../../baseline_outputs/senior_management_headcount.csv")
+  write_csv(
+    senior_management_headcount_table,
+    "../../baseline_outputs/senior_management_headcount.csv"
+  )
   cat("Saved senior_management_headcount table\n")
 }
 
@@ -344,7 +408,15 @@ cat("Salary and headcount tables captured.\n")
 cat("Capturing workforce data...\n")
 
 # Process each class's workforce data from RDS files
-classes <- c("regular", "special", "admin", "eco", "eso", "judges", "senior_management")
+classes <- c(
+  "regular",
+  "special",
+  "admin",
+  "eco",
+  "eso",
+  "judges",
+  "senior_management"
+)
 
 for (class_name in classes) {
   cat(sprintf("Processing class: %s\n", class_name))
@@ -358,30 +430,94 @@ for (class_name in classes) {
 
     # Save workforce data as CSV
     if (!is.null(wf_data$wf_active_df)) {
-      write_csv(wf_data$wf_active_df, paste0("../../baseline_outputs/", gsub(" ", "_", class_name), "_wf_active.csv"))
+      write_csv(
+        wf_data$wf_active_df,
+        paste0(
+          "../../baseline_outputs/",
+          gsub(" ", "_", class_name),
+          "_wf_active.csv"
+        )
+      )
     }
     if (!is.null(wf_data$wf_term_df)) {
-      write_csv(wf_data$wf_term_df, paste0("../../baseline_outputs/", gsub(" ", "_", class_name), "_wf_term.csv"))
+      write_csv(
+        wf_data$wf_term_df,
+        paste0(
+          "../../baseline_outputs/",
+          gsub(" ", "_", class_name),
+          "_wf_term.csv"
+        )
+      )
     }
     if (!is.null(wf_data$wf_refund_df)) {
-      write_csv(wf_data$wf_refund_df, paste0("../../baseline_outputs/", gsub(" ", "_", class_name), "_wf_refund.csv"))
+      write_csv(
+        wf_data$wf_refund_df,
+        paste0(
+          "../../baseline_outputs/",
+          gsub(" ", "_", class_name),
+          "_wf_refund.csv"
+        )
+      )
     }
     if (!is.null(wf_data$wf_retire_df)) {
-      write_csv(wf_data$wf_retire_df, paste0("../../baseline_outputs/", gsub(" ", "_", class_name), "_wf_retire.csv"))
+      write_csv(
+        wf_data$wf_retire_df,
+        paste0(
+          "../../baseline_outputs/",
+          gsub(" ", "_", class_name),
+          "_wf_retire.csv"
+        )
+      )
     }
 
     # Save summary statistics
     wf_summary <- list(
-      total_active = if (!is.null(wf_data$wf_active_df)) sum(wf_data$wf_active_df$n_active, na.rm = TRUE) else 0,
-      total_terminations = if (!is.null(wf_data$wf_term_df)) sum(wf_data$wf_term_df$n_term, na.rm = TRUE) else 0,
-      total_refunds = if (!is.null(wf_data$wf_refund_df)) sum(wf_data$wf_refund_df$n_refund, na.rm = TRUE) else 0,
-      total_retirements = if (!is.null(wf_data$wf_retire_df)) sum(wf_data$wf_retire_df$n_retire, na.rm = TRUE) else 0,
-      years = if (!is.null(wf_data$wf_active_df)) length(unique(wf_data$wf_active_df$year)) else 0,
-      ages = if (!is.null(wf_data$wf_active_df)) length(unique(wf_data$wf_active_df$age)) else 0,
-      entry_ages = if (!is.null(wf_data$wf_active_df)) length(unique(wf_data$wf_active_df$entry_age)) else 0
+      total_active = if (!is.null(wf_data$wf_active_df)) {
+        sum(wf_data$wf_active_df$n_active, na.rm = TRUE)
+      } else {
+        0
+      },
+      total_terminations = if (!is.null(wf_data$wf_term_df)) {
+        sum(wf_data$wf_term_df$n_term, na.rm = TRUE)
+      } else {
+        0
+      },
+      total_refunds = if (!is.null(wf_data$wf_refund_df)) {
+        sum(wf_data$wf_refund_df$n_refund, na.rm = TRUE)
+      } else {
+        0
+      },
+      total_retirements = if (!is.null(wf_data$wf_retire_df)) {
+        sum(wf_data$wf_retire_df$n_retire, na.rm = TRUE)
+      } else {
+        0
+      },
+      years = if (!is.null(wf_data$wf_active_df)) {
+        length(unique(wf_data$wf_active_df$year))
+      } else {
+        0
+      },
+      ages = if (!is.null(wf_data$wf_active_df)) {
+        length(unique(wf_data$wf_active_df$age))
+      } else {
+        0
+      },
+      entry_ages = if (!is.null(wf_data$wf_active_df)) {
+        length(unique(wf_data$wf_active_df$entry_age))
+      } else {
+        0
+      }
     )
 
-    write_json(wf_summary, paste0("../../baseline_outputs/", gsub(" ", "_", class_name), "_wf_summary.json"), pretty = TRUE)
+    write_json(
+      wf_summary,
+      paste0(
+        "../../baseline_outputs/",
+        gsub(" ", "_", class_name),
+        "_wf_summary.json"
+      ),
+      pretty = TRUE
+    )
 
     cat(sprintf("Captured %s workforce data\n", class_name))
   } else {
@@ -405,21 +541,68 @@ for (class_name in classes) {
   liability_data <- get_liability_data(class_name = class_name)
 
   # Save liability data as CSV
-  write_csv(liability_data, paste0("../../baseline_outputs/", gsub(" ", "_", class_name), "_liability.csv"))
+  write_csv(
+    liability_data,
+    paste0(
+      "../../baseline_outputs/",
+      gsub(" ", "_", class_name),
+      "_liability.csv"
+    )
+  )
 
   # Save liability summary
   liability_summary <- list(
-    total_tal_legacy = if ("tal_legacy_est" %in% names(liability_data)) sum(liability_data$tal_legacy_est, na.rm = TRUE) else 0,
-    total_tal_new = if ("tal_new_est" %in% names(liability_data)) sum(liability_data$tal_new_est, na.rm = TRUE) else 0,
-    total_nc_legacy = if ("nc_legacy_est" %in% names(liability_data)) sum(liability_data$nc_legacy_est, na.rm = TRUE) else 0,
-    total_nc_new = if ("nc_new_est" %in% names(liability_data)) sum(liability_data$nc_new_est, na.rm = TRUE) else 0,
-    total_pvfb_legacy = if ("pvfb_legacy_est" %in% names(liability_data)) sum(liability_data$pvfb_legacy_est, na.rm = TRUE) else 0,
-    total_pvfb_new = if ("pvfb_new_est" %in% names(liability_data)) sum(liability_data$pvfb_new_est, na.rm = TRUE) else 0,
-    total_al_legacy = if ("al_legacy_est" %in% names(liability_data)) sum(liability_data$al_legacy_est, na.rm = TRUE) else 0,
-    total_al_new = if ("al_new_est" %in% names(liability_data)) sum(liability_data$al_new_est, na.rm = TRUE) else 0
+    total_tal_legacy = if ("tal_legacy_est" %in% names(liability_data)) {
+      sum(liability_data$tal_legacy_est, na.rm = TRUE)
+    } else {
+      0
+    },
+    total_tal_new = if ("tal_new_est" %in% names(liability_data)) {
+      sum(liability_data$tal_new_est, na.rm = TRUE)
+    } else {
+      0
+    },
+    total_nc_legacy = if ("nc_legacy_est" %in% names(liability_data)) {
+      sum(liability_data$nc_legacy_est, na.rm = TRUE)
+    } else {
+      0
+    },
+    total_nc_new = if ("nc_new_est" %in% names(liability_data)) {
+      sum(liability_data$nc_new_est, na.rm = TRUE)
+    } else {
+      0
+    },
+    total_pvfb_legacy = if ("pvfb_legacy_est" %in% names(liability_data)) {
+      sum(liability_data$pvfb_legacy_est, na.rm = TRUE)
+    } else {
+      0
+    },
+    total_pvfb_new = if ("pvfb_new_est" %in% names(liability_data)) {
+      sum(liability_data$pvfb_new_est, na.rm = TRUE)
+    } else {
+      0
+    },
+    total_al_legacy = if ("al_legacy_est" %in% names(liability_data)) {
+      sum(liability_data$al_legacy_est, na.rm = TRUE)
+    } else {
+      0
+    },
+    total_al_new = if ("al_new_est" %in% names(liability_data)) {
+      sum(liability_data$al_new_est, na.rm = TRUE)
+    } else {
+      0
+    }
   )
 
-  write_json(liability_summary, paste0("../../baseline_outputs/", gsub(" ", "_", class_name), "_liability_summary.json"), pretty = TRUE)
+  write_json(
+    liability_summary,
+    paste0(
+      "../../baseline_outputs/",
+      gsub(" ", "_", class_name),
+      "_liability_summary.json"
+    ),
+    pretty = TRUE
+  )
 
   cat(sprintf("Captured %s liability data\n", class_name))
 }
@@ -440,7 +623,14 @@ for (class_name in names(funding_data)) {
   cat(sprintf("Processing funding data for: %s\n", class_name))
 
   # Save funding data as CSV
-  write_csv(funding_data[[class_name]], paste0("../../baseline_outputs/", gsub(" ", "_", class_name), "_funding.csv"))
+  write_csv(
+    funding_data[[class_name]],
+    paste0(
+      "../../baseline_outputs/",
+      gsub(" ", "_", class_name),
+      "_funding.csv"
+    )
+  )
 
   cat(sprintf("Captured %s funding data\n", class_name))
 }
@@ -455,7 +645,10 @@ cat("========================================\n")
 cat("Baseline Extraction Complete\n")
 cat("========================================\n")
 cat(sprintf("Output directory: %s\n", getwd()))
-cat(sprintf("Total files created: %d\n", length(list.files("../../baseline_outputs"))))
+cat(sprintf(
+  "Total files created: %d\n",
+  length(list.files("../../baseline_outputs"))
+))
 cat("\nNext steps:\n")
 cat("1. Review captured data in baseline_outputs/\n")
 cat("2. Use these files as test fixtures for Python implementation\n")
