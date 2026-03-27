@@ -8,6 +8,7 @@ Key Design Principles:
 - Stream year-by-year to avoid keeping all years in memory
 - Use long format for core data (one row = one entity)
 - Pure functions for calculation logic
+- Use plan adapter for plan-specific business rules
 """
 
 from dataclasses import dataclass
@@ -15,13 +16,15 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from pension_config.plan import MembershipClass, PlanConfig, Tier
+from pension_config.plan import MembershipClass, Tier
+from pension_config.adapters import PlanAdapter
 from pension_data.schemas import (
     BenefitValuation,
     MortalityRate,
     SalaryGrowthRate,
-    RetirementEligibility
+    RetirementEligibility,
 )
+
 from pension_tools.financial import (
     present_value,
     present_value_series,
@@ -59,7 +62,7 @@ class BenefitCalculation:
     pvfb: float
     pvfs: float
     annuity_factor: float
-    tier: str
+    tier: Tier
 
 
 class BenefitCalculator:
@@ -72,115 +75,20 @@ class BenefitCalculator:
     - Present value of future benefits (PVFB)
     - Present value of future salaries (PVFS)
     - Annuity factors
+
+    Uses PlanAdapter for plan-specific business rules.
     """
 
-    def __init__(self, config: PlanConfig):
-        self.config = config
-        self.start_year = config.start_year
-        self.model_period = config.model_period
-        self.max_age = config.max_age
-
-        # Benefit formulas by class
-        self.benefit_formulas = {
-            MembershipClass.REGULAR: self._regular_benefit,
-            MembershipClass.SPECIAL_RISK: self._special_risk_benefit,
-            MembershipClass.SPECIAL_RISK_ADMIN: self._special_risk_admin_benefit,
-            MembershipClass.JUDICIAL: self._judicial_benefit,
-            MembershipClass.ECO: self._eco_benefit,
-            MembershipClass.ESO: self._eso_benefit,
-            MembershipClass.SENIOR_MANAGEMENT: self._senior_management_benefit
-        }
-
-    def determine_tier(
-        self,
-        class_name: MembershipClass,
-        entry_year: int,
-        age: int,
-        yos: int
-    ) -> str:
-        """
-        Determine which tier a member belongs to based on entry year.
-
-        Args:
-            class_name: Membership class
-            entry_year: Year of entry
-            age: Current age
-            yos: Years of service
-
-        Returns:
-            Tier identifier (e.g., "tier_1_norm", "tier_2_early", etc.)
-        """
-        is_special = class_name in [
-            MembershipClass.SPECIAL_RISK,
-            MembershipClass.SPECIAL_RISK_ADMIN
-        ]
-
-        if entry_year < 2011:
-            # Tier 1
-            if is_special and (yos >= 25 or (age >= 55 and yos >= 6) or (age >= 52 and yos >= 25)):
-                return "tier_1_norm"
-            elif yos >= 30 or (age >= 62 and yos >= 6):
-                return "tier_1_norm"
-            elif is_special and (yos >= 6 and age >= 53):
-                return "tier_1_early"
-            elif yos >= 6 and age >= 58:
-                return "tier_1_early"
-            elif yos >= 6:
-                return "tier_1_vested"
-            else:
-                return "tier_1_non_vested"
-        elif entry_year < self.config.new_hire_year:
-            # Tier 2
-            if is_special and (yos >= 30 or (age >= 60 and yos >= 8)):
-                return "tier_2_norm"
-            elif yos >= 33 or (age >= 65 and yos >= 8):
-                return "tier_2_norm"
-            elif is_special and (yos >= 8 and age >= 56):
-                return "tier_2_early"
-            elif yos >= 8 and age >= 61:
-                return "tier_2_early"
-            elif yos >= 8:
-                return "tier_2_vested"
-            else:
-                return "tier_2_non_vested"
-        else:
-            # Tier 3 (new hires)
-            if is_special and (yos >= 30 or (age >= 60 and yos >= 8)):
-                return "tier_3_norm"
-            elif yos >= 33 or (age >= 65 and yos >= 8):
-                return "tier_3_norm"
-            elif is_special and (yos >= 8 and age >= 56):
-                return "tier_3_early"
-            elif yos >= 8 and age >= 61:
-                return "tier_3_early"
-            elif yos >= 8:
-                return "tier_3_vested"
-            else:
-                return "tier_3_non_vested"
-
-    def get_separation_type(self, tier: str) -> str:
-        """
-        Determine separation type based on tier.
-
-        Args:
-            tier: Tier identifier
-
-        Returns:
-            Separation type: "retire", "vested", or "non_vested"
-        """
-        if "early" in tier or "norm" in tier or "reduced" in tier:
-            return "retire"
-        elif "non_vested" in tier:
-            return "non_vested"
-        elif "vested" in tier:
-            return "vested"
-        else:
-            return "non_vested"
+    def __init__(self, adapter: PlanAdapter):
+        self.adapter = adapter
+        self.start_year = adapter.config.get('start_year', 2023)
+        self.model_period = adapter.config.get('model_period', 30)
+        self.max_age = adapter.config.get('max_age', 110)
 
     def calculate_benefit(
         self,
-        class_name: MembershipClass,
-        tier: str,
+        membership_class: MembershipClass,
+        tier: Tier,
         salary: float,
         yos: int,
         age: int
@@ -189,7 +97,7 @@ class BenefitCalculator:
         Calculate annual pension benefit.
 
         Args:
-            class_name: Membership class
+            membership_class: Membership class
             tier: Tier identifier
             salary: Final average salary
             yos: Years of service
@@ -198,157 +106,25 @@ class BenefitCalculator:
         Returns:
             Annual benefit amount
         """
-        formula = self.benefit_formulas.get(class_name)
-        if formula is None:
-            raise ValueError(f"Unknown membership class: {class_name}")
+        # Get benefit multiplier from adapter
+        multiplier = self.adapter.get_benefit_multiplier(
+            membership_class, tier, yos, age
+        )
 
-        return formula(tier, salary, yos, age)
-
-    def _regular_benefit(
-        self,
-        tier: str,
-        salary: float,
-        yos: int,
-        age: int
-    ) -> float:
-        """Calculate benefit for Regular class."""
-        # Benefit formula: 1.6% * YOS * FAS (for tier 1 normal)
-        # Different multipliers for different tiers
-        multipliers = {
-            "tier_1_norm": 0.016,
-            "tier_1_early": 0.016,  # Reduced by early retirement factor
-            "tier_2_norm": 0.016,
-            "tier_2_early": 0.016,
-            "tier_3_norm": 0.016,
-            "tier_3_early": 0.016
-        }
-
-        multiplier = multipliers.get(tier, 0.016)
         base_benefit = multiplier * yos * salary
 
         # Apply early retirement reduction if applicable
-        if "early" in tier:
-            reduction = early_retirement_factor(age, yos)
+        if tier.value.startswith('tier_1_early') or tier.value.startswith('tier_2_early') or tier.value.startswith('tier_3_early'):
+            # Get normal retirement age from adapter
+            normal_ret_age, normal_ret_yos = self.adapter.get_normal_retirement_age(
+                membership_class, tier
+            )
+
+            # Calculate early retirement factor
+            reduction = early_retirement_factor(age, yos, normal_ret_age, normal_ret_yos)
             base_benefit *= (1 - reduction)
 
         return base_benefit
-
-    def _special_risk_benefit(
-        self,
-        tier: str,
-        salary: float,
-        yos: int,
-        age: int
-    ) -> float:
-        """Calculate benefit for Special Risk class."""
-        # Benefit formula: 3% * YOS * FAS (for tier 1 normal)
-        multipliers = {
-            "tier_1_norm": 0.03,
-            "tier_1_early": 0.03,
-            "tier_2_norm": 0.03,
-            "tier_2_early": 0.03,
-            "tier_3_norm": 0.03,
-            "tier_3_early": 0.03
-        }
-
-        multiplier = multipliers.get(tier, 0.03)
-        base_benefit = multiplier * yos * salary
-
-        # Apply early retirement reduction if applicable
-        if "early" in tier:
-            reduction = early_retirement_factor(age, yos)
-            base_benefit *= (1 - reduction)
-
-        return base_benefit
-
-    def _special_risk_admin_benefit(
-        self,
-        tier: str,
-        salary: float,
-        yos: int,
-        age: int
-    ) -> float:
-        """Calculate benefit for Special Risk Administrative class."""
-        # Same as Special Risk
-        return self._special_risk_benefit(tier, salary, yos, age)
-
-    def _judicial_benefit(
-        self,
-        tier: str,
-        salary: float,
-        yos: int,
-        age: int
-    ) -> float:
-        """Calculate benefit for Judicial class."""
-        # Benefit formula: 3% * YOS * FAS
-        multipliers = {
-            "tier_1_norm": 0.03,
-            "tier_1_early": 0.03,
-            "tier_2_norm": 0.03,
-            "tier_2_early": 0.03,
-            "tier_3_norm": 0.03,
-            "tier_3_early": 0.03
-        }
-
-        multiplier = multipliers.get(tier, 0.03)
-        base_benefit = multiplier * yos * salary
-
-        # Apply early retirement reduction if applicable
-        if "early" in tier:
-            reduction = early_retirement_factor(age, yos)
-            base_benefit *= (1 - reduction)
-
-        return base_benefit
-
-    def _eco_benefit(
-        self,
-        tier: str,
-        salary: float,
-        yos: int,
-        age: int
-    ) -> float:
-        """Calculate benefit for ECO (Elected Constitutional Officers) class."""
-        # Benefit formula: 3% * YOS * FAS
-        multipliers = {
-            "tier_1_norm": 0.03,
-            "tier_1_early": 0.03,
-            "tier_2_norm": 0.03,
-            "tier_2_early": 0.03,
-            "tier_3_norm": 0.03,
-            "tier_3_early": 0.03
-        }
-
-        multiplier = multipliers.get(tier, 0.03)
-        base_benefit = multiplier * yos * salary
-
-        # Apply early retirement reduction if applicable
-        if "early" in tier:
-            reduction = early_retirement_factor(age, yos)
-            base_benefit *= (1 - reduction)
-
-        return base_benefit
-
-    def _eso_benefit(
-        self,
-        tier: str,
-        salary: float,
-        yos: int,
-        age: int
-    ) -> float:
-        """Calculate benefit for ESO (Elected State Officers) class."""
-        # Benefit formula: 3% * YOS * FAS
-        return self._eco_benefit(tier, salary, yos, age)
-
-    def _senior_management_benefit(
-        self,
-        tier: str,
-        salary: float,
-        yos: int,
-        age: int
-    ) -> float:
-        """Calculate benefit for Senior Management class."""
-        # Benefit formula: 1.6% * YOS * FAS
-        return self._regular_benefit(tier, salary, yos, age)
 
     def calculate_annuity_factor(
         self,
@@ -475,6 +251,8 @@ class BenefitCalculator:
                 mort_rates.append(0.0)
 
         mort_rates = np.array(mort_rates)
+
+        # Survival to retirement = product of (1 - qx) for all previous ages
         surv_to_retirement = np.prod(1 - mort_rates)
 
         # Discount to present
@@ -534,7 +312,9 @@ class BenefitCalculator:
         projected_salaries = salary * cum_growth
 
         # Discount factors
-        discount_factors = np.array([1 / ((1 + dr) ** t) for t in range(years_to_retirement)])
+        discount_factors = np.array([
+            1 / ((1 + dr) ** t) for t in range(years_to_retirement)
+        ])
 
         # PVFS = sum of (projected salary * discount)
         return np.sum(projected_salaries * discount_factors)
@@ -610,7 +390,7 @@ class BenefitCalculator:
 
     def calculate_benefit_for_member(
         self,
-        class_name: MembershipClass,
+        membership_class: MembershipClass,
         entry_age: int,
         entry_year: int,
         age: int,
@@ -625,7 +405,7 @@ class BenefitCalculator:
         Calculate all benefit values for a single member.
 
         Args:
-            class_name: Membership class
+            membership_class: Membership class
             entry_age: Age at entry
             entry_year: Year of entry
             age: Current age
@@ -642,11 +422,13 @@ class BenefitCalculator:
         yos = age - entry_age
         current_year = entry_year + yos
 
-        # Determine tier
-        tier = self.determine_tier(class_name, entry_year, age, yos)
+        # Determine tier using adapter
+        tier = self.adapter.determine_tier(membership_class, entry_year)
 
         # Calculate benefit
-        benefit = self.calculate_benefit(class_name, tier, salary, yos, age)
+        benefit = self.calculate_benefit(
+            membership_class, tier, salary, yos, age
+        )
 
         # Calculate annuity factor
         annuity = self.calculate_annuity_factor(
@@ -687,66 +469,64 @@ class BenefitCalculator:
             tier=tier
         )
 
+    def calculate_benefit_table(
+        self,
+        config: Dict[str, any],
+        class_name: MembershipClass,
+        salary_headcount: pd.DataFrame,
+        mort_table: pd.DataFrame,
+        salary_growth_table: pd.DataFrame,
+        dr_current: float,
+        dr_new: float,
+        cola_rate_active: float,
+        cola_rate_retire: float
+    ) -> pd.DataFrame:
+        """
+        Calculate benefit table for all members in a class.
 
-def calculate_benefit_table(
-    config: PlanConfig,
-    class_name: MembershipClass,
-    salary_headcount: pd.DataFrame,
-    mort_table: pd.DataFrame,
-    salary_growth_table: pd.DataFrame,
-    dr_current: float,
-    dr_new: float,
-    cola_rate_active: float,
-    cola_rate_retire: float
-) -> pd.DataFrame:
-    """
-    Calculate benefit table for all members in a class.
+        Args:
+            config: Plan configuration
+            class_name: Membership class
+            salary_headcount: Salary/headcount data
+            mort_table: Mortality rate table
+            salary_growth_table: Salary growth rate table
+            dr_current: Current discount rate
+            dr_new: New discount rate
+            cola_rate_active: COLA rate for active members
+            cola_rate_retire: COLA rate for retirees
 
-    Args:
-        config: Plan configuration
-        class_name: Membership class
-        salary_headcount: Salary/headcount data
-        mort_table: Mortality rate table
-        salary_growth_table: Salary growth rate table
-        dr_current: Current discount rate
-        dr_new: New discount rate
-        cola_rate_active: COLA rate for active members
-        cola_rate_retire: COLA rate for retirees
+        Returns:
+            DataFrame with benefit calculations for all members
+        """
+        results = []
 
-    Returns:
-        DataFrame with benefit calculations for all members
-    """
-    calculator = BenefitCalculator(config)
+        for _, row in salary_headcount.iterrows():
+            entry_age = row['entry_age']
+            entry_year = row['entry_year']
+            age = row['age']
+            salary = row['entry_salary'] * row.get('cumprod_salary_increase', 1.0)
 
-    results = []
+            # Use appropriate discount rate based on entry year
+            dr = dr_new if entry_year >= config.get('new_hire_year', 2018) else dr_current
 
-    for _, row in salary_headcount.iterrows():
-        entry_age = row['entry_age']
-        entry_year = row['entry_year']
-        age = row['age']
-        salary = row['entry_salary'] * row.get('cumprod_salary_increase', 1.0)
+            calc = self.calculate_benefit_for_member(
+                class_name, entry_age, entry_year, age, salary, dr,
+                mort_table, salary_growth_table, cola_rate_active, cola_rate_retire
+            )
 
-        # Use appropriate discount rate based on entry year
-        dr = dr_new if entry_year >= config.new_hire_year else dr_current
+            results.append({
+                'entry_age': calc.entry_age,
+                'entry_year': calc.entry_year,
+                'age': calc.age,
+                'yos': calc.yos,
+                'salary': calc.salary,
+                'benefit': calc.benefit,
+                'normal_cost': calc.normal_cost,
+                'accrued_liability': calc.accrued_liability,
+                'pvfb': calc.pvfb,
+                'pvfs': calc.pvfs,
+                'annuity_factor': calc.annuity_factor,
+                'tier': calc.tier.value
+            })
 
-        calc = calculator.calculate_benefit_for_member(
-            class_name, entry_age, entry_year, age, salary, dr,
-            mort_table, salary_growth_table, cola_rate_active, cola_rate_retire
-        )
-
-        results.append({
-            'entry_age': calc.entry_age,
-            'entry_year': calc.entry_year,
-            'age': calc.age,
-            'yos': calc.yos,
-            'salary': calc.salary,
-            'benefit': calc.benefit,
-            'normal_cost': calc.normal_cost,
-            'accrued_liability': calc.accrued_liability,
-            'pvfb': calc.pvfb,
-            'pvfs': calc.pvfs,
-            'annuity_factor': calc.annuity_factor,
-            'tier': calc.tier
-        })
-
-    return pd.DataFrame(results)
+        return pd.DataFrame(results)
