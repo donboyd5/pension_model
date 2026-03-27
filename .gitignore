@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Outputs
+*.rds
+*.xlsx
+*.csv
+!configs/*.csv
+
+# Memory bank (optional - commit if desired)
+memory-bank/
+
+# Actuarial calculations (optional)
+actuarial_calculations/
