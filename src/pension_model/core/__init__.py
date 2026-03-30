@@ -1,55 +1,22 @@
 """
 Pension Model Core Module
 
-Core calculation engines for pension modeling:
-- Workforce projection
-- Benefit calculation
-- Liability calculation
-- Funding calculation
+Production pipeline for pension modeling:
+- benefit_tables: Build actuarial tables from raw inputs
+- pipeline: End-to-end liability computation
+- funding_model: Funding projection (assets, contributions, amortization)
+- tier_logic: Plan-specific tier and benefit rules
+- model_constants: All model parameters and constants
 """
 
-from .workforce import (
-    WorkforceProjector,
-    WorkforceState,
-    project_workforce
-)
-
-from .benefit import (
-    BenefitCalculator,
-    BenefitCalculation,
-    calculate_benefit_table
-)
-
-from .liability import (
-    LiabilityCalculator,
-    LiabilitySummary,
-    calculate_liabilities
-)
-
-from .funding import (
-    FundingCalculator,
-    FundingSummary,
-    calculate_funding
-)
+from .pipeline import run_class_pipeline
+from .funding_model import compute_funding, load_funding_inputs
+from .model_constants import ModelConstants, frs_constants
 
 __all__ = [
-    # Workforce
-    'WorkforceProjector',
-    'WorkforceState',
-    'project_workforce',
-
-    # Benefit
-    'BenefitCalculator',
-    'BenefitCalculation',
-    'calculate_benefit_table',
-
-    # Liability
-    'LiabilityCalculator',
-    'LiabilitySummary',
-    'calculate_liabilities',
-
-    # Funding
-    'FundingCalculator',
-    'FundingSummary',
-    'calculate_funding'
+    "run_class_pipeline",
+    "compute_funding",
+    "load_funding_inputs",
+    "ModelConstants",
+    "frs_constants",
 ]
