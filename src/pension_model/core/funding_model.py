@@ -53,10 +53,14 @@ def build_amort_period_tables(
     """
     lookup = class_name.replace("_", " ")
     class_layers = amort_layers[amort_layers["class"] == lookup].copy()
+    # R converts "n/a" to amo_period_new, then groups by period
     class_layers["amo_period"] = pd.to_numeric(
         class_layers["amo_period"].replace("n/a", str(amo_period_new))
-    )
-    class_layers = class_layers.sort_values("amo_period", ascending=False)
+    ).fillna(amo_period_new)  # Also handle numeric NaN from CSV loading
+    # R groups by (class, amo_period) and sums balances
+    class_layers = (class_layers.groupby("amo_period", as_index=False)
+                    .agg({"amo_balance": "sum"})
+                    .sort_values("amo_period", ascending=False))
 
     current_periods_init = class_layers["amo_period"].dropna().values
     # max_col must accommodate all existing layers AND future layers
@@ -177,14 +181,12 @@ def compute_funding(
             f["nc_rate_db_legacy"] = 0.0
             f["nc_rate_db_new"] = 0.0
 
-        # NC rate calibration: R multiplies by nc_cal factor
-        # nc_cal = val_norm_cost / model_norm_cost
-        # The liability model NC rates already use cal_factor=0.9
-        # The nc_cal is an ADDITIONAL adjustment
-        # For now, read nc_cal from R's extracted calibration
-        # TODO: compute nc_cal from val_norm_cost / model agg NC rate
-        nc_legacy = liab["nc_rate_db_legacy_est"].values
-        nc_new = liab.get("nc_rate_db_new_est", pd.Series(np.zeros(n_years))).values
+        # NC rate calibration: R multiplies liability NC rates by nc_cal
+        # nc_cal = val_norm_cost / model_norm_cost (additional adjustment beyond cal_factor=0.9)
+        nc_cal = constants.class_data[cn].nc_cal
+        nc_legacy = liab["nc_rate_db_legacy_est"].values * nc_cal
+        nc_new = liab.get("nc_rate_db_new_est", pd.Series(np.zeros(n_years))).values * nc_cal
+        # Lag by 1 year (R uses lag to align with funding mechanism)
         f.loc[1:, "nc_rate_db_legacy"] = nc_legacy[:-1]
         f.loc[1:, "nc_rate_db_new"] = nc_new[:-1]
 

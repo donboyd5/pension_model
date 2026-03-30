@@ -95,6 +95,7 @@ class ClassACFRData:
     pvfb_term_current: float           # Remaining accrued liability adjustment
     er_dc_cont_rate: float             # Employer DC contribution rate
     val_norm_cost: float               # Normal cost from valuation report
+    nc_cal: float                      # NC calibration factor (val_norm_cost / model_norm_cost)
 
 
 @dataclass(frozen=True)
@@ -144,36 +145,43 @@ def frs_constants() -> ModelConstants:
             outflow=8_967_096_000, retiree_pop=393_308,
             total_active_member=537_128, pvfb_term_current=6_591_924_964,
             er_dc_cont_rate=0.066, val_norm_cost=0.0896,
+            nc_cal=0.0896 / 0.09096784,
         ),
         "special": ClassACFRData(
             outflow=2_423_470_000, retiree_pop=41_696,
             total_active_member=72_925, pvfb_term_current=3_237_763_994,
             er_dc_cont_rate=0.1654, val_norm_cost=0.2013,
+            nc_cal=0.2013 / 0.2044051,
         ),
         "admin": ClassACFRData(
             outflow=8_090_000, retiree_pop=160,
             total_active_member=104, pvfb_term_current=-2_095_291,
             er_dc_cont_rate=0.0843, val_norm_cost=0.1457,
+            nc_cal=0.1457 / 0.10436284,
         ),
         "eco": ClassACFRData(
             outflow=9_442_000, retiree_pop=227,
             total_active_member=2_075, pvfb_term_current=27_604_397,
             er_dc_cont_rate=0.0994, val_norm_cost=0.1254,
+            nc_cal=0.1254 / 0.1513904,
         ),
         "eso": ClassACFRData(
             outflow=53_526_000, retiree_pop=1_446,
             total_active_member=2_075, pvfb_term_current=30_965_398,
             er_dc_cont_rate=0.1195, val_norm_cost=0.1463,
+            nc_cal=0.1463 / 0.1557111,
         ),
         "judges": ClassACFRData(
             outflow=105_844_000, retiree_pop=989,
             total_active_member=2_075, pvfb_term_current=101_107_976,
             er_dc_cont_rate=0.1405, val_norm_cost=0.1777,
+            nc_cal=0.1777 / 0.1937982,
         ),
         "senior_management": ClassACFRData(
             outflow=338_664_000, retiree_pop=5_828,
             total_active_member=7_610, pvfb_term_current=635_471_640,
             er_dc_cont_rate=0.0798, val_norm_cost=0.1086,
+            nc_cal=0.1086 / 0.11295223,
         ),
     }
 
