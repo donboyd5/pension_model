@@ -1,196 +1,243 @@
 """
 Streaming workforce projection.
 
-Projects active, terminated, refund, and retired populations year by year.
-Matches R's Florida FRS workforce model.R logic.
+Replicates R's Florida FRS workforce model.R.
 
-Key design: process one year at a time, accumulate stocks incrementally.
-Active population is a DataFrame of (entry_age, age, n_active).
-Terminated/retired stocks grow each year as new separations enter.
-
-Memory: O(n_cohorts × n_projection_years), not O(full cross-product).
+R's flow each year:
+  1. active2term = active * separation_rate  (all exits go to term first)
+  2. active = (active - active2term) shifted right by 1 age + new entrants
+  3. term stock: age with mortality, add new terms
+  4. refunds: from new terms where ben_decision == "refund"
+  5. retirees: from all terms where ben_decision includes retirement
+     (at distribution age, which may be deferred for vested members)
 """
 
 import numpy as np
 import pandas as pd
-from typing import Callable
 
 
 def project_workforce(
     initial_active: pd.DataFrame,
     separation_rates: pd.DataFrame,
+    benefit_decisions: pd.DataFrame,
+    mortality_rates: pd.DataFrame,
     entrant_profile: pd.DataFrame,
     class_name: str,
     start_year: int,
     model_period: int,
     pop_growth: float = 0.0,
+    retire_refund_ratio: float = 1.0,
 ) -> dict:
     """
     Project workforce for all years.
 
     Args:
-        initial_active: DataFrame with (entry_age, age, n_active) at start_year.
-        separation_rates: DataFrame with (entry_year, entry_age, term_age, yos,
-            separation_rate) — one row per (entry_year, entry_age, yos).
-        entrant_profile: DataFrame with (entry_age, start_sal, entrant_dist).
+        initial_active: (entry_age, age, n_active) at start_year.
+        separation_rates: (entry_year, entry_age, term_age, yos, separation_rate).
+        benefit_decisions: (entry_year, entry_age, yos, term_age, dist_age, ben_decision)
+            from benefit_val_table. ben_decision is "retire", "mix", or "refund".
+        mortality_rates: (entry_year, entry_age, dist_age, dist_year, yos, mort_final, tier_at_dist_age)
+            or a CompactMortality object.
+        entrant_profile: (entry_age, start_sal, entrant_dist).
         class_name: Membership class name.
         start_year: Valuation year.
         model_period: Number of projection years.
-        pop_growth: Annual population growth rate (0 for stable).
+        pop_growth: Annual population growth (0 for stable).
+        retire_refund_ratio: Fraction of vested "mix" who choose retirement (default 1.0).
 
     Returns:
-        Dict with:
-          'wf_active': DataFrame (entry_age, age, year, n_active)
-          'wf_term': DataFrame (entry_age, age, year, term_year, n_term)
-          'wf_retire': DataFrame (entry_age, age, year, term_year, retire_year, n_retire)
-          'wf_refund': DataFrame (entry_age, age, year, term_year, n_refund)
+        Dict with DataFrames: wf_active, wf_term, wf_retire, wf_refund
     """
-    # Parse separation rates into lookup
-    # R model uses: for each (entry_age, yos), get separation_rate
-    # The separation rate determines what fraction leave, and the tier determines
-    # whether they retire, vest, or get refund
+    entry_ages = sorted(initial_active["entry_age"].unique())
+    n_entry = len(entry_ages)
+    ea_to_idx = {ea: i for i, ea in enumerate(entry_ages)}
 
-    # Build active population indexed by (entry_age, age)
-    active = initial_active.copy()
-    active["yos"] = active["age"] - active["entry_age"]
-    active["entry_year"] = start_year - active["yos"]
+    # Age range
+    min_age = min(entry_ages)
+    max_age = 120
+    ages = list(range(min_age, max_age + 1))
+    n_ages = len(ages)
+    age_to_idx = {a: i for i, a in enumerate(ages)}
 
-    # Collect all years' outputs
+    years = list(range(start_year, start_year + model_period + 1))
+    n_years = len(years)
+
+    # Build separation rate lookup: sep_rates[entry_age_idx, age_idx, year_idx]
+    sep_lookup = np.zeros((n_entry, n_ages, n_years))
+    for _, row in separation_rates.iterrows():
+        ea = int(row["entry_age"])
+        ta = int(row.get("term_age", row.get("age", ea + row.get("yos", 0))))
+        ey = int(row["entry_year"])
+        sr = row["separation_rate"]
+        if ea in ea_to_idx and ta in age_to_idx:
+            # year = entry_year + yos = ey + (ta - ea)
+            yr = ey + (ta - ea)
+            if start_year <= yr <= start_year + model_period:
+                yi = yr - start_year
+                sep_lookup[ea_to_idx[ea], age_to_idx[ta], yi] = sr if not np.isnan(sr) else 0
+
+    # Build benefit decision lookups: refund_prob and retire_prob
+    # refund_prob: probability of refund given termination at (entry_age, term_age, entry_year)
+    # retire_prob: probability of retirement at distribution age
+    # R computes these from ben_decision in benefit_val_table
+    refund_lookup = {}  # (entry_year, entry_age, term_age) -> refund probability
+    retire_lookup = {}  # (entry_year, entry_age, term_age, dist_age) -> retire probability
+
+    if len(benefit_decisions) > 0:
+        for _, row in benefit_decisions.iterrows():
+            ey = int(row["entry_year"])
+            ea = int(row["entry_age"])
+            ta = int(row.get("term_age", ea + row.get("yos", 0)))
+            da = int(row.get("dist_age", ta))
+            bd = row.get("ben_decision", None)
+
+            if bd == "refund" or (pd.isna(bd) and row.get("yos", 1) == 0):
+                refund_lookup[(ey, ea, ta)] = 1.0
+            elif bd == "mix":
+                refund_lookup[(ey, ea, ta)] = 1 - retire_refund_ratio
+                retire_lookup[(ey, ea, ta, da)] = 1.0
+            elif bd == "retire":
+                retire_lookup[(ey, ea, ta, da)] = 1.0
+
+    # Transition matrix: shifts ages right by 1
+    TM = np.zeros((n_ages, n_ages))
+    for i in range(n_ages - 1):
+        TM[i, i + 1] = 1.0
+
+    # Initialize active matrix [entry_age_idx, age_idx]
+    active = np.zeros((n_entry, n_ages))
+    for _, row in initial_active.iterrows():
+        ea = int(row["entry_age"])
+        age = int(row["age"])
+        if ea in ea_to_idx and age in age_to_idx:
+            active[ea_to_idx[ea], age_to_idx[age]] = row["n_active"]
+
+    # New entrant distribution
+    ne_dist = np.zeros(n_entry)
+    for _, row in entrant_profile.iterrows():
+        ea = int(row["entry_age"])
+        if ea in ea_to_idx:
+            ne_dist[ea_to_idx[ea]] = row["entrant_dist"]
+
+    # Position matrix for new entrants: entry_age maps to age column
+    pos_matrix = np.zeros((n_entry, n_ages))
+    for i, ea in enumerate(entry_ages):
+        if ea in age_to_idx:
+            pos_matrix[i, age_to_idx[ea]] = 1.0
+
+    # Storage for term stock: dict of term_year -> [entry_age_idx, age_idx] matrix
+    term_stocks = {}
+
+    # Collect outputs
     all_active = []
     all_term = []
     all_retire = []
     all_refund = []
 
-    # Current term/retire stocks (accumulated)
-    term_stock = pd.DataFrame(columns=["entry_age", "age", "term_year", "n_term"])
-    retire_stock = pd.DataFrame(columns=["entry_age", "age", "term_year", "retire_year", "n_retire"])
+    # Record year 0
+    for ei, ea in enumerate(entry_ages):
+        for ai, age in enumerate(ages):
+            if active[ei, ai] > 0:
+                all_active.append((ea, age, start_year, active[ei, ai]))
 
-    entry_ages = entrant_profile["entry_age"].values
-
-    for t in range(model_period + 1):
+    # Main projection loop
+    for t in range(1, n_years):
         year = start_year + t
+        yi = t  # year index (0-based from start_year)
+        prev_yi = t - 1
 
-        if t == 0:
-            # Year 0: just record the initial state
-            active["year"] = year
-            all_active.append(active[["entry_age", "age", "year", "n_active"]].copy())
-            continue
+        # 1. active2term = active * separation_rate
+        active2term = active * sep_lookup[:, :, prev_yi]
 
-        prev_active = active.copy()
-        pre_decrement_total = prev_active["n_active"].sum()
+        # 2. Deduct exits and age
+        active_after = (active - active2term) @ TM
 
-        # Apply separation: merge with separation rates
-        prev_active["yos"] = prev_active["age"] - prev_active["entry_age"]
-        prev_active["entry_year"] = year - 1 - prev_active["yos"]
-
-        # Look up separation rate for each member's (entry_year, entry_age, yos)
-        prev_active = prev_active.merge(
-            separation_rates[["entry_year", "entry_age", "yos", "separation_rate"]].drop_duplicates(),
-            on=["entry_year", "entry_age", "yos"],
-            how="left",
-        )
-        prev_active["separation_rate"] = prev_active["separation_rate"].fillna(0)
-
-        # Compute exits
-        prev_active["n_exit"] = prev_active["n_active"] * prev_active["separation_rate"]
-        prev_active["n_remaining"] = prev_active["n_active"] - prev_active["n_exit"]
-
-        # Determine exit type from tier
-        # For the workforce model, R uses the separation table's implicit logic:
-        # - If separation_rate comes from retirement rates: retire
-        # - If from withdrawal rates with vesting: term (vested)
-        # - If from withdrawal rates without vesting: refund
-        # R doesn't explicitly split — it uses the full wf_data structure.
-        # For now, we need the tier to determine exit type.
-
-        # Look up tier for each member
-        from pension_model.core.tier_logic import get_sep_type as _get_sep_type
-
-        def _get_tier_for_row(row):
-            from pension_model.core.tier_logic import get_tier as _gt
-            return _gt(class_name, int(row["entry_year"]), int(row["age"]), int(row["yos"]))
-
-        prev_active["tier"] = prev_active.apply(_get_tier_for_row, axis=1)
-        prev_active["sep_type"] = prev_active["tier"].apply(_get_sep_type)
-
-        # Split exits by type
-        n_retire = prev_active.loc[prev_active["sep_type"] == "retire", "n_exit"].copy()
-        n_vested = prev_active.loc[prev_active["sep_type"] == "vested", "n_exit"].copy()
-        n_refund = prev_active.loc[prev_active["sep_type"] == "non_vested", "n_exit"].copy()
-
-        # New terminations (vested) and refunds this year
-        term_new = prev_active[prev_active["sep_type"] == "vested"][["entry_age", "age", "n_exit"]].copy()
-        term_new = term_new.rename(columns={"n_exit": "n_term"})
-        term_new["term_year"] = year
-        term_new["year"] = year
-
-        refund_new = prev_active[prev_active["sep_type"] == "non_vested"][["entry_age", "age", "n_exit"]].copy()
-        refund_new = refund_new.rename(columns={"n_exit": "n_refund"})
-        refund_new["term_year"] = year
-        refund_new["year"] = year
-
-        # New retirees this year
-        retire_new = prev_active[prev_active["sep_type"] == "retire"][["entry_age", "age", "n_exit"]].copy()
-        retire_new = retire_new.rename(columns={"n_exit": "n_retire"})
-        retire_new["term_year"] = year
-        retire_new["retire_year"] = year
-        retire_new["year"] = year
-
-        # Age the active population
-        active_next = prev_active[["entry_age", "n_remaining"]].copy()
-        active_next = active_next.rename(columns={"n_remaining": "n_active"})
-        active_next["age"] = prev_active["age"] + 1
-        active_next = active_next[active_next["n_active"] > 0].copy()
-
-        post_decrement_total = active_next["n_active"].sum()
-
-        # Add new entrants
-        n_new = pre_decrement_total * (1 + pop_growth) - post_decrement_total
+        # 3. New entrants: ne = sum(wf1) * (1+g) - sum(wf2)
+        pre_total = active.sum()
+        post_total = active_after.sum()
+        n_new = pre_total * (1 + pop_growth) - post_total
         n_new = max(n_new, 0)
 
         if n_new > 0:
-            new_entrants = entrant_profile[["entry_age"]].copy()
-            new_entrants["n_active"] = new_entrants.index.map(
-                lambda i: n_new * entrant_profile.iloc[i]["entrant_dist"]
-            )
-            new_entrants["age"] = new_entrants["entry_age"]
-            active_next = pd.concat([active_next, new_entrants[["entry_age", "age", "n_active"]]],
-                                    ignore_index=True)
+            new_entrants = np.outer(ne_dist * n_new, np.ones(n_ages)) * pos_matrix
+            active_after += new_entrants
 
-        # Consolidate active (sum any duplicates from new entrants at same age)
-        active_next = active_next.groupby(["entry_age", "age"], as_index=False)["n_active"].sum()
+        active = active_after
 
-        active_next["year"] = year
-        active = active_next.copy()
-        all_active.append(active[["entry_age", "age", "year", "n_active"]].copy())
+        # Record active
+        for ei, ea in enumerate(entry_ages):
+            for ai, age in enumerate(ages):
+                if active[ei, ai] > 1e-10:
+                    all_active.append((ea, age, year, active[ei, ai]))
 
-        # Age existing term stock with mortality (R model ages and applies mortality)
-        if len(term_stock) > 0:
-            term_stock["age"] = term_stock["age"] + 1
-            # TODO: apply mortality to term stock (R does this via cum_mort_dr in liability)
-            # For now, keep full stock — mortality is handled in liability computation
-            term_stock["year"] = year
+        # 4. Age existing term stocks with mortality, then shift right
+        # R: term2death = wf_term * mort_array; wf_term = (wf_term - term2death) %*% TM
+        new_term_stocks = {}
+        for ty, ts in term_stocks.items():
+            # Apply mortality before aging
+            # Mortality depends on (entry_age, age, year) — use employee mortality
+            # for term vested members (they haven't retired yet)
+            if hasattr(mortality_rates, 'get_rates_vec'):
+                # CompactMortality object
+                for ei, ea in enumerate(entry_ages):
+                    for ai, age in enumerate(ages):
+                        if ts[ei, ai] > 1e-10:
+                            mort = mortality_rates.get_rate(age, year - 1, is_retiree=False)
+                            ts[ei, ai] *= (1 - mort)
+            aged = ts @ TM
+            new_term_stocks[ty] = aged
 
-        # Add new terms to stock
-        term_stock = pd.concat([term_stock, term_new[["entry_age", "age", "term_year", "n_term"]].assign(year=year)],
-                               ignore_index=True)
+        # 5. New terms: active2term aged by 1
+        new_terms_aged = active2term @ TM
+        new_term_stocks[year] = new_terms_aged.copy()
 
-        # Age existing retire stock
-        if len(retire_stock) > 0:
-            retire_stock["age"] = retire_stock["age"] + 1
-            retire_stock["year"] = year
+        # 6. Remove refunds from new terms
+        # After TM shift, members at age position `a` have term_age = a
+        # (R counts termination at the post-shift age)
+        # entry_year = year - (age - entry_age) = year - yos
+        for ei, ea in enumerate(entry_ages):
+            for ai, age in enumerate(ages):
+                if new_term_stocks[year][ei, ai] > 1e-10:
+                    term_age = age  # post-shift = R's term_age
+                    yos = term_age - ea
+                    entry_year_member = year - yos
+                    rp = refund_lookup.get((entry_year_member, ea, term_age), 0)
+                    if rp > 0:
+                        refund_amount = new_term_stocks[year][ei, ai] * rp
+                        new_term_stocks[year][ei, ai] -= refund_amount
+                        all_refund.append((ea, age, year, year, refund_amount))
 
-        # Add new retirees
-        retire_stock = pd.concat([retire_stock, retire_new[["entry_age", "age", "term_year", "retire_year", "n_retire"]].assign(year=year)],
-                                 ignore_index=True)
+        # 7. Remove retirees from ALL term stocks
+        # For members in term stock from term_year ty, currently at age `a`:
+        # Their original term_age (post-shift at ty) = a - (year - ty)
+        # entry_year = ty - (term_age - ea) = ty - (a - (year - ty)) + ea...
+        # Simpler: entry_year = year - (a - ea) since age grows 1/year
+        for ty in list(new_term_stocks.keys()):
+            ts = new_term_stocks[ty]
+            for ei, ea in enumerate(entry_ages):
+                for ai, age in enumerate(ages):
+                    if ts[ei, ai] > 1e-10:
+                        orig_term_age = age - (year - ty)
+                        entry_year_member = year - (age - ea)
+                        # R's retire_array matches at (ea, age=dist_age, year, term_year)
+                        ret_prob = retire_lookup.get((entry_year_member, ea, orig_term_age, age), 0)
+                        if ret_prob > 0:
+                            retire_amount = ts[ei, ai] * ret_prob
+                            ts[ei, ai] -= retire_amount
+                            all_retire.append((ea, age, year, ty, year, retire_amount))
 
-        all_term.append(term_stock.copy())
-        all_retire.append(retire_stock.copy())
-        all_refund.append(refund_new.copy())
+        # Record term stocks
+        for ty, ts in new_term_stocks.items():
+            for ei, ea in enumerate(entry_ages):
+                for ai, age in enumerate(ages):
+                    if ts[ei, ai] > 1e-10:
+                        all_term.append((ea, age, year, ty, ts[ei, ai]))
+
+        term_stocks = new_term_stocks
 
     return {
-        "wf_active": pd.concat(all_active, ignore_index=True),
-        "wf_term": pd.concat(all_term, ignore_index=True) if all_term else pd.DataFrame(),
-        "wf_retire": pd.concat(all_retire, ignore_index=True) if all_retire else pd.DataFrame(),
-        "wf_refund": pd.concat(all_refund, ignore_index=True) if all_refund else pd.DataFrame(),
+        "wf_active": pd.DataFrame(all_active, columns=["entry_age", "age", "year", "n_active"]),
+        "wf_term": pd.DataFrame(all_term, columns=["entry_age", "age", "year", "term_year", "n_term"]),
+        "wf_retire": pd.DataFrame(all_retire, columns=["entry_age", "age", "year", "term_year", "retire_year", "n_retire"]),
+        "wf_refund": pd.DataFrame(all_refund, columns=["entry_age", "age", "year", "term_year", "n_refund"]),
     }
