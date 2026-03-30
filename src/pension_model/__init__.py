@@ -1,25 +1,21 @@
 """
 Pension Model Module
 
-Core calculation engines for pension modeling.
+End-to-end pension model: raw inputs -> benefit tables -> liability -> funding.
 
-This module provides:
-- Workforce projection
-- Benefit calculation
-- Liability calculation
-- Funding calculation
-- Main model orchestrator
-
-Design Principles:
-- Stream year-by-year to avoid keeping all years in memory
-- Use long format for core data (one row = one entity)
-- Separate plan-specific logic from general actuarial calculations
-- Support multiple pension plans through configuration abstraction
+Production modules:
+- core.pipeline: Liability computation pipeline
+- core.funding_model: Funding projection
+- core.benefit_tables: Actuarial table construction
+- core.tier_logic: Plan-specific tier and benefit rules
+- core.model_constants: All model parameters
 """
 
-from .model import PensionModel, run_pension_model
+from .core import run_class_pipeline, compute_funding, load_funding_inputs, frs_constants
 
 __all__ = [
-    'PensionModel',
-    'run_pension_model'
+    "run_class_pipeline",
+    "compute_funding",
+    "load_funding_inputs",
+    "frs_constants",
 ]
