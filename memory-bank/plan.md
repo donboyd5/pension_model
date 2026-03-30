@@ -1,5 +1,25 @@
 # Florida FRS Pension Model Migration Plan
 
+## Current Status (Updated 2026-03-30)
+
+**IMPORTANT: The phase completion markers below are OUTDATED. See this section for honest status.**
+
+| Component | Real Status | Notes |
+|-----------|-------------|-------|
+| Workforce Projection | **VALIDATED 100%** | All 7 classes, 31 years, 0.00% diff |
+| Active Benefit/Liability | **VALIDATED 100%** | Payroll, PVFB, PVFNC, AAL, NC rate - all 7 classes, 31 years, 0.00% |
+| Current Retiree AAL | **VALIDATED ~0.004%** | All 7 classes; tiny gap from ben_payment_ratio precision |
+| Current Term Vested AAL | **VALIDATED 100%** | All 7 classes, 0.00% diff |
+| Projected Term/Retire/Refund | **VALIDATED 0.00%** | All 7 classes, all 8 sub-components |
+| Total AAL | **VALIDATED 0.00%** | All 7 classes, legacy+new, gain/loss=0 |
+| End-to-End Pipeline | **VALIDATED 0.00%** | Raw inputs → liability output, all 7 classes |
+| Funding Calculation | **30% Framework Only** | Only has AAL roll-forward; missing assets, amortization, contributions |
+| Test Suite | **17 tests passing** | Benefit table construction validated per-step against R |
+
+**Next Priority:** Phase C - Funding model (assets, contributions, amortization, funding ratio).
+
+---
+
 ## Project Overview
 
 **Goal:** Migrate the Florida FRS pension simulation model from R to Python, creating a general-purpose, well-structured pension modeling framework.
