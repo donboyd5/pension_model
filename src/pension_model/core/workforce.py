@@ -125,8 +125,10 @@ def project_workforce(
         if ea in age_to_idx:
             pos_matrix[i, age_to_idx[ea]] = 1.0
 
-    # Storage for term stock: dict of term_year -> [entry_age_idx, age_idx] matrix
+    # Storage: term_year -> [entry_age_idx, age_idx] matrix
     term_stocks = {}
+    # Storage: (term_year, retire_year) -> [entry_age_idx, age_idx] matrix
+    retire_stocks = {}
 
     # Collect outputs
     all_active = []
@@ -145,6 +147,8 @@ def project_workforce(
         year = start_year + t
         yi = t  # year index (0-based from start_year)
         prev_yi = t - 1
+
+        new_retire_stocks = {}  # new retirees this year, keyed by (term_year, retire_year)
 
         # 1. active2term = active * separation_rate
         active2term = active * sep_lookup[:, :, prev_yi]
@@ -172,17 +176,22 @@ def project_workforce(
 
         # 4. Age existing term stocks with mortality, then shift right
         # R: term2death = wf_term * mort_array; wf_term = (wf_term - term2death) %*% TM
+        # R uses tier-aware mortality: employee below NRA, retiree at/above NRA
         new_term_stocks = {}
         for ty, ts in term_stocks.items():
-            # Apply mortality before aging
-            # Mortality depends on (entry_age, age, year) — use employee mortality
-            # for term vested members (they haven't retired yet)
             if hasattr(mortality_rates, 'get_rates_vec'):
-                # CompactMortality object
                 for ei, ea in enumerate(entry_ages):
                     for ai, age in enumerate(ages):
                         if ts[ei, ai] > 1e-10:
-                            mort = mortality_rates.get_rate(age, year - 1, is_retiree=False)
+                            # Determine if member has reached retirement-eligible tier
+                            # (which switches to retiree mortality in R's mort_table)
+                            orig_term_age = age - (year - 1 - ty)  # age in prev year's indexing
+                            yos_at_term = orig_term_age - ea
+                            entry_yr = ty - yos_at_term
+                            from pension_model.core.tier_logic import get_tier as _gt
+                            tier = _gt(class_name, entry_yr, age, yos_at_term, 2024)
+                            is_ret = "norm" in tier or "early" in tier
+                            mort = mortality_rates.get_rate(age, year - 1, is_retiree=is_ret)
                             ts[ei, ai] *= (1 - mort)
             aged = ts @ TM
             new_term_stocks[ty] = aged
@@ -207,11 +216,7 @@ def project_workforce(
                         new_term_stocks[year][ei, ai] -= refund_amount
                         all_refund.append((ea, age, year, year, refund_amount))
 
-        # 7. Remove retirees from ALL term stocks
-        # For members in term stock from term_year ty, currently at age `a`:
-        # Their original term_age (post-shift at ty) = a - (year - ty)
-        # entry_year = ty - (term_age - ea) = ty - (a - (year - ty)) + ea...
-        # Simpler: entry_year = year - (a - ea) since age grows 1/year
+        # 7. Remove retirees from ALL term stocks → add to retire stocks
         for ty in list(new_term_stocks.keys()):
             ts = new_term_stocks[ty]
             for ei, ea in enumerate(entry_ages):
@@ -219,12 +224,39 @@ def project_workforce(
                     if ts[ei, ai] > 1e-10:
                         orig_term_age = age - (year - ty)
                         entry_year_member = year - (age - ea)
-                        # R's retire_array matches at (ea, age=dist_age, year, term_year)
                         ret_prob = retire_lookup.get((entry_year_member, ea, orig_term_age, age), 0)
                         if ret_prob > 0:
                             retire_amount = ts[ei, ai] * ret_prob
                             ts[ei, ai] -= retire_amount
-                            all_retire.append((ea, age, year, ty, year, retire_amount))
+                            # Add to retire stock
+                            key = (ty, year)
+                            if key not in new_retire_stocks:
+                                new_retire_stocks[key] = np.zeros((n_entry, n_ages))
+                            new_retire_stocks[key][ei, ai] += retire_amount
+
+        # 8. Age existing retire stocks with mortality + TM
+        # R: retire2death = wf_retire * mort_array; wf_retire = (wf_retire - retire2death) %*% TM
+        new_retire_stocks_all = {}
+        for (ty, ry), rs in retire_stocks.items():
+            # Apply retiree mortality
+            if hasattr(mortality_rates, 'get_rates_vec'):
+                for ei, ea in enumerate(entry_ages):
+                    for ai, age in enumerate(ages):
+                        if rs[ei, ai] > 1e-10:
+                            # Retirees use retiree mortality
+                            mort = mortality_rates.get_rate(age, year - 1, is_retiree=True)
+                            rs[ei, ai] *= (1 - mort)
+            aged = rs @ TM
+            new_retire_stocks_all[(ty, ry)] = aged
+
+        # Merge new retirees into the accumulated stocks
+        for key, rs in new_retire_stocks.items():
+            if key in new_retire_stocks_all:
+                new_retire_stocks_all[key] += rs
+            else:
+                new_retire_stocks_all[key] = rs
+
+        retire_stocks = new_retire_stocks_all
 
         # Record term stocks
         for ty, ts in new_term_stocks.items():
@@ -232,6 +264,13 @@ def project_workforce(
                 for ai, age in enumerate(ages):
                     if ts[ei, ai] > 1e-10:
                         all_term.append((ea, age, year, ty, ts[ei, ai]))
+
+        # Record retire stocks
+        for (ty, ry), rs in retire_stocks.items():
+            for ei, ea in enumerate(entry_ages):
+                for ai, age in enumerate(ages):
+                    if rs[ei, ai] > 1e-10:
+                        all_retire.append((ea, age, year, ty, ry, rs[ei, ai]))
 
         term_stocks = new_term_stocks
 
