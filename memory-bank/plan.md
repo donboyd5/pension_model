@@ -12,9 +12,13 @@
 | Current Term Vested AAL | **VALIDATED 100%** | All 7 classes, 0.00% diff |
 | Projected Term/Retire/Refund | **VALIDATED 0.00%** | All 7 classes, all 8 sub-components |
 | Total AAL | **VALIDATED 0.00%** | All 7 classes, legacy+new, gain/loss=0 |
-| End-to-End Pipeline | **VALIDATED 0.00%** | Raw inputs → liability output, all 7 classes |
-| Funding Calculation | **30% Framework Only** | Only has AAL roll-forward; missing assets, amortization, contributions |
-| Test Suite | **17 tests passing** | Benefit table construction validated per-step against R |
+| End-to-End Pipeline | **VALIDATED 0.00%** | Stage 3 Excel → full funding output, zero R products |
+| Funding Calculation | **VALIDATED 0.00%** | All 7 classes + DROP + FRS system |
+| Workforce Projection | **VALIDATED 0.00%** | Active, term, retire, refund — computed from scratch |
+| Mortality Builder | **VALIDATED 0.00%** | From raw pub-2010 + MP-2018 Excel, 305KB compact |
+| Decrement Builder | **VALIDATED 0.00%** | Withdrawal + retirement from raw Excel |
+| Test Suite | **17 tests passing** | Benefit tables, separation rates, annuity factors |
+| Clone-and-Run | **WORKING** | pip install -e . && python scripts/run_model.py (~60s) |
 
 **Next Priority:** Phase C - Funding model (assets, contributions, amortization, funding ratio).
 

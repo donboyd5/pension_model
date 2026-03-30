@@ -1,7 +1,7 @@
 # Active Context
 
 **Session Date:** 2026-03-30
-**Current Phase:** Phase B COMPLETE - All Liability Components Validated
+**Current Phase:** ALL PHASES COMPLETE - Truly End-to-End Pipeline
 
 ---
 
@@ -95,11 +95,47 @@
 
 **Current status:** AAL roll-forward close (~0.08% drift), but contributions diverge due to missing NC calibration factor. Next: implement nc_cal.
 
+### Fully End-to-End Pipeline (2026-03-30 - Late Session)
+
+**Status:** Stage 3 Excel data → full funding output. Zero R computation products. 50s. 0.0000%.
+
+**What was built:**
+- `compact_mortality.py` — 305KB replaces 3M-row (349MB) mortality table
+- `mortality_builder.py` — builds from raw pub-2010 + MP-2018 Excel (0.4s)
+- `decrement_builder.py` — builds withdrawal/retirement from raw Excel
+- `workforce.py` — streaming workforce projection (0.0000% all components)
+- `cohort_calculator.py` — per-cohort benefit computation (WIP, not yet used in pipeline)
+- `build_ann_factor_table_compact()` — 1.35M rows from CompactMortality (replaces 3M CSV)
+
+**How to run:**
+```
+git clone https://github.com/donboyd5/pension_model.git
+cd pension_model
+pip install -e .
+python scripts/run_model.py
+```
+
+**Performance evolution:**
+- Original (loading R CSVs): 293s
+- Vectorized: 70s
+- With workforce + compact mortality: 50s
+
 ### What Remains
 
-- NC rate calibration (nc_cal = val_norm_cost / model_norm_cost) — fixes contribution chain
-- Debug AVA divergence (follows from NC fix)
-- Validate all funding outputs against R for all 7 classes + DROP + FRS
+**Generalization / streamlining (next priorities):**
+- Table-driven benefit rules (inequality joins) — replace hardcoded get_ben_mult
+- Long-format DataFrames with class identifier column (partially done)
+- Single-year age/YOS bins (discussion needed)
+- Makefile for build/test automation
+- Read remaining Stage 3 CSVs directly from Excel (eliminate CSV intermediaries)
+
+**GitHub issues filed:** #1-11 (R model bugs, design questions, features)
+
+**Known R conventions reproduced but questionable:**
+- Termination age = post-shift age (issue #10)
+- Admin early retirement uses non-special NRA (issue #5)
+- Admin tier_3 benefit multiplier missing yos-only conditions (issue #6)
+- Payroll growth forced vs bottom-up (issue #7)
 
 ### Key Technical Findings
 
