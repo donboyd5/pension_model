@@ -123,7 +123,11 @@ def build_benefit_tables(class_name: str, inputs: dict, constants: ModelConstant
     )
 
     # Step 4: Annuity factor table → benefit table → final benefit table
-    aft = build_ann_factor_table(inputs["mortality"], class_name, constants)
+    if "_compact_mortality" in inputs:
+        from pension_model.core.benefit_tables import build_ann_factor_table_compact
+        aft = build_ann_factor_table_compact(sbt, inputs["_compact_mortality"], class_name, constants)
+    else:
+        aft = build_ann_factor_table(inputs["mortality"], class_name, constants)
     bt = build_benefit_table(aft, sbt, class_name, constants, get_ben_mult, get_reduce_factor)
     fbt = build_final_benefit_table(bt)
 
@@ -600,44 +604,50 @@ def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
       - Decrement tables, salary/headcount, ann_factor_retire, retiree_distribution
     """
     from pension_model.core.workforce import project_workforce
-    from pension_model.core.compact_mortality import CompactMortality
     from pension_model.core.mortality_builder import (
         build_compact_mortality_from_excel, build_ann_factor_retire_table,
+    )
+    from pension_model.core.decrement_builder import (
+        build_withdrawal_rate_table, build_retirement_rate_tables,
     )
     from pension_model.core.tier_logic import get_sep_type
 
     if constants is None:
         constants = frs_constants()
 
-    dt = baseline_dir / "decrement_tables"
     sep_class = SEP_CLASS_MAP[class_name]
     raw_dir = baseline_dir.parent / "R_model" / "R_model_original"
+    frs_inputs = raw_dir / "Florida FRS inputs.xlsx"
+    extracted_inputs = raw_dir / "Reports" / "extracted inputs"
 
-    # Build mortality from raw Excel (no R intermediate CSV needed)
+    # Build ALL tables from raw Excel — NO R computation products
     cm = build_compact_mortality_from_excel(
         raw_dir / "pub-2010-headcount-mort-rates.xlsx",
         raw_dir / "mortality-improvement-scale-mp-2018-rates.xlsx",
         class_name,
     )
 
-    # Build ann_factor_retire from our own mortality
     afr = build_ann_factor_retire_table(
         cm, class_name, constants.ranges.start_year, constants.ranges.model_period,
         constants.economic.dr_current, constants.benefit.cola_current_retire,
     )
 
+    # Build decrement tables from raw Excel
+    term_rate_avg = build_withdrawal_rate_table(frs_inputs, sep_class, 70)
+    ret_tables = build_retirement_rate_tables(frs_inputs, extracted_inputs, sep_class)
+
     inputs = {
         "salary": pd.read_csv(baseline_dir / f"{class_name}_salary.csv"),
         "headcount": pd.read_csv(baseline_dir / f"{class_name}_headcount.csv"),
         "salary_growth": pd.read_csv(baseline_dir / "salary_growth_table.csv"),
-        "mortality": pd.read_csv(baseline_dir / f"{class_name}_mortality_rates.csv"),
         "retiree_distribution": pd.read_csv(baseline_dir / "retiree_distribution.csv"),
-        "term_rate_avg": pd.read_csv(dt / f"{sep_class}_term_rate_avg.csv"),
-        "normal_retire_tier1": pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier1.csv"),
-        "normal_retire_tier2": pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier2.csv"),
-        "early_retire_tier1": pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier1.csv"),
-        "early_retire_tier2": pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier2.csv"),
+        "term_rate_avg": term_rate_avg,
+        "normal_retire_tier1": ret_tables["normal_retire_tier1"],
+        "normal_retire_tier2": ret_tables["normal_retire_tier2"],
+        "early_retire_tier1": ret_tables["early_retire_tier1"],
+        "early_retire_tier2": ret_tables["early_retire_tier2"],
         "ann_factor_retire": afr,
+        "_compact_mortality": cm,  # for workforce + ann_factor_table
     }
 
     # Build benefit tables
@@ -656,10 +666,6 @@ def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
         on=["entry_year", "entry_age", "term_age"], how="left")
     ben_decisions["dist_age"] = ben_decisions["dist_age"].fillna(ben_decisions["term_age"]).astype(int)
     ben_decisions = ben_decisions[ben_decisions["ben_decision"].notna()]
-
-    # Compact mortality for workforce (built from Excel, used for workforce only)
-    # The 3M-row CSV is still loaded for build_ann_factor_table (via inputs["mortality"])
-    # TODO: eliminate CSV dependency by rewriting build_ann_factor_table to use CompactMortality
 
     # Initial active population from salary_headcount (no R wf_active CSV needed)
     # Filter to entry ages in the entrant profile (R's workforce model does this)
