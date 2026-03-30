@@ -583,3 +583,126 @@ def run_class_pipeline(class_name: str, baseline_dir: Path,
     )
 
     return result
+
+
+def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
+                           constants: ModelConstants = None) -> pd.DataFrame:
+    """
+    Fully end-to-end pipeline: Stage 3 data -> liability output.
+
+    Unlike run_class_pipeline() which loads R's pre-computed workforce CSVs,
+    this function computes the workforce projection from scratch using
+    benefit decisions derived from our own benefit tables.
+
+    Still requires from R extraction:
+      - Mortality CSV (will be replaced with raw Excel build later)
+      - Initial active population (wf_active year 0)
+      - Decrement tables, salary/headcount, ann_factor_retire, retiree_distribution
+    """
+    from pension_model.core.workforce import project_workforce
+    from pension_model.core.compact_mortality import extract_compact_mortality
+    from pension_model.core.tier_logic import get_sep_type
+
+    if constants is None:
+        constants = frs_constants()
+
+    dt = baseline_dir / "decrement_tables"
+    sep_class = SEP_CLASS_MAP[class_name]
+
+    inputs = {
+        "salary": pd.read_csv(baseline_dir / f"{class_name}_salary.csv"),
+        "headcount": pd.read_csv(baseline_dir / f"{class_name}_headcount.csv"),
+        "salary_growth": pd.read_csv(baseline_dir / "salary_growth_table.csv"),
+        "mortality": pd.read_csv(baseline_dir / f"{class_name}_mortality_rates.csv"),
+        "retiree_distribution": pd.read_csv(baseline_dir / "retiree_distribution.csv"),
+        "term_rate_avg": pd.read_csv(dt / f"{sep_class}_term_rate_avg.csv"),
+        "normal_retire_tier1": pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier1.csv"),
+        "normal_retire_tier2": pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier2.csv"),
+        "early_retire_tier1": pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier1.csv"),
+        "early_retire_tier2": pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier2.csv"),
+        "wf_active_init": pd.read_csv(baseline_dir / f"{class_name}_wf_active.csv"),
+        "ann_factor_retire": pd.read_csv(baseline_dir / f"{class_name}_ann_factor_retire.csv"),
+    }
+
+    # Build benefit tables
+    tables = build_benefit_tables(class_name, inputs, constants, baseline_dir)
+
+    # Derive benefit decisions from our benefit_val + final_benefit
+    bvt = tables["benefit_val"]
+    fbt = tables["final_benefit"]
+    bvt_bd = bvt[["entry_year", "entry_age", "yos", "term_age", "tier_at_term_age"]].copy()
+    bvt_bd["sep_type"] = bvt_bd["tier_at_term_age"].apply(get_sep_type)
+    bvt_bd["ben_decision"] = bvt_bd["sep_type"].map(
+        {"retire": "retire", "vested": "mix", "non_vested": "refund"})
+    bvt_bd.loc[bvt_bd["yos"] == 0, "ben_decision"] = np.nan
+    ben_decisions = bvt_bd.merge(
+        fbt[["entry_year", "entry_age", "term_age", "dist_age"]].drop_duplicates(),
+        on=["entry_year", "entry_age", "term_age"], how="left")
+    ben_decisions["dist_age"] = ben_decisions["dist_age"].fillna(ben_decisions["term_age"]).astype(int)
+    ben_decisions = ben_decisions[ben_decisions["ben_decision"].notna()]
+
+    # Compact mortality for workforce
+    cm = extract_compact_mortality(baseline_dir / f"{class_name}_mortality_rates.csv", class_name)
+
+    # Initial active population (year 0 only)
+    initial_active = inputs["wf_active_init"]
+    initial_active = initial_active[initial_active["year"] == constants.ranges.start_year][
+        ["entry_age", "age", "n_active"]].copy()
+
+    # Run workforce projection
+    wf = project_workforce(
+        initial_active, tables["separation_rate"], ben_decisions, cm,
+        tables["entrant_profile"], class_name,
+        constants.ranges.start_year, constants.ranges.model_period,
+        constants.economic.pop_growth, constants.benefit.retire_refund_ratio)
+
+    # Compute liability from projected workforce
+    active = compute_active_liability(
+        wf["wf_active"], tables["benefit_val"], class_name, constants)
+    term = compute_term_liability(
+        wf["wf_term"], tables["benefit_val"], tables["benefit"], class_name, constants)
+    refund = compute_refund_liability(
+        wf["wf_refund"], tables["benefit"], class_name, constants)
+    retire = compute_retire_liability(
+        wf["wf_retire"], tables["benefit"], tables["ann_factor"], class_name, constants)
+
+    cd = constants.class_data[class_name]
+    ben_payment = cd.outflow * constants.ben_payment_ratio
+    retire_current = compute_current_retiree_liability(
+        inputs["ann_factor_retire"], inputs["retiree_distribution"],
+        cd.retiree_pop, ben_payment, constants)
+    term_current = compute_current_term_vested_liability(class_name, constants)
+
+    # Merge components
+    years = pd.DataFrame({"year": range(constants.ranges.start_year,
+                                        constants.ranges.start_year + constants.ranges.model_period + 1)})
+    result = years.merge(active, on="year", how="left")
+    result = result.merge(term, on="year", how="left")
+    result = result.merge(refund, on="year", how="left")
+    result = result.merge(retire, on="year", how="left")
+    result = result.merge(retire_current, on="year", how="left")
+    result = result.merge(term_current, on="year", how="left")
+    result = result.fillna(0)
+
+    result["aal_legacy_est"] = (
+        result["aal_active_db_legacy_est"] + result["aal_term_db_legacy_est"]
+        + result["aal_retire_db_legacy_est"] + result["aal_retire_current_est"]
+        + result["aal_term_current_est"])
+    result["aal_new_est"] = (
+        result["aal_active_db_new_est"] + result["aal_term_db_new_est"]
+        + result["aal_retire_db_new_est"])
+    result["total_aal_est"] = result["aal_legacy_est"] + result["aal_new_est"]
+    result["tot_ben_refund_legacy_est"] = (
+        result["refund_db_legacy_est"] + result["retire_ben_db_legacy_est"]
+        + result["retire_ben_current_est"] + result["retire_ben_term_est"])
+    result["tot_ben_refund_new_est"] = (
+        result["refund_db_new_est"] + result["retire_ben_db_new_est"])
+    result["tot_ben_refund_est"] = (
+        result["tot_ben_refund_legacy_est"] + result["tot_ben_refund_new_est"])
+    result["liability_gain_loss_legacy_est"] = 0.0
+    result["liability_gain_loss_new_est"] = 0.0
+    result["total_liability_gain_loss_est"] = 0.0
+    result["retire_ben_db_new_est"] = result.get("retire_ben_db_new_est", 0)
+    result["refund_db_new_est"] = result.get("refund_db_new_est", 0)
+
+    return result
