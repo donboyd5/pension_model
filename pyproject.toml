@@ -10,12 +10,13 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "Don Boyd", email = "donboyd5@gmail.com"}
+    {name = "Don Boyd", email = "donboyd5@gmail.com"},
+    {name = "Gang Chen", email = "gchen3@albany.edu"},
 ]
 keywords = ["pension", "actuarial", "financial-modeling"]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Pension Policy Analysts",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -45,6 +46,9 @@ dev = [
 [project.urls]
 Homepage = "https://github.com/donboyd5/pension_model"
 Repository = "https://github.com/donboyd5/pension_model"
+
+[project.scripts]
+pension-model = "pension_model.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
