@@ -32,7 +32,7 @@ You must activate the virtual environment each time you open a new terminal. You
 From the project directory:
 
 ```bash
-pension-model frs                # run the FRS model and validate against baseline
-pension-model frs --no-test      # model + validation only, skip unit tests
-pension-model frs --test-only    # unit tests only
+pension-model frs                # run the FRS model + baseline validation tests
+pension-model frs --no-test      # run model only, skip tests
+pension-model frs --test-only    # run tests only
 ```

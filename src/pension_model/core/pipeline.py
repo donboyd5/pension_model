@@ -212,16 +212,17 @@ def compute_active_liability(wf_active: pd.DataFrame, benefit_val: pd.DataFrame,
 
     # Derived columns
     result["payroll_db_est"] = result["payroll_db_legacy_est"] + result["payroll_db_new_est"]
-    result["nc_rate_db_legacy_est"] = np.where(
-        result["payroll_db_legacy_est"] == 0, 0,
-        (wf.groupby("year").apply(lambda g: (g["indv_norm_cost"] * g["salary"] * g["n_db_legacy"]).sum()).values
-         / result["payroll_db_legacy_est"].values)
-    )
-    result["nc_rate_db_new_est"] = np.where(
-        result["payroll_db_new_est"] == 0, 0,
-        (wf.groupby("year").apply(lambda g: (g["indv_norm_cost"] * g["salary"] * g["n_db_new"]).sum()).values
-         / result["payroll_db_new_est"].values)
-    )
+    payroll_legacy = result["payroll_db_legacy_est"].values
+    nc_legacy_num = wf.groupby("year").apply(
+        lambda g: (g["indv_norm_cost"] * g["salary"] * g["n_db_legacy"]).sum()).values
+    result["nc_rate_db_legacy_est"] = np.divide(
+        nc_legacy_num, payroll_legacy, out=np.zeros_like(payroll_legacy), where=payroll_legacy != 0)
+
+    payroll_new = result["payroll_db_new_est"].values
+    nc_new_num = wf.groupby("year").apply(
+        lambda g: (g["indv_norm_cost"] * g["salary"] * g["n_db_new"]).sum()).values
+    result["nc_rate_db_new_est"] = np.divide(
+        nc_new_num, payroll_new, out=np.zeros_like(payroll_new), where=payroll_new != 0)
     result["aal_active_db_legacy_est"] = result["pvfb_active_db_legacy_est"] - result["pvfnc_db_legacy_est"]
     result["aal_active_db_new_est"] = result["pvfb_active_db_new_est"] - result["pvfnc_db_new_est"]
 
@@ -590,7 +591,8 @@ def run_class_pipeline(class_name: str, baseline_dir: Path,
 
 
 def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
-                           constants: ModelConstants = None) -> pd.DataFrame:
+                           constants: ModelConstants = None,
+                           on_stage=None) -> pd.DataFrame:
     """
     Fully end-to-end pipeline: Stage 3 data -> liability output.
 
@@ -651,6 +653,8 @@ def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
     }
 
     # Build benefit tables
+    if on_stage:
+        on_stage("benefit_tables")
     tables = build_benefit_tables(class_name, inputs, constants, baseline_dir)
 
     # Derive benefit decisions from our benefit_val + final_benefit
@@ -676,6 +680,8 @@ def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
     initial_active = initial_active[initial_active["n_active"] > 0]
 
     # Run workforce projection
+    if on_stage:
+        on_stage("workforce")
     wf = project_workforce(
         initial_active, tables["separation_rate"], ben_decisions, cm,
         tables["entrant_profile"], class_name,
@@ -683,6 +689,8 @@ def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
         constants.economic.pop_growth, constants.benefit.retire_refund_ratio)
 
     # Compute liability from projected workforce
+    if on_stage:
+        on_stage("liability")
     active = compute_active_liability(
         wf["wf_active"], tables["benefit_val"], class_name, constants)
     term = compute_term_liability(
