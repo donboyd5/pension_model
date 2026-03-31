@@ -63,5 +63,6 @@ memory-bank/
 actuarial_calculations/
 
 # Temp/output
+output/
 docs/
 mathpix_output/

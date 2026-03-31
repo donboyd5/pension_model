@@ -14,9 +14,23 @@ import argparse
 import warnings
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+
 
 BASELINE = Path("baseline_outputs")
 CLASSES = ["regular", "special", "admin", "eco", "eso", "judges", "senior_management"]
+OUTPUT_DIR = Path("output")
+
+
+def _fmt_dollars(val):
+    """Format a dollar value in billions."""
+    return f"${val / 1e9:.1f}B"
+
+
+def _fmt_pct(val):
+    """Format a ratio as percentage."""
+    return f"{val * 100:.1f}%"
 
 
 def run_pipeline(e2e=True):
@@ -43,9 +57,56 @@ def run_pipeline(e2e=True):
     print("  Computing funding...")
     funding_inputs = load_funding_inputs(BASELINE)
     funding = compute_funding(liability, funding_inputs, constants)
-    print("  Done.")
 
     return liability, funding
+
+
+def write_output(funding):
+    """Write summary CSV and print console summary."""
+    # Aggregate across all groups by year
+    frames = []
+    for cn in CLASSES:
+        df = funding[cn][["year", "total_aal", "total_ava", "total_ual_ava",
+                          "total_er_cont", "total_payroll", "fr_ava"]].copy()
+        df["group"] = cn
+        frames.append(df)
+    all_groups = pd.concat(frames, ignore_index=True)
+
+    totals = all_groups.groupby("year").agg(
+        aal=("total_aal", "sum"),
+        ava=("total_ava", "sum"),
+        ual=("total_ual_ava", "sum"),
+        er_cont=("total_er_cont", "sum"),
+        payroll=("total_payroll", "sum"),
+    ).reset_index()
+    totals["funded_ratio"] = np.divide(
+        totals["ava"].values, totals["aal"].values,
+        out=np.zeros(len(totals)), where=totals["aal"].values != 0)
+
+    # Write detailed CSV
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    csv_path = OUTPUT_DIR / "funding_summary.csv"
+    totals.to_csv(csv_path, index=False)
+
+    # Also write per-group detail
+    all_groups.to_csv(OUTPUT_DIR / "funding_by_group.csv", index=False)
+
+    # Console summary
+    y1 = totals.iloc[0]
+    y30 = totals.iloc[min(29, len(totals) - 1)]
+
+    print(f"\n  Summary (all groups combined):")
+    print(f"  {'':30s} {'Year 1 (' + str(int(y1['year'])) + ')':>16s}  {'Year 30 (' + str(int(y30['year'])) + ')':>16s}")
+    print(f"  {'Assets (AVA)':30s} {_fmt_dollars(y1['ava']):>16s}  {_fmt_dollars(y30['ava']):>16s}")
+    print(f"  {'Liabilities (AAL)':30s} {_fmt_dollars(y1['aal']):>16s}  {_fmt_dollars(y30['aal']):>16s}")
+    print(f"  {'Unfunded liability (UAL)':30s} {_fmt_dollars(y1['ual']):>16s}  {_fmt_dollars(y30['ual']):>16s}")
+    print(f"  {'Funded ratio':30s} {_fmt_pct(y1['funded_ratio']):>16s}  {_fmt_pct(y30['funded_ratio']):>16s}")
+    print(f"  {'Employer contribution':30s} {_fmt_dollars(y1['er_cont']):>16s}  {_fmt_dollars(y30['er_cont']):>16s}")
+
+    print(f"\n  Files:")
+    print(f"    output/funding_summary.csv   - plan-wide totals by year")
+    print(f"    output/funding_by_group.csv  - detail by group and year")
+    print(f"    baseline_outputs/            - input data and R baseline for validation")
 
 
 def run_tests():
@@ -72,6 +133,8 @@ def cmd_frs(args):
     liability, funding = run_pipeline()
     elapsed = time.time() - t0
     print(f"  Pipeline complete: {elapsed:.0f}s")
+
+    write_output(funding)
 
     if not args.no_test:
         print("\nRunning tests...")
