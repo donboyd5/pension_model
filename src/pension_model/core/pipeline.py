@@ -592,7 +592,8 @@ def run_class_pipeline(class_name: str, baseline_dir: Path,
 
 def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
                            constants: ModelConstants = None,
-                           on_stage=None) -> pd.DataFrame:
+                           on_stage=None,
+                           no_new_entrants: bool = False) -> pd.DataFrame:
     """
     Fully end-to-end pipeline: Stage 3 data -> liability output.
 
@@ -686,7 +687,8 @@ def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
         initial_active, tables["separation_rate"], ben_decisions, cm,
         tables["entrant_profile"], class_name,
         constants.ranges.start_year, constants.ranges.model_period,
-        constants.economic.pop_growth, constants.benefit.retire_refund_ratio)
+        constants.economic.pop_growth, constants.benefit.retire_refund_ratio,
+        no_new_entrants=no_new_entrants)
 
     # Compute liability from projected workforce
     if on_stage:

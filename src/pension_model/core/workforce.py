@@ -27,6 +27,7 @@ def project_workforce(
     model_period: int,
     pop_growth: float = 0.0,
     retire_refund_ratio: float = 1.0,
+    no_new_entrants: bool = False,
 ) -> dict:
     """
     Project workforce for all years.
@@ -159,8 +160,11 @@ def project_workforce(
         # 3. New entrants: ne = sum(wf1) * (1+g) - sum(wf2)
         pre_total = active.sum()
         post_total = active_after.sum()
-        n_new = pre_total * (1 + pop_growth) - post_total
-        n_new = max(n_new, 0)
+        if no_new_entrants:
+            n_new = 0
+        else:
+            n_new = pre_total * (1 + pop_growth) - post_total
+            n_new = max(n_new, 0)
 
         if n_new > 0:
             new_entrants = np.outer(ne_dist * n_new, np.ones(n_ages)) * pos_matrix

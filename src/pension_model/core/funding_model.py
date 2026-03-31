@@ -174,7 +174,9 @@ def compute_funding(
         ]:
             if ratio_col not in f.columns:
                 f[ratio_col] = 0.0
-            ratios = (liab[num_col] / liab[denom_col]).values
+            denom = liab[denom_col].values
+            ratios = np.divide(liab[num_col].values, denom,
+                               out=np.zeros_like(denom), where=denom != 0)
             f.loc[1:, ratio_col] = ratios[:-1]
 
         if "nc_rate_db_legacy" not in f.columns:
