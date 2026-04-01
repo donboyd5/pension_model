@@ -62,8 +62,8 @@
   "ranges": {
     "min_age": 20,
     "max_age": 120,
-    "start_year": 2022,
-    "new_year": 2022,
+    "start_year": 2024,
+    "new_year": 2024,
     "min_entry_year": 1980,
     "model_period": 30,
     "max_yos": 70
@@ -124,12 +124,11 @@
         "default": {
           "normal": [
             {"min_age": 65, "min_yos": 5},
-            {"rule_of": 80, "min_age": 60, "min_yos": 5}
+            {"rule_of": 80, "min_yos": 5}
           ],
           "early": [
             {"min_age": 55, "min_yos": 5},
-            {"min_yos": 30},
-            {"rule_of": 80, "min_yos": 5}
+            {"min_yos": 30}
           ],
           "vesting_yos": 5
         }
@@ -156,8 +155,7 @@
           ],
           "early": [
             {"min_age": 55, "min_yos": 5},
-            {"min_yos": 30},
-            {"rule_of": 80, "min_yos": 5}
+            {"min_yos": 30}
           ],
           "vesting_yos": 5
         }
@@ -190,7 +188,7 @@
     "all": {
       "outflow": 15258219146,
       "retiree_pop": 508701,
-      "total_active_member": 990000,
+      "total_active_member": 970872,
       "er_dc_cont_rate": 0.0,
       "val_norm_cost": 0.121
     }
