@@ -622,7 +622,9 @@ def build_ann_factor_table_compact(
     ben = constants.benefit
     econ = constants.economic
     r = constants.ranges
-    is_plan_config = isinstance(constants, PlanConfig)
+    # Only use config-driven COLA/DR when a config-driven tier function is provided.
+    # FRS passes get_tier_fn=None to keep backward compat with tier_logic.get_tier.
+    use_config_cola = get_tier_fn is not None and isinstance(constants, PlanConfig)
 
     # Resolve tier function
     if get_tier_fn is None:
@@ -639,14 +641,21 @@ def build_ann_factor_table_compact(
 
     # COLA lookup helper
     def _get_cola(tier, ey, yos):
-        if is_plan_config:
+        if use_config_cola:
             # Config-driven COLA: match tier name to cola_key
             for td in constants.tier_defs:
                 if td["name"] in tier:
                     cola_key = td.get("cola_key", "tier_1_active")
-                    return constants.cola.get(cola_key, 0.0)
+                    raw_cola = constants.cola.get(cola_key, 0.0)
+                    # FRS-style proration: tier_1 COLA prorated by pre-2011 YOS
+                    if (cola_key == "tier_1_active"
+                            and not constants.cola.get("tier_1_active_constant", False)
+                            and raw_cola > 0 and yos > 0):
+                        yos_b4 = min(max(2011 - ey, 0), yos)
+                        return raw_cola * yos_b4 / yos
+                    return raw_cola
             return 0.0
-        # FRS-style tier COLA
+        # Legacy ModelConstants FRS path
         is_tier1 = "tier_1" in tier
         is_tier2 = "tier_2" in tier
         if is_tier1:
@@ -682,7 +691,7 @@ def build_ann_factor_table_compact(
             mort = compact_mortality.get_rate(dist_age, dist_year, is_retiree)
 
             # Discount rate: use dr_new for newest tier, dr_current for others
-            if is_plan_config:
+            if use_config_cola:
                 dr = econ.dr_current  # TRS uses single rate
             else:
                 dr = econ.dr_new if "tier_3" in tier else econ.dr_current
@@ -840,7 +849,8 @@ def build_benefit_table(
     return df
 
 
-def build_final_benefit_table(benefit_table: pd.DataFrame) -> pd.DataFrame:
+def build_final_benefit_table(benefit_table: pd.DataFrame,
+                              use_earliest_retire: bool = False) -> pd.DataFrame:
     """
     Determine distribution age and extract final benefit for each cohort.
 
@@ -857,20 +867,27 @@ def build_final_benefit_table(benefit_table: pd.DataFrame) -> pd.DataFrame:
                    db_benefit, pvfb_db_at_term_age, ann_factor_term
     """
     bt = benefit_table.copy()
-    bt["is_norm_retire_elig"] = bt["tier_at_dist_age"].str.contains("norm")
     bt["term_age"] = bt["entry_age"] + bt["yos"]
 
+    # FRS R uses earliest NORMAL retirement age for vested distribution
+    # (is_norm_retire_elig). TRS R uses earliest ANY retirement age including
+    # early (can_retire). We use can_retire when use_earliest_retire=True.
+    if use_earliest_retire:
+        bt["can_retire"] = bt["tier_at_dist_age"].str.contains("norm|early|reduced")
+    else:
+        bt["can_retire"] = bt["tier_at_dist_age"].str.contains("norm")
+
     # Determine distribution age per (entry_year, entry_age, term_age)
-    # earliest_norm_retire_age = n() - sum(is_norm_retire_elig) + min(dist_age)
+    # R formula: retire_age = n() - sum(can_retire) + min(retire_age)
     grp_keys = ["entry_year", "entry_age", "term_age"]
     g = bt.groupby(grp_keys)
     dist_age_df = pd.DataFrame({
-        "count": g["is_norm_retire_elig"].transform("count"),
-        "norm_count": g["is_norm_retire_elig"].transform("sum"),
+        "count": g["can_retire"].transform("count"),
+        "retire_count": g["can_retire"].transform("sum"),
         "min_dist_age": g["dist_age"].transform("min"),
         "term_status": g["tier_at_dist_age"].transform("first"),
     })
-    dist_age_df["earliest_norm_retire_age"] = dist_age_df["count"] - dist_age_df["norm_count"] + dist_age_df["min_dist_age"]
+    dist_age_df["earliest_retire_age"] = dist_age_df["count"] - dist_age_df["retire_count"] + dist_age_df["min_dist_age"]
     # Get one row per group
     dist_age_df = bt[grp_keys].join(dist_age_df).drop_duplicates(subset=grp_keys)
 
@@ -879,7 +896,7 @@ def build_final_benefit_table(benefit_table: pd.DataFrame) -> pd.DataFrame:
     is_vested = (dist_age_df["term_status"].str.contains("vested")
                  & ~dist_age_df["term_status"].str.contains("non_vested"))
     dist_age_df["dist_age"] = np.where(
-        is_vested, dist_age_df["earliest_norm_retire_age"], dist_age_df["term_age"]
+        is_vested, dist_age_df["earliest_retire_age"], dist_age_df["term_age"]
     ).astype(int)
 
     # Semi-join: keep only rows in benefit_table matching (entry_year, entry_age, term_age, dist_age)
@@ -1122,6 +1139,9 @@ def build_benefit_val_table(
     sbt["dr"] = np.where(sbt["tier_at_term_age"].str.contains("tier_3"), econ.dr_new, econ.dr_current)
 
     # PVFB at termination: mix of annuity and refund based on sep_type
+    # Wealth at termination: retirees get full annuity PV, vested get a mix
+    # of annuity PV and refund (DBEEBalance), non-vested get refund only.
+    # retire_refund_ratio weights the annuity PV; (1-r) weights the refund.
     sbt["pvfb_db_wealth_at_term_age"] = np.where(
         sbt["sep_type"] == "retire", sbt["pvfb_db_at_term_age"],
         np.where(

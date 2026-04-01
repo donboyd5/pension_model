@@ -186,9 +186,10 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
     # Step 4: Annuity factor table → benefit table → final benefit table
     if "_compact_mortality" in inputs:
         from pension_model.core.benefit_tables import build_ann_factor_table_compact
-        # Pass config-driven tier function when using PlanConfig
+        # Pass config-driven tier function for non-FRS plans (FRS uses
+        # tier_logic.get_tier for backward compat until FRS config is fixed)
         aft_tier_fn = None
-        if isinstance(constants, PlanConfig):
+        if isinstance(constants, PlanConfig) and constants.plan_name != "frs":
             aft_tier_fn = lambda cn, ey, da, yos: tier_fn(cn, ey, da, yos)
         aft = build_ann_factor_table_compact(sbt, inputs["_compact_mortality"], class_name, constants,
                                              expected_icr=expected_icr,
@@ -196,7 +197,10 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
     else:
         aft = build_ann_factor_table(inputs["mortality"], class_name, constants)
     bt = build_benefit_table(aft, sbt, class_name, constants, ben_mult_fn, reduce_fn)
-    fbt = build_final_benefit_table(bt)
+    # TRS: members retire at earliest eligible age (normal or early).
+    # FRS: members retire at earliest normal retirement age.
+    use_earliest = isinstance(constants, PlanConfig) and constants.plan_name != "frs"
+    fbt = build_final_benefit_table(bt, use_earliest_retire=use_earliest)
 
     # Step 5: Benefit valuation table (with expected ICR for CB PVFB projection)
     bvt = build_benefit_val_table(sbt, fbt, sep, class_name, constants, sep_type_fn,
