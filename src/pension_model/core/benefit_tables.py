@@ -602,6 +602,7 @@ def build_ann_factor_table_compact(
     class_name: str,
     constants,
     expected_icr: "Optional[float]" = None,
+    get_tier_fn: "Optional[Callable]" = None,
 ) -> pd.DataFrame:
     """
     Build annuity factor table using CompactMortality (no 3M-row CSV needed).
@@ -616,11 +617,17 @@ def build_ann_factor_table_compact(
     Same output as build_ann_factor_table but without materializing the
     full mortality cross-product table.
     """
-    from pension_model.core.tier_logic import get_tier as _get_tier
+    from pension_model.plan_config import PlanConfig
 
     ben = constants.benefit
     econ = constants.economic
     r = constants.ranges
+    is_plan_config = isinstance(constants, PlanConfig)
+
+    # Resolve tier function
+    if get_tier_fn is None:
+        from pension_model.core.tier_logic import get_tier as _get_tier
+        get_tier_fn = lambda cn, ey, da, yos: _get_tier(cn, ey, da, yos, r.new_year)
 
     # CB parameters (if active)
     has_cb = expected_icr is not None
@@ -629,6 +636,27 @@ def build_ann_factor_table_compact(
         cb_cfg = getattr(constants, "cash_balance", None)
         if cb_cfg is not None:
             acr = cb_cfg.get("annuity_conversion_rate", 0.04)
+
+    # COLA lookup helper
+    def _get_cola(tier, ey, yos):
+        if is_plan_config:
+            # Config-driven COLA: match tier name to cola_key
+            for td in constants.tier_defs:
+                if td["name"] in tier:
+                    cola_key = td.get("cola_key", "tier_1_active")
+                    return constants.cola.get(cola_key, 0.0)
+            return 0.0
+        # FRS-style tier COLA
+        is_tier1 = "tier_1" in tier
+        is_tier2 = "tier_2" in tier
+        if is_tier1:
+            if ben.cola_tier_1_active_constant:
+                return ben.cola_tier_1_active
+            yos_b4 = min(max(2011 - ey, 0), yos)
+            return ben.cola_tier_1_active * yos_b4 / yos if yos > 0 else 0
+        elif is_tier2:
+            return ben.cola_tier_2_active
+        return ben.cola_tier_3_active
 
     # Get unique cohorts from salary_benefit_table
     sbt = salary_benefit_table[["entry_year", "entry_age", "yos"]].drop_duplicates()
@@ -649,25 +677,17 @@ def build_ann_factor_table_compact(
             dist_year = ey + dist_age - ea
 
             # Determine tier and mortality status
-            tier = _get_tier(class_name, ey, dist_age, yos, r.new_year)
+            tier = get_tier_fn(class_name, ey, dist_age, yos)
             is_retiree = "norm" in tier or "early" in tier
             mort = compact_mortality.get_rate(dist_age, dist_year, is_retiree)
 
-            # Discount rate and COLA from tier
-            dr = econ.dr_new if "tier_3" in tier else econ.dr_current
-
-            is_tier1 = "tier_1" in tier
-            is_tier2 = "tier_2" in tier
-            if is_tier1:
-                if ben.cola_tier_1_active_constant:
-                    cola = ben.cola_tier_1_active
-                else:
-                    yos_b4 = min(max(2011 - ey, 0), yos)
-                    cola = ben.cola_tier_1_active * yos_b4 / yos if yos > 0 else 0
-            elif is_tier2:
-                cola = ben.cola_tier_2_active
+            # Discount rate: use dr_new for newest tier, dr_current for others
+            if is_plan_config:
+                dr = econ.dr_current  # TRS uses single rate
             else:
-                cola = ben.cola_tier_3_active
+                dr = econ.dr_new if "tier_3" in tier else econ.dr_current
+
+            cola = _get_cola(tier, ey, yos)
 
             rows.append((ey, ea, dist_year, dist_age, yos, term_year, mort, tier, dr, cola))
 
@@ -777,9 +797,11 @@ def build_benefit_table(
     n = len(df)
     ben_mult_arr = np.full(n, np.nan)
     reduce_arr = np.full(n, np.nan)
+    entry_years = df["entry_year"].values.astype(int)
     for i in range(n):
         ben_mult_arr[i] = get_ben_mult(class_name, tiers[i], dist_ages[i], yos_vals[i], dist_years[i])
-        reduce_arr[i] = get_reduce_factor(class_name, tiers[i], dist_ages[i])
+        reduce_arr[i] = get_reduce_factor(class_name, tiers[i], dist_ages[i],
+                                          yos_vals[i], entry_years[i])
     df["ben_mult"] = ben_mult_arr
     df["reduce_factor"] = reduce_arr
 

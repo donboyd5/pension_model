@@ -96,10 +96,12 @@ def _make_callables(constants, class_name=None):
         return (
             lambda cn, ey, age, yos, **kw: pc_get_tier(cfg, cn, ey, age, yos),
             lambda cn, tier, da, yos, dy=0: pc_get_ben_mult(cfg, cn, tier, da, yos, dy),
-            lambda cn, tier, da: pc_get_reduce_factor(cfg, cn, tier, da),
+            lambda cn, tier, da, yos=0, ey=0: pc_get_reduce_factor(cfg, cn, tier, da, yos, ey),
             pc_get_sep_type,
         )
-    return get_tier, get_ben_mult, get_reduce_factor, get_sep_type
+    return (get_tier, get_ben_mult,
+            lambda cn, tier, da, yos=0, ey=0: get_reduce_factor(cn, tier, da),
+            get_sep_type)
 
 
 def build_benefit_tables(class_name: str, inputs: dict, constants,
@@ -184,8 +186,13 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
     # Step 4: Annuity factor table → benefit table → final benefit table
     if "_compact_mortality" in inputs:
         from pension_model.core.benefit_tables import build_ann_factor_table_compact
+        # Pass config-driven tier function when using PlanConfig
+        aft_tier_fn = None
+        if isinstance(constants, PlanConfig):
+            aft_tier_fn = lambda cn, ey, da, yos: tier_fn(cn, ey, da, yos)
         aft = build_ann_factor_table_compact(sbt, inputs["_compact_mortality"], class_name, constants,
-                                             expected_icr=expected_icr)
+                                             expected_icr=expected_icr,
+                                             get_tier_fn=aft_tier_fn)
     else:
         aft = build_ann_factor_table(inputs["mortality"], class_name, constants)
     bt = build_benefit_table(aft, sbt, class_name, constants, ben_mult_fn, reduce_fn)
@@ -820,6 +827,10 @@ def _load_txtrs_inputs(class_name: str, baseline_dir: Path, constants) -> dict:
 
     # Get TRS-specific inputs (salary, headcount, separation rates, etc.)
     inputs = build_txtrs_inputs(raw_dir, constants)
+
+    # Attach reduction tables to config for get_reduce_factor lookups
+    if "_reduction_tables" in inputs:
+        object.__setattr__(constants, "_reduce_tables", inputs["_reduction_tables"])
 
     # Build mortality from config-driven specification
     cm = build_compact_mortality_for_plan(constants, raw_dir, class_name)
