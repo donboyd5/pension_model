@@ -277,7 +277,7 @@ def main():
     txtrs.add_argument("--no-test", action="store_true", help="Skip tests")
 
     cal = subparsers.add_parser("calibrate", help="Compute calibration factors")
-    cal.add_argument("plan_name", nargs="?", default="frs", help="Plan to calibrate (default: frs)")
+    cal.add_argument("plan_name", help="Plan to calibrate (e.g., frs)")
     cal.add_argument("--write", action="store_true", help="Write calibration to JSON")
     cal.add_argument("--output", type=str, default=None, help="Output path for calibration JSON")
 
