@@ -119,6 +119,31 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
     sep_class = SEP_CLASS_MAP.get(class_name, constants.get_sep_class(class_name)
                                   if isinstance(constants, PlanConfig) else class_name)
 
+    # --- ICR computation (when cash balance is active) ---
+    has_cb = (hasattr(constants, "benefit_types") and "cb" in constants.benefit_types
+              and getattr(constants, "cash_balance", None) is not None)
+    expected_icr = None
+    actual_icr_series = None
+    if has_cb:
+        from pension_model.core.icr import compute_expected_icr, compute_actual_icr_series
+        cb = constants.cash_balance
+        expected_icr = compute_expected_icr(
+            constants.model_return, cb.get("return_volatility", 0.12),
+            cb["icr_smooth_period"], cb["icr_floor"], cb["icr_cap"],
+            cb["icr_upside_share"],
+        )
+        # Actual ICR: under "assumption" scenario, returns = model_return every year
+        years = range(constants.min_entry_year, constants.max_year + 1)
+        # Use return_scenario from inputs if available, else constant model_return
+        ret_scenario = inputs.get("_return_scenario")
+        if ret_scenario is None:
+            ret_scenario = pd.Series(constants.model_return, index=list(years))
+        actual_icr_series = compute_actual_icr_series(
+            years, constants.start_year, ret_scenario,
+            cb["icr_smooth_period"], cb["icr_floor"], cb["icr_cap"],
+            cb["icr_upside_share"],
+        )
+
     # Step 1: Salary/headcount
     sh = build_salary_headcount_table(
         inputs["salary"], inputs["headcount"], inputs["salary_growth"],
@@ -139,9 +164,10 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
     else:
         sep_ep = ep
 
-    # Step 2: Salary/benefit table
+    # Step 2: Salary/benefit table (with ICR for CB balance accumulation)
     sbt = build_salary_benefit_table(
         sh, ep, inputs["salary_growth"], class_name, constants, tier_fn,
+        actual_icr_series=actual_icr_series,
     )
 
     # Step 3: Separation rate table
@@ -154,15 +180,16 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
     # Step 4: Annuity factor table → benefit table → final benefit table
     if "_compact_mortality" in inputs:
         from pension_model.core.benefit_tables import build_ann_factor_table_compact
-        aft = build_ann_factor_table_compact(sbt, inputs["_compact_mortality"], class_name, constants)
+        aft = build_ann_factor_table_compact(sbt, inputs["_compact_mortality"], class_name, constants,
+                                             expected_icr=expected_icr)
     else:
         aft = build_ann_factor_table(inputs["mortality"], class_name, constants)
     bt = build_benefit_table(aft, sbt, class_name, constants, ben_mult_fn, reduce_fn)
     fbt = build_final_benefit_table(bt)
 
-    # Step 5: Benefit valuation table
+    # Step 5: Benefit valuation table (with expected ICR for CB PVFB projection)
     bvt = build_benefit_val_table(sbt, fbt, sep, class_name, constants, sep_type_fn,
-                                  ann_factor_table=aft)
+                                  expected_icr=expected_icr, ann_factor_table=aft)
 
     return {
         "salary_headcount": sh,
