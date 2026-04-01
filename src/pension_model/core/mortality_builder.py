@@ -338,6 +338,20 @@ def build_compact_mortality_for_plan(
     male_mp = _read_mp_table(mp_path, "Male", min_age)
     female_mp = _read_mp_table(mp_path, "Female", min_age)
 
+    # TRS-specific: R shifts male MP rates forward by 2 years
+    # (comment in R: "move male mp forward 02 years")
+    # This means male_mp[year=y] gets the original rate from year=y+2.
+    # Implemented by relabeling year columns: subtract 2 from each year.
+    if plan == "txtrs":
+        year_cols = [c for c in male_mp.columns if c != "age"]
+        new_names = {c: str(int(c) - 2) for c in year_cols}
+        male_mp = male_mp.rename(columns=new_names)
+        # Extend with ultimate rates for the 2 years lost at the end
+        last_year = max(int(c) for c in male_mp.columns if c != "age")
+        ultimate = male_mp[str(last_year)].values
+        for y in [last_year + 1, last_year + 2]:
+            male_mp[str(y)] = ultimate
+
     male_mp_final = _build_mp_final(male_mp, "male", base_year, min_age, max_age, max_year)
     female_mp_final = _build_mp_final(female_mp, "female", base_year, min_age, max_age, max_year)
 
