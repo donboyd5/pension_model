@@ -336,3 +336,32 @@ def build_txtrs_inputs(raw_dir: Path, constants: PlanConfig) -> dict:
         # Reduction tables for early retirement factor lookups
         "_reduction_tables": load_txtrs_reduction_tables(xlsx_path),
     }
+
+
+# ---------------------------------------------------------------------------
+# Funding data loader
+# ---------------------------------------------------------------------------
+
+def load_txtrs_funding_data(raw_dir: Path) -> dict:
+    """Load TRS funding inputs from Excel workbook.
+
+    Reads:
+      - "Funding Data" sheet: initial values (1 row) for all funding variables
+      - "Return Scenarios" sheet: investment return scenarios by year
+
+    Returns dict with 'init_funding' (DataFrame) and 'return_scenarios' (DataFrame).
+    """
+    xlsx_path = raw_dir / "TxTRS_BM_Inputs.xlsx"
+
+    init = pd.read_excel(xlsx_path, sheet_name="Funding Data")
+    # R reads this as a single-row table; columns become variable names
+    # Ensure numeric types
+    for col in init.columns:
+        init[col] = pd.to_numeric(init[col], errors="coerce").fillna(0)
+
+    ret_scen = pd.read_excel(xlsx_path, sheet_name="Return Scenarios")
+
+    return {
+        "init_funding": init,
+        "return_scenarios": ret_scen,
+    }

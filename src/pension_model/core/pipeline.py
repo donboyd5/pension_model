@@ -625,13 +625,31 @@ def compute_current_retiree_liability(
     ).reset_index()
 
 
+def _npv(rate, cashflows):
+    """Net present value of a cashflow stream (R's npv function)."""
+    pv = 0.0
+    for i, cf in enumerate(cashflows):
+        pv += cf / (1 + rate) ** (i + 1)
+    return pv
+
+
+def _roll_npv(rate, cashflows):
+    """Rolling NPV: NPV at each point looking forward (R's roll_npv)."""
+    n = len(cashflows)
+    pv_vec = np.zeros(n)
+    for i in range(n - 1):
+        pv_vec[i] = _npv(rate, cashflows[i + 1:])
+    return pv_vec
+
+
 def compute_current_term_vested_liability(
     class_name: str, constants,
 ) -> pd.DataFrame:
     """
-    Compute current term vested AAL (R liability model lines 238-248).
+    Compute current term vested AAL (R liability model lines 238-248 / 286-310).
 
-    Amortizes pvfb_term_current as a growing payment stream.
+    FRS: Amortizes pvfb_term_current as a growing payment stream.
+    TRS: Uses bell curve (normal distribution) weighting of payments.
     """
     r = constants.ranges
     econ = constants.economic
@@ -643,21 +661,51 @@ def compute_current_term_vested_liability(
     payroll_growth = econ.payroll_growth
     amo_period = fund.amo_period_term
 
-    # Compute amortization payment
-    retire_ben_term = _get_pmt(dr, payroll_growth, amo_period, pvfb_term_current, t=1)
-
     years = list(range(r.start_year, r.start_year + r.model_period + 1))
-    amo_years = list(range(r.start_year + 1, r.start_year + 1 + amo_period))
 
-    retire_ben_term_est = np.zeros(len(years))
-    term_payments = _recur_grow3(retire_ben_term, payroll_growth, amo_period)
-    for i, yr in enumerate(years):
-        if yr in amo_years:
-            idx = yr - (r.start_year + 1)
-            if idx < len(term_payments):
-                retire_ben_term_est[i] = term_payments[idx]
+    plan_name = constants.plan_name if hasattr(constants, "plan_name") else "frs"
 
-    aal_term_current = _roll_pv(dr, payroll_growth, amo_period, retire_ben_term_est, t=1)
+    if plan_name == "txtrs":
+        # TRS method: bell curve weighting (R's TxTRS_liability_model.R lines 286-306)
+        mid = amo_period / 2
+        spread = amo_period / 5
+        amo_seq = np.arange(1, amo_period + 1)
+        # Normal PDF: 1/(sigma*sqrt(2*pi)) * exp(-0.5*((x-mu)/sigma)^2)
+        amo_weights = (1 / (spread * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((amo_seq - mid) / spread) ** 2)
+        ann_ratio = amo_weights / amo_weights[0]
+
+        first_payment = pvfb_term_current / _npv(dr, ann_ratio)
+        term_payments = first_payment * ann_ratio  # length = amo_period
+
+        # R builds: c(0, payments_1..payments_50) then truncates to model_period+1
+        # But roll_npv sees the FULL stream for NPV calculation
+        full_stream = np.concatenate(([0.0], term_payments))  # length = amo_period + 1
+
+        # Compute roll_npv on full stream, then truncate to model_period+1
+        full_aal = _roll_npv(dr, full_stream)
+
+        # Extract the model_period+1 values we need
+        retire_ben_term_est = np.zeros(len(years))
+        aal_term_current = np.zeros(len(years))
+        for i in range(len(years)):
+            if i < len(full_stream):
+                retire_ben_term_est[i] = full_stream[i]
+            if i < len(full_aal):
+                aal_term_current[i] = full_aal[i]
+    else:
+        # FRS method: growing annuity
+        retire_ben_term = _get_pmt(dr, payroll_growth, amo_period, pvfb_term_current, t=1)
+
+        amo_years = list(range(r.start_year + 1, r.start_year + 1 + amo_period))
+        retire_ben_term_est = np.zeros(len(years))
+        term_payments = _recur_grow3(retire_ben_term, payroll_growth, amo_period)
+        for i, yr in enumerate(years):
+            if yr in amo_years:
+                idx = yr - (r.start_year + 1)
+                if idx < len(term_payments):
+                    retire_ben_term_est[i] = term_payments[idx]
+
+        aal_term_current = _roll_pv(dr, payroll_growth, amo_period, retire_ben_term_est, t=1)
 
     return pd.DataFrame({
         "year": years,
