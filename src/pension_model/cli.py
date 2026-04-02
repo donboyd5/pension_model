@@ -245,9 +245,11 @@ def cmd_frs(args):
 
 
 def cmd_txtrs(args):
-    """Run the Texas TRS pension model (liability only)."""
+    """Run the Texas TRS pension model (liability + funding)."""
     from pension_model.plan_config import load_txtrs_config
     from pension_model.core.pipeline import run_class_pipeline_e2e
+    from pension_model.core.funding_model import compute_funding_trs
+    from pension_model.core.txtrs_loader import load_txtrs_funding_data
 
     print("=" * 60)
     print("Texas TRS Pension Model Pipeline")
@@ -258,32 +260,47 @@ def cmd_txtrs(args):
 
     # Run liability pipeline for each class (TRS has only "all")
     print("  Building benefit tables, workforce, and liabilities...")
+    liability_results = {}
     liability_frames = []
     for cn in constants.classes:
         df = run_class_pipeline_e2e(cn, BASELINE, constants)
         df["plan_name"] = constants.plan_name
         df["class_name"] = cn
+        liability_results[cn] = df
         liability_frames.append(df)
 
     liability_stacked = pd.concat(liability_frames, ignore_index=True)
-    elapsed = time.time() - t0
-    print(f"  Liability pipeline complete: {elapsed:.0f}s")
 
-    # Write liability output
+    # Run funding model
+    print("  Running funding model...")
+    raw_dir = Path("R_model/R_model_txtrs")
+    funding_inputs = load_txtrs_funding_data(raw_dir)
+    funding_df = compute_funding_trs(liability_results["all"], funding_inputs, constants)
+
+    elapsed = time.time() - t0
+    print(f"  Pipeline complete: {elapsed:.0f}s")
+
+    # Write output
     output_dir = OUTPUT_BASE / constants.plan_name
     output_dir.mkdir(parents=True, exist_ok=True)
     liability_stacked.to_csv(output_dir / "liability_stacked.csv", index=False)
-    print(f"  Output written to {output_dir / 'liability_stacked.csv'}")
+    funding_df.to_csv(output_dir / "funding.csv", index=False)
+    print(f"  Output written to {output_dir}/")
 
     # Print summary
     row1 = liability_stacked.iloc[0]
     total_aal = row1.get("total_aal_est", row1.get("aal_est", 0))
     print(f"\n  Year 1 summary:")
-    print(f"    Total AAL:  {_fmt_dollars(total_aal)}")
+    print(f"    Total AAL:     {_fmt_dollars(total_aal)}")
     if "payroll_est" in row1:
-        print(f"    Payroll:    {_fmt_dollars(row1['payroll_est'])}")
+        print(f"    Payroll:       {_fmt_dollars(row1['payroll_est'])}")
     if "nc_rate_est" in row1:
-        print(f"    NC Rate:    {_fmt_pct(row1['nc_rate_est'])}")
+        print(f"    NC Rate:       {_fmt_pct(row1['nc_rate_est'])}")
+    # Funding summary
+    if len(funding_df) > 1:
+        fy1 = funding_df.iloc[1]  # first projection year
+        print(f"    Funded Ratio:  {_fmt_pct(fy1.get('FR_AVA', 0))}")
+        print(f"    ER Cont Rate:  {_fmt_pct(fy1.get('er_cont_rate', 0))}")
 
 
 def main():

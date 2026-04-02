@@ -51,12 +51,16 @@
     "policy": "statutory",
     "amo_method": "level_pct",
     "amo_period_new": 30,
+    "amo_period_current": 30,
     "amo_pay_growth": 0.029,
     "funding_lag": 1,
     "ava_smoothing": {
       "method": "gain_loss",
       "recognition_period": 4
-    }
+    },
+    "public_edu_payroll_percent": 0.588,
+    "extra_er_stat_cont": 0.0,
+    "nc_cal": 0.9990343
   },
 
   "ranges": {

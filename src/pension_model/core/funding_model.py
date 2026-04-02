@@ -20,6 +20,7 @@ from pathlib import Path
 
 from pension_model.plan_config import PlanConfig, load_frs_config
 from pension_model.core.pipeline import _get_pmt
+import math
 
 
 def load_funding_inputs(baseline_dir: Path) -> dict:
@@ -530,3 +531,516 @@ def compute_funding(
         funding["frs"] = frs
 
     return funding
+
+
+# ---------------------------------------------------------------------------
+# TRS funding model
+# ---------------------------------------------------------------------------
+
+def _ava_gain_loss_smoothing(
+    ava_prev, net_cf, mva, dr,
+    defer_y1_prev, defer_y2_prev, defer_y3_prev, defer_y4_prev,
+):
+    """AVA gain/loss deferral smoothing (TRS method).
+
+    Replicates R's TxTRS_funding_model.R lines 326-364.
+    Returns dict with all intermediate and final values.
+    """
+    exp_inv_income = ava_prev * dr + net_cf * dr / 2
+    exp_ava = ava_prev + net_cf + exp_inv_income
+    asset_gain_loss = mva - exp_ava
+
+    prev_defer_total = defer_y1_prev + defer_y2_prev + defer_y3_prev + defer_y4_prev
+    remain_defer_boy = asset_gain_loss - prev_defer_total
+
+    # Cascade offset logic: y4 → y3 → y2 → y1
+    # Step 1: offset defer_y4
+    if math.copysign(1, remain_defer_boy) == math.copysign(1, defer_y4_prev) or defer_y4_prev == 0:
+        aft_offset_y4 = remain_defer_boy
+    else:
+        aft_offset_y4 = math.copysign(
+            max(0, abs(remain_defer_boy) - abs(defer_y4_prev)),
+            remain_defer_boy) if remain_defer_boy != 0 else 0.0
+    if math.copysign(1, aft_offset_y4) == math.copysign(1, defer_y3_prev) or defer_y3_prev == 0:
+        new_y4 = defer_y3_prev * 0.5
+    else:
+        new_y4 = math.copysign(
+            max(0, abs(defer_y3_prev) - abs(aft_offset_y4)),
+            defer_y3_prev) * 0.5 if defer_y3_prev != 0 else 0.0
+
+    # Step 2: offset defer_y3
+    if math.copysign(1, aft_offset_y4) == math.copysign(1, defer_y3_prev) or defer_y3_prev == 0:
+        aft_offset_y3 = aft_offset_y4
+    else:
+        aft_offset_y3 = math.copysign(
+            max(0, abs(aft_offset_y4) - abs(defer_y3_prev)),
+            aft_offset_y4) if aft_offset_y4 != 0 else 0.0
+    if math.copysign(1, aft_offset_y3) == math.copysign(1, defer_y2_prev) or defer_y2_prev == 0:
+        new_y3 = defer_y2_prev * (2 / 3)
+    else:
+        new_y3 = math.copysign(
+            max(0, abs(defer_y2_prev) - abs(aft_offset_y3)),
+            defer_y2_prev) * (2 / 3) if defer_y2_prev != 0 else 0.0
+
+    # Step 3: offset defer_y2
+    if math.copysign(1, aft_offset_y3) == math.copysign(1, defer_y2_prev) or defer_y2_prev == 0:
+        aft_offset_y2 = aft_offset_y3
+    else:
+        aft_offset_y2 = math.copysign(
+            max(0, abs(aft_offset_y3) - abs(defer_y2_prev)),
+            aft_offset_y3) if aft_offset_y3 != 0 else 0.0
+    if math.copysign(1, aft_offset_y2) == math.copysign(1, defer_y1_prev) or defer_y1_prev == 0:
+        new_y2 = defer_y1_prev * (3 / 4)
+    else:
+        new_y2 = math.copysign(
+            max(0, abs(defer_y1_prev) - abs(aft_offset_y2)),
+            defer_y1_prev) * (3 / 4) if defer_y1_prev != 0 else 0.0
+
+    # Step 4: offset defer_y1
+    if math.copysign(1, aft_offset_y2) == math.copysign(1, defer_y1_prev) or defer_y1_prev == 0:
+        aft_offset_y1 = aft_offset_y2
+    else:
+        aft_offset_y1 = math.copysign(
+            max(0, abs(aft_offset_y2) - abs(defer_y1_prev)),
+            aft_offset_y2) if aft_offset_y2 != 0 else 0.0
+    new_y1 = aft_offset_y1 * (4 / 5)
+
+    remain_defer_eoy = new_y1 + new_y2 + new_y3 + new_y4
+    ava = mva - remain_defer_eoy
+
+    return {
+        "exp_inv_income": exp_inv_income,
+        "exp_ava": exp_ava,
+        "asset_gain_loss": asset_gain_loss,
+        "remain_defer_boy": remain_defer_boy,
+        "aft_offset_defer_y4": aft_offset_y4,
+        "defer_y4": new_y4,
+        "aft_offset_defer_y3": aft_offset_y3,
+        "defer_y3": new_y3,
+        "aft_offset_defer_y2": aft_offset_y2,
+        "defer_y2": new_y2,
+        "aft_offset_defer_y1": aft_offset_y1,
+        "defer_y1": new_y1,
+        "remain_defer_eoy": remain_defer_eoy,
+        "ava": ava,
+    }
+
+
+def compute_funding_trs(
+    liability_result: pd.DataFrame,
+    funding_inputs: dict,
+    constants: PlanConfig,
+) -> pd.DataFrame:
+    """
+    Run the TRS funding model.
+
+    Replicates R's TxTRS_funding_model.R.
+
+    Args:
+        liability_result: Output of run_class_pipeline_e2e for class "all".
+        funding_inputs: Output of load_txtrs_funding_data().
+        constants: TRS PlanConfig.
+
+    Returns:
+        DataFrame with 96 columns matching R's funding_fresh.csv.
+    """
+    econ = constants.economic
+    fund = constants.funding
+    r_cfg = constants.ranges
+
+    dr_current = econ.dr_current
+    dr_new = econ.dr_new
+    payroll_growth = econ.payroll_growth
+    inflation = econ.inflation
+
+    amo_pay_growth = fund.amo_pay_growth
+    amo_period_new = fund.amo_period_new
+    funding_policy = fund.funding_policy
+
+    amo_method = fund.amo_method if hasattr(fund, "amo_method") else "level_pct"
+    if amo_method == "level $":
+        amo_pay_growth = 0
+
+    model_period = r_cfg.model_period
+    start_year = r_cfg.start_year
+    n_years = model_period + 1
+
+    # --- Load initial row from Excel ---
+    init = funding_inputs["init_funding"].iloc[0]
+    ret_scen = funding_inputs["return_scenarios"].copy()
+
+    # Set "model" and "assumption" columns in return_scenarios
+    ret_scen["model"] = econ.model_return
+    ret_scen["assumption"] = dr_current
+
+    # --- Funding config parameters ---
+    raw = constants.raw if hasattr(constants, "raw") else {}
+    funding_raw = raw.get("funding", {})
+
+    public_edu_payroll_pct = funding_raw.get("public_edu_payroll_percent", 0.588)
+    extra_er_stat_cont = funding_raw.get("extra_er_stat_cont", 0.0)
+    amo_period_current = funding_raw.get("amo_period_current", 30)
+
+    # nc_cal from model inputs (additional calibration beyond cal_factor)
+    nc_cal = funding_raw.get("nc_cal", 1.0)
+    # Try class_data if not in funding
+    if nc_cal == 1.0 and hasattr(constants, "class_data") and "all" in constants.class_data:
+        cd = constants.class_data["all"]
+        if hasattr(cd, "nc_cal") and cd.nc_cal != 1.0:
+            nc_cal = cd.nc_cal
+
+    # --- Initialize DataFrame from Excel initial row ---
+    cols = list(init.index)
+    f = pd.DataFrame(0.0, index=range(n_years), columns=cols)
+    f["year"] = range(start_year, start_year + n_years)
+    for col in cols:
+        if col != "year":
+            val = init.get(col, 0)
+            f.loc[0, col] = float(val if pd.notna(val) else 0)
+
+    # Rename 'fy' to 'year' if present
+    if "fy" in f.columns and "year" not in cols:
+        f["year"] = range(start_year, start_year + n_years)
+    elif "fy" in f.columns:
+        f.loc[:, "fy"] = f["year"]
+
+    liab = liability_result
+
+    # --- Calibration: payroll ratios and NC rates from liability pipeline ---
+    # R uses lag(ratio) — ratio from previous year applied to next year's payroll
+    pay_est = liab["total_payroll_est"].values
+    for ratio_col, num_col in [
+        ("payroll_DB_legacy_ratio", "payroll_db_legacy_est"),
+        ("payroll_DB_new_ratio", "payroll_db_new_est"),
+    ]:
+        if ratio_col not in f.columns:
+            f[ratio_col] = 0.0
+        num = liab[num_col].values if num_col in liab.columns else np.zeros(n_years)
+        ratios = np.divide(num, pay_est, out=np.zeros_like(pay_est), where=pay_est != 0)
+        # lag by 1
+        f.loc[1:, ratio_col] = ratios[:-1]
+
+    # CB payroll ratio
+    if "payroll_CB_new_ratio" not in f.columns:
+        f["payroll_CB_new_ratio"] = 0.0
+    if "payroll_cb_new_est" in liab.columns:
+        cb_ratios = np.divide(liab["payroll_cb_new_est"].values, pay_est,
+                              out=np.zeros_like(pay_est), where=pay_est != 0)
+        f.loc[1:, "payroll_CB_new_ratio"] = cb_ratios[:-1]
+
+    # NC rate calibration (with nc_cal and lag)
+    nc_leg = liab["nc_rate_db_legacy_est"].values * nc_cal
+    nc_new_db = liab.get("nc_rate_db_new_est", pd.Series(np.zeros(n_years))).values * nc_cal
+    nc_new_cb = liab.get("nc_rate_cb_new_est", pd.Series(np.zeros(n_years))).values
+    f.loc[1:, "nc_rate_DB_legacy"] = nc_leg[:-1]
+    f.loc[1:, "nc_rate_DB_new"] = nc_new_db[:-1]
+    f.loc[1:, "nc_rate_CB_new"] = nc_new_cb[:-1]
+
+    # AAL initialization
+    if "AAL_legacy_est" in liab.columns:
+        f.loc[0, "AAL_legacy"] = liab["aal_legacy_est"].iloc[0]
+    elif "aal_legacy_est" in liab.columns:
+        f.loc[0, "AAL_legacy"] = liab["aal_legacy_est"].iloc[0]
+    f.loc[0, "AAL"] = f.loc[0, "AAL_legacy"] + f.loc[0, "AAL_new"]
+    f.loc[0, "UAL_AVA_legacy"] = f.loc[0, "AAL_legacy"] - f.loc[0, "AVA_legacy"]
+    f.loc[0, "UAL_AVA"] = f.loc[0, "AAL"] - f.loc[0, "AVA"]
+
+    # --- Amortization period tables ---
+    amo_seq_current = list(range(amo_period_current, 0, -1))
+    amo_seq_new = list(range(amo_period_new, 0, -1))
+    n_amo = max(len(amo_seq_current), len(amo_seq_new))
+
+    # Current-hire period table: row 0 = existing countdown, rows 1+ = new layers
+    amo_per_current = np.zeros((n_years, n_amo))
+    amo_per_current[0, :len(amo_seq_current)] = amo_seq_current
+    for row in range(1, n_years):
+        amo_per_current[row, :len(amo_seq_new)] = amo_seq_new
+    # Shift onto diagonals
+    for j in range(1, n_amo):
+        for row in range(n_years):
+            if row - j >= 0:
+                amo_per_current[row, j] = amo_per_current[row - j, j] if row == j else amo_per_current[row, j]
+    # Rebuild with proper diagonal shift (match R's lag logic)
+    amo_per_current_diag = np.zeros((n_years, n_amo))
+    amo_per_current_diag[0, :len(amo_seq_current)] = amo_seq_current
+    for row in range(1, n_years):
+        amo_per_current_diag[row, 0] = amo_seq_new[0] if len(amo_seq_new) > 0 else 0
+    for j in range(1, n_amo):
+        for row in range(j, n_years):
+            prev = amo_per_current_diag[row - 1, j - 1]
+            amo_per_current_diag[row, j] = max(prev - 1, 0) if prev > 0 else 0
+
+    amo_per_new = np.zeros((n_years, n_amo))
+    for j in range(n_amo):
+        for row in range(j + 1, n_years):
+            idx = row - j - 1
+            amo_per_new[row, j] = max(amo_seq_new[0] - idx, 0) if idx < amo_seq_new[0] else 0
+    # Simpler: diagonal from row j+1, col j, counting down
+    amo_per_new = np.zeros((n_years, n_amo))
+    for j in range(n_amo):
+        for row in range(j + 1, n_years):
+            amo_per_new[row, j] = max(amo_period_new - (row - j - 1), 0)
+
+    # Debt and payment tables
+    debt_current = np.zeros((n_years, n_amo + 1))
+    pay_current = np.zeros((n_years, n_amo))
+    debt_new = np.zeros((n_years, n_amo + 1))
+    pay_new = np.zeros((n_years, n_amo))
+
+    # Initialize first debt layer and payment
+    debt_current[0, 0] = f.loc[0, "UAL_AVA"]
+    if amo_per_current_diag[0, 0] > 0:
+        pay_current[0, 0] = _get_pmt(
+            dr_current, amo_pay_growth, int(amo_per_current_diag[0, 0]),
+            debt_current[0, 0], t=0.5)
+
+    # --- Main year loop ---
+    for i in range(1, n_years):
+        year = start_year + i
+
+        # Payroll projection
+        f.loc[i, "payroll"] = f.loc[i - 1, "payroll"] * (1 + payroll_growth)
+        f.loc[i, "payroll_DB_legacy"] = f.loc[i, "payroll"] * f.loc[i, "payroll_DB_legacy_ratio"]
+        f.loc[i, "payroll_DB_new"] = f.loc[i, "payroll"] * f.loc[i, "payroll_DB_new_ratio"]
+        f.loc[i, "payroll_CB_new"] = f.loc[i, "payroll"] * f.loc[i, "payroll_CB_new_ratio"]
+
+        # Benefit payments from liability pipeline
+        f.loc[i, "ben_payment_legacy"] = (
+            liab["retire_ben_db_legacy_est"].iloc[i]
+            + liab["retire_ben_current_est"].iloc[i]
+            + liab["retire_ben_term_est"].iloc[i])
+        f.loc[i, "refund_legacy"] = liab["refund_db_legacy_est"].iloc[i]
+        f.loc[i, "ben_payment_new"] = (
+            liab.get("retire_ben_db_new_est", pd.Series(np.zeros(n_years))).iloc[i]
+            + liab.get("retire_ben_cb_new_est", pd.Series(np.zeros(n_years))).iloc[i])
+        f.loc[i, "refund_new"] = (
+            liab.get("refund_db_new_est", pd.Series(np.zeros(n_years))).iloc[i]
+            + liab.get("refund_cb_new_est", pd.Series(np.zeros(n_years))).iloc[i])
+
+        # Normal cost
+        f.loc[i, "nc_legacy"] = f.loc[i, "nc_rate_DB_legacy"] * f.loc[i, "payroll_DB_legacy"]
+        payroll_new_total = f.loc[i, "payroll_DB_new"] + f.loc[i, "payroll_CB_new"]
+        f.loc[i, "nc_new"] = (f.loc[i, "nc_rate_DB_new"] * f.loc[i, "payroll_DB_new"]
+                               + f.loc[i, "nc_rate_CB_new"] * f.loc[i, "payroll_CB_new"])
+        f.loc[i, "nc_rate"] = ((f.loc[i, "nc_legacy"] + f.loc[i, "nc_new"])
+                                / f.loc[i, "payroll"]) if f.loc[i, "payroll"] > 0 else 0
+
+        # Liability gain/loss
+        f.loc[i, "liability_gain_loss_legacy"] = (
+            liab["liability_gain_loss_legacy_est"].iloc[i]
+            if "liability_gain_loss_legacy_est" in liab.columns else 0)
+        f.loc[i, "liability_gain_loss_new"] = (
+            liab["liability_gain_loss_new_est"].iloc[i]
+            if "liability_gain_loss_new_est" in liab.columns else 0)
+        f.loc[i, "liability_gain_loss"] = f.loc[i, "liability_gain_loss_legacy"] + f.loc[i, "liability_gain_loss_new"]
+
+        # AAL roll-forward
+        f.loc[i, "AAL_legacy"] = (
+            f.loc[i - 1, "AAL_legacy"] * (1 + dr_current)
+            + (f.loc[i, "nc_legacy"] - f.loc[i, "ben_payment_legacy"] - f.loc[i, "refund_legacy"]) * (1 + dr_current) ** 0.5
+            + f.loc[i, "liability_gain_loss_legacy"])
+        f.loc[i, "AAL_new"] = (
+            f.loc[i - 1, "AAL_new"] * (1 + dr_new)
+            + (f.loc[i, "nc_new"] - f.loc[i, "ben_payment_new"] - f.loc[i, "refund_new"]) * (1 + dr_new) ** 0.5
+            + f.loc[i, "liability_gain_loss_new"])
+        f.loc[i, "AAL"] = f.loc[i, "AAL_legacy"] + f.loc[i, "AAL_new"]
+
+        # NC rates
+        f.loc[i, "nc_rate_legacy"] = (f.loc[i, "nc_legacy"] / f.loc[i, "payroll_DB_legacy"]
+                                       if f.loc[i, "payroll_DB_legacy"] > 0 else 0)
+        f.loc[i, "nc_rate_new"] = (f.loc[i, "nc_new"] / payroll_new_total
+                                    if payroll_new_total > 0 else 0)
+
+        # Employee contribution rates (time-varying for TRS)
+        if year < 2024:
+            f.loc[i, "ee_nc_rate_legacy"] = 0.08
+            f.loc[i, "ee_nc_rate_new"] = 0.08
+        else:
+            f.loc[i, "ee_nc_rate_legacy"] = 0.0825
+            f.loc[i, "ee_nc_rate_new"] = 0.0825
+
+        # Employer NC rates
+        f.loc[i, "er_nc_rate_legacy"] = f.loc[i, "nc_rate_legacy"] - f.loc[i, "ee_nc_rate_legacy"]
+        f.loc[i, "er_nc_rate_new"] = f.loc[i, "nc_rate_new"] - f.loc[i, "ee_nc_rate_new"]
+
+        # Statutory employer rates
+        if year < 2024:
+            f.loc[i, "er_stat_base_rate"] = 0.08
+        else:
+            f.loc[i, "er_stat_base_rate"] = 0.0825
+
+        if year <= 2025:
+            f.loc[i, "public_edu_surcharge_rate"] = f.loc[i - 1, "public_edu_surcharge_rate"] + 0.001
+        else:
+            f.loc[i, "public_edu_surcharge_rate"] = f.loc[i - 1, "public_edu_surcharge_rate"]
+
+        if year < 2025:
+            f.loc[i, "er_stat_extra_rate"] = 0
+        else:
+            f.loc[i, "er_stat_extra_rate"] = extra_er_stat_cont
+
+        f.loc[i, "er_stat_eff_rate"] = (f.loc[i, "er_stat_base_rate"]
+                                          + f.loc[i, "public_edu_surcharge_rate"] * public_edu_payroll_pct
+                                          + f.loc[i, "er_stat_extra_rate"])
+
+        # Amortization rates
+        if funding_policy == "statutory":
+            f.loc[i, "amo_rate_legacy"] = f.loc[i, "er_stat_eff_rate"] - f.loc[i, "er_nc_rate_legacy"]
+            f.loc[i, "amo_rate_new"] = f.loc[i, "er_stat_eff_rate"] - f.loc[i, "er_nc_rate_new"]
+        else:
+            f.loc[i, "amo_rate_legacy"] = (pay_current[i - 1].sum() / f.loc[i, "payroll"]
+                                            if f.loc[i, "payroll"] > 0 else 0)
+            f.loc[i, "amo_rate_new"] = (pay_new[i - 1].sum() / payroll_new_total
+                                         if payroll_new_total > 0 else 0)
+
+        # Admin expense rate
+        f.loc[i, "admin_exp_rate"] = f.loc[i - 1, "admin_exp_rate"]
+
+        # Employee contribution amounts
+        f.loc[i, "ee_nc_cont_legacy"] = f.loc[i, "ee_nc_rate_legacy"] * f.loc[i, "payroll_DB_legacy"]
+        f.loc[i, "ee_nc_cont_new"] = f.loc[i, "ee_nc_rate_new"] * payroll_new_total
+
+        # Admin expenses
+        f.loc[i, "admin_exp_legacy"] = f.loc[i, "admin_exp_rate"] * f.loc[i, "payroll_DB_legacy"]
+        f.loc[i, "admin_exp_new"] = f.loc[i, "admin_exp_rate"] * payroll_new_total
+
+        # Employer contribution amounts
+        f.loc[i, "er_nc_cont_legacy"] = (f.loc[i, "er_nc_rate_legacy"] * f.loc[i, "payroll_DB_legacy"]
+                                          + f.loc[i, "admin_exp_legacy"])
+        f.loc[i, "er_nc_cont_new"] = (f.loc[i, "er_nc_rate_new"] * payroll_new_total
+                                       + f.loc[i, "admin_exp_new"])
+
+        # Employer amortization amounts
+        if funding_policy == "statutory":
+            f.loc[i, "er_amo_cont_legacy"] = f.loc[i, "amo_rate_legacy"] * f.loc[i, "payroll_DB_legacy"]
+        else:
+            f.loc[i, "er_amo_cont_legacy"] = f.loc[i, "amo_rate_legacy"] * f.loc[i, "payroll"]
+        f.loc[i, "er_amo_cont_new"] = f.loc[i, "amo_rate_new"] * payroll_new_total
+
+        # Return on assets
+        roa_row = ret_scen[ret_scen["year"] == year]
+        roa = roa_row["assumption"].iloc[0] if len(roa_row) > 0 else dr_current
+        f.loc[i, "ROA"] = roa
+
+        # Cash flows and solvency contribution
+        cf_legacy = (f.loc[i, "ee_nc_cont_legacy"] + f.loc[i, "er_nc_cont_legacy"]
+                     + f.loc[i, "er_amo_cont_legacy"] - f.loc[i, "ben_payment_legacy"]
+                     - f.loc[i, "refund_legacy"] - f.loc[i, "admin_exp_legacy"])
+        cf_new = (f.loc[i, "ee_nc_cont_new"] + f.loc[i, "er_nc_cont_new"]
+                  + f.loc[i, "er_amo_cont_new"] - f.loc[i, "ben_payment_new"]
+                  - f.loc[i, "refund_new"] - f.loc[i, "admin_exp_new"])
+        cf_total = cf_legacy + cf_new
+
+        f.loc[i, "solv_cont"] = max(
+            -(f.loc[i - 1, "MVA"] * (1 + roa) + cf_total * (1 + roa) ** 0.5) / (1 + roa) ** 0.5, 0)
+        if f.loc[i, "AAL"] > 0:
+            f.loc[i, "solv_cont_legacy"] = f.loc[i, "solv_cont"] * f.loc[i, "AAL_legacy"] / f.loc[i, "AAL"]
+            f.loc[i, "solv_cont_new"] = f.loc[i, "solv_cont"] * f.loc[i, "AAL_new"] / f.loc[i, "AAL"]
+
+        f.loc[i, "net_cf_legacy"] = cf_legacy + f.loc[i, "solv_cont_legacy"]
+        f.loc[i, "net_cf_new"] = cf_new + f.loc[i, "solv_cont_new"]
+
+        # MVA projection
+        f.loc[i, "MVA_legacy"] = (f.loc[i - 1, "MVA_legacy"] * (1 + roa)
+                                   + f.loc[i, "net_cf_legacy"] * (1 + roa) ** 0.5)
+        f.loc[i, "MVA_new"] = (f.loc[i - 1, "MVA_new"] * (1 + roa)
+                                + f.loc[i, "net_cf_new"] * (1 + roa) ** 0.5)
+        f.loc[i, "MVA"] = f.loc[i, "MVA_legacy"] + f.loc[i, "MVA_new"]
+
+        # AVA gain/loss deferral smoothing — legacy
+        ava_leg = _ava_gain_loss_smoothing(
+            f.loc[i - 1, "AVA_legacy"], f.loc[i, "net_cf_legacy"], f.loc[i, "MVA_legacy"],
+            dr_current,
+            f.loc[i - 1, "defer_y1_legacy"], f.loc[i - 1, "defer_y2_legacy"],
+            f.loc[i - 1, "defer_y3_legacy"], f.loc[i - 1, "defer_y4_legacy"])
+        for k, v in ava_leg.items():
+            col = f"{'exp_inv_income' if k == 'exp_inv_income' else k}_legacy" if k != "ava" else "AVA_legacy"
+            if k == "exp_inv_income":
+                f.loc[i, "exp_inv_income_legacy"] = v
+            elif k == "exp_ava":
+                f.loc[i, "exp_AVA_legacy"] = v
+            elif k == "ava":
+                f.loc[i, "AVA_legacy"] = v
+            else:
+                f.loc[i, f"{k}_legacy"] = v
+
+        # AVA gain/loss deferral smoothing — new
+        ava_new = _ava_gain_loss_smoothing(
+            f.loc[i - 1, "AVA_new"], f.loc[i, "net_cf_new"], f.loc[i, "MVA_new"],
+            dr_new,
+            f.loc[i - 1, "defer_y1_new"], f.loc[i - 1, "defer_y2_new"],
+            f.loc[i - 1, "defer_y3_new"], f.loc[i - 1, "defer_y4_new"])
+        for k, v in ava_new.items():
+            if k == "exp_inv_income":
+                f.loc[i, "exp_inv_income_new"] = v
+            elif k == "exp_ava":
+                f.loc[i, "exp_AVA_new"] = v
+            elif k == "ava":
+                f.loc[i, "AVA_new"] = v
+            else:
+                f.loc[i, f"{k}_new"] = v
+
+        f.loc[i, "AVA"] = f.loc[i, "AVA_legacy"] + f.loc[i, "AVA_new"]
+
+        # UAL and funded ratios
+        f.loc[i, "UAL_AVA_legacy"] = f.loc[i, "AAL_legacy"] - f.loc[i, "AVA_legacy"]
+        f.loc[i, "UAL_AVA_new"] = f.loc[i, "AAL_new"] - f.loc[i, "AVA_new"]
+        f.loc[i, "UAL_AVA"] = f.loc[i, "UAL_AVA_legacy"] + f.loc[i, "UAL_AVA_new"]
+
+        f.loc[i, "UAL_MVA_legacy"] = f.loc[i, "AAL_legacy"] - f.loc[i, "MVA_legacy"]
+        f.loc[i, "UAL_MVA_new"] = f.loc[i, "AAL_new"] - f.loc[i, "MVA_new"]
+        f.loc[i, "UAL_MVA"] = f.loc[i, "UAL_MVA_legacy"] + f.loc[i, "UAL_MVA_new"]
+
+        f.loc[i, "FR_AVA"] = f.loc[i, "AVA"] / f.loc[i, "AAL"] if f.loc[i, "AAL"] != 0 else 0
+        f.loc[i, "FR_MVA"] = f.loc[i, "MVA"] / f.loc[i, "AAL"] if f.loc[i, "AAL"] != 0 else 0
+
+        # Contribution totals
+        f.loc[i, "er_cont"] = (f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
+                                + f.loc[i, "er_amo_cont_legacy"] + f.loc[i, "er_amo_cont_new"]
+                                + f.loc[i, "solv_cont"])
+        f.loc[i, "er_cont_rate"] = f.loc[i, "er_cont"] / f.loc[i, "payroll"] if f.loc[i, "payroll"] > 0 else 0
+        f.loc[i, "tot_cont_rate"] = (
+            (f.loc[i, "ee_nc_cont_legacy"] + f.loc[i, "er_nc_cont_legacy"]
+             + f.loc[i, "er_amo_cont_legacy"]
+             + f.loc[i, "ee_nc_cont_new"] + f.loc[i, "er_nc_cont_new"]
+             + f.loc[i, "er_amo_cont_new"] + f.loc[i, "solv_cont"])
+            / f.loc[i, "payroll"]) if f.loc[i, "payroll"] > 0 else 0
+
+        # Real cost metrics
+        f.loc[i, "er_cont_real"] = f.loc[i, "er_cont"] / (1 + inflation) ** (year - start_year)
+        if i == 1:
+            f.loc[i, "cum_er_cont_real"] = f.loc[i, "er_cont_real"]
+        else:
+            f.loc[i, "cum_er_cont_real"] = f.loc[i - 1, "cum_er_cont_real"] + f.loc[i, "er_cont_real"]
+        f.loc[i, "UAL_MVA_real"] = f.loc[i, "UAL_MVA"] / (1 + inflation) ** (year - start_year)
+        f.loc[i, "all_in_cost_real"] = f.loc[i, "cum_er_cont_real"] + f.loc[i, "UAL_MVA_real"]
+
+        # Amortization layer updates — current hires (legacy)
+        for j in range(1, n_amo + 1):
+            if j <= n_amo:
+                debt_current[i, j] = (debt_current[i - 1, j - 1] * (1 + dr_current)
+                                      - pay_current[i - 1, j - 1] * (1 + dr_current) ** 0.5)
+        debt_current[i, 0] = f.loc[i, "UAL_AVA_legacy"] - debt_current[i, 1:n_amo + 1].sum()
+        for j in range(n_amo):
+            per = amo_per_current_diag[i, j]
+            if per > 0 and abs(debt_current[i, j]) > 1e-6:
+                pay_current[i, j] = _get_pmt(dr_current, amo_pay_growth, max(int(per), 1),
+                                              debt_current[i, j], t=0.5)
+            else:
+                pay_current[i, j] = 0
+
+        # Amortization layer updates — new hires
+        for j in range(1, n_amo + 1):
+            if j <= n_amo:
+                debt_new[i, j] = (debt_new[i - 1, j - 1] * (1 + dr_new)
+                                  - pay_new[i - 1, j - 1] * (1 + dr_new) ** 0.5)
+        debt_new[i, 0] = f.loc[i, "UAL_AVA_new"] - debt_new[i, 1:n_amo + 1].sum()
+        for j in range(n_amo):
+            per = amo_per_new[i, j]
+            if per > 0 and abs(debt_new[i, j]) > 1e-6:
+                pay_new[i, j] = _get_pmt(dr_new, amo_pay_growth, max(int(per), 1),
+                                          debt_new[i, j], t=0.5)
+            else:
+                pay_new[i, j] = 0
+
+    return f
