@@ -28,6 +28,7 @@ def project_workforce(
     pop_growth: float = 0.0,
     retire_refund_ratio: float = 1.0,
     no_new_entrants: bool = False,
+    get_tier_fn=None,
 ) -> dict:
     """
     Project workforce for all years.
@@ -192,8 +193,12 @@ def project_workforce(
                             orig_term_age = age - (year - 1 - ty)  # age in prev year's indexing
                             yos_at_term = orig_term_age - ea
                             entry_yr = ty - yos_at_term
-                            from pension_model.core.tier_logic import get_tier as _gt
-                            tier = _gt(class_name, entry_yr, age, yos_at_term, 2024)
+                            if get_tier_fn is not None:
+                                tier = get_tier_fn(class_name, entry_yr, age, yos_at_term)
+                            else:
+                                from pension_model.plan_config import load_frs_config, get_tier as _pc_gt
+                                _cfg = load_frs_config()
+                                tier = _pc_gt(_cfg, class_name, entry_yr, age, yos_at_term)
                             is_ret = "norm" in tier or "early" in tier
                             mort = mortality_rates.get_rate(age, year - 1, is_retiree=is_ret)
                             ts[ei, ai] *= (1 - mort)

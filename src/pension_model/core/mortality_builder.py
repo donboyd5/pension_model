@@ -194,6 +194,7 @@ def build_compact_mortality_from_excel(
     min_year: int = 1970,
     max_year: int = 2154,
     base_year: int = 2010,
+    constants=None,
 ) -> CompactMortality:
     """
     Build a CompactMortality from raw Excel files.
@@ -205,12 +206,17 @@ def build_compact_mortality_from_excel(
         min_age, max_age: Age range
         min_year, max_year: Year range
         base_year: Base year for mortality improvement adjustment (2010 for pub-2010)
+        constants: Optional PlanConfig for config-driven base table lookup.
 
     Returns:
         CompactMortality with employee and retiree rates by (age, year)
     """
-    # Read base mortality tables
-    base_type = BASE_TABLE_MAP[class_name]
+    # Read base mortality tables — use config map if available, else hardcoded FRS map
+    from pension_model.plan_config import PlanConfig
+    if isinstance(constants, PlanConfig) and constants.base_table_map:
+        base_type = constants.get_base_table_type(class_name)
+    else:
+        base_type = BASE_TABLE_MAP[class_name]
     if base_type == "regular":
         general = _read_base_mort_table(pub2010_path, "PubG.H-2010")
         teacher = _read_base_mort_table(pub2010_path, "PubT.H-2010")
@@ -293,6 +299,7 @@ def build_compact_mortality_for_plan(
             raw_dir / "mortality-improvement-scale-mp-2018-rates.xlsx",
             class_name,
             min_age=constants.ranges.min_age,
+            constants=constants,
         )
 
     # Config-driven mortality (TRS and future plans)
@@ -338,18 +345,18 @@ def build_compact_mortality_for_plan(
     male_mp = _read_mp_table(mp_path, "Male", min_age)
     female_mp = _read_mp_table(mp_path, "Female", min_age)
 
-    # TRS-specific: R shifts male MP rates forward by 2 years
-    # (comment in R: "move male mp forward 02 years")
-    # This means male_mp[year=y] gets the original rate from year=y+2.
-    # Implemented by relabeling year columns: subtract 2 from each year.
-    if plan == "txtrs":
+    # Config-driven: shift male MP improvement scale forward by N years
+    # (R's TRS model: "move male mp forward 02 years")
+    mp_shift = (constants.male_mp_forward_shift
+                if hasattr(constants, "male_mp_forward_shift") else 0)
+    if mp_shift > 0:
         year_cols = [c for c in male_mp.columns if c != "age"]
-        new_names = {c: str(int(c) - 2) for c in year_cols}
+        new_names = {c: str(int(c) - mp_shift) for c in year_cols}
         male_mp = male_mp.rename(columns=new_names)
-        # Extend with ultimate rates for the 2 years lost at the end
+        # Extend with ultimate rates for the years lost at the end
         last_year = max(int(c) for c in male_mp.columns if c != "age")
         ultimate = male_mp[str(last_year)].values
-        for y in [last_year + 1, last_year + 2]:
+        for y in range(last_year + 1, last_year + 1 + mp_shift):
             male_mp[str(y)] = ultimate
 
     male_mp_final = _build_mp_final(male_mp, "male", base_year, min_age, max_age, max_year)

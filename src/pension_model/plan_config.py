@@ -98,6 +98,48 @@ class PlanConfig:
 
     # --- Derived properties ---
 
+    # --- Modeling behavioral flags ---
+
+    @property
+    def use_earliest_retire(self) -> bool:
+        """Whether to use earliest eligible age (incl. early) vs earliest normal."""
+        return self.raw.get("modeling", {}).get("use_earliest_retire", False)
+
+    @property
+    def term_vested_method(self) -> str:
+        """Method for projecting term vested benefit payments.
+        'growing_annuity' (FRS) or 'bell_curve' (TRS)."""
+        return self.raw.get("modeling", {}).get("term_vested_method", "growing_annuity")
+
+    @property
+    def male_mp_forward_shift(self) -> int:
+        """Years to shift male mortality improvement scale forward (TRS=2, FRS=0)."""
+        return self.raw.get("modeling", {}).get("male_mp_forward_shift", 0)
+
+    @property
+    def cola_proration_cutoff_year(self) -> Optional[int]:
+        """Year boundary for COLA proration (FRS=2011, TRS=null)."""
+        return self.cola.get("proration_cutoff_year")
+
+    @property
+    def plan_design_cutoff_year(self) -> Optional[int]:
+        """Year boundary for plan design ratio split (FRS=2018, TRS=null)."""
+        return self.raw.get("plan_design", {}).get("cutoff_year")
+
+    @property
+    def salary_growth_col_map(self) -> Dict[str, str]:
+        """Map class names to salary growth column names in input data."""
+        return self.raw.get("salary_growth_col_map", {})
+
+    @property
+    def base_table_map(self) -> Dict[str, str]:
+        """Map class names to mortality base table type (regular/safety/general)."""
+        return self.raw.get("base_table_map", {})
+
+    def get_base_table_type(self, class_name: str) -> str:
+        """Resolve mortality base table type for a class."""
+        return self.base_table_map.get(class_name, "general")
+
     @property
     def max_entry_year(self) -> int:
         return self.start_year + self.model_period

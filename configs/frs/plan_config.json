@@ -26,7 +26,8 @@
       "tier_3_active": 0.0,
       "current_retire": 0.03,
       "current_retire_one_time": 0.0,
-      "one_time_cola": false
+      "one_time_cola": false,
+      "proration_cutoff_year": 2011
     }
   },
 
@@ -227,6 +228,7 @@
   },
 
   "plan_design": {
+    "cutoff_year": 2018,
     "special_group": {
       "before_2018": 0.95,
       "after_2018": 0.85,
@@ -289,6 +291,32 @@
       "er_dc_cont_rate": 0.0798,
       "val_norm_cost": 0.1086
     }
+  },
+
+  "modeling": {
+    "use_earliest_retire": false,
+    "term_vested_method": "growing_annuity",
+    "male_mp_forward_shift": 0
+  },
+
+  "salary_growth_col_map": {
+    "regular": "salary_increase_regular",
+    "special": "salary_increase_special_risk",
+    "admin": "salary_increase_admin",
+    "eco": "salary_increase_eco",
+    "eso": "salary_increase_eso",
+    "judges": "salary_increase_judges",
+    "senior_management": "salary_increase_senior_management"
+  },
+
+  "base_table_map": {
+    "regular": "regular",
+    "special": "safety",
+    "admin": "safety",
+    "eco": "general",
+    "eso": "general",
+    "judges": "general",
+    "senior_management": "general"
   },
 
   "ben_payment_ratio_components": {
