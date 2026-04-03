@@ -396,6 +396,7 @@ def build_separation_rate_table(
     entrant_profile: pd.DataFrame,
     class_name: str,
     constants: ModelConstants,
+    get_tier_fn=None,
 ) -> pd.DataFrame:
     """
     Build separation rate table combining withdrawal and retirement rates.
@@ -472,7 +473,7 @@ def build_separation_rate_table(
     # Determine tier and separation rate
     df["tier_at_term_age"] = get_tier_vectorized(
         class_name, df["entry_year"].values, df["term_age"].values,
-        df["yos"].values, r.new_year,
+        df["yos"].values, r.new_year, get_tier_fn=get_tier_fn,
     )
 
     # Separation rate depends on tier
@@ -506,14 +507,15 @@ def build_separation_rate_table(
                "separation_rate", "remaining_prob", "separation_prob", "class_name"]].reset_index(drop=True)
 
 
-# Need the vectorized tier function here
-def get_tier_vectorized(class_name, entry_year, age, yos, new_year=2024):
-    """Vectorized get_tier using the imported tier_logic module."""
-    from pension_model.core.tier_logic import get_tier as _get_tier
+def get_tier_vectorized(class_name, entry_year, age, yos, new_year=2024, get_tier_fn=None):
+    """Vectorized get_tier. Uses provided callable or falls back to tier_logic."""
+    if get_tier_fn is None:
+        from pension_model.core.tier_logic import get_tier as _get_tier
+        get_tier_fn = _get_tier
     n = len(entry_year)
     result = np.empty(n, dtype=object)
     for i in range(n):
-        result[i] = _get_tier(class_name, int(entry_year[i]), int(age[i]), int(yos[i]), new_year)
+        result[i] = get_tier_fn(class_name, int(entry_year[i]), int(age[i]), int(yos[i]), new_year)
     return result
 
 
@@ -629,8 +631,7 @@ def build_ann_factor_table_compact(
     ben = constants.benefit
     econ = constants.economic
     r = constants.ranges
-    # Only use config-driven COLA/DR when a config-driven tier function is provided.
-    # FRS passes get_tier_fn=None to keep backward compat with tier_logic.get_tier.
+    # Use config-driven COLA/DR when running through PlanConfig with a tier function.
     use_config_cola = get_tier_fn is not None and isinstance(constants, PlanConfig)
 
     # Resolve tier function

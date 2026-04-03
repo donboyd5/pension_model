@@ -186,15 +186,15 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
             inputs["term_rate_avg"], inputs["normal_retire_tier1"],
             inputs["normal_retire_tier2"], inputs["early_retire_tier1"],
             inputs["early_retire_tier2"], sep_ep, sep_class, constants,
+            get_tier_fn=tier_fn,
         )
 
     # Step 4: Annuity factor table → benefit table → final benefit table
     if "_compact_mortality" in inputs:
         from pension_model.core.benefit_tables import build_ann_factor_table_compact
-        # Pass config-driven tier function for non-FRS plans (FRS uses
-        # tier_logic.get_tier for backward compat until FRS config is fixed)
+        # Pass config-driven tier function for all PlanConfig plans
         aft_tier_fn = None
-        if isinstance(constants, PlanConfig) and constants.plan_name != "frs":
+        if isinstance(constants, PlanConfig):
             aft_tier_fn = lambda cn, ey, da, yos: tier_fn(cn, ey, da, yos)
         aft = build_ann_factor_table_compact(sbt, inputs["_compact_mortality"], class_name, constants,
                                              expected_icr=expected_icr,
@@ -202,9 +202,10 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
     else:
         aft = build_ann_factor_table(inputs["mortality"], class_name, constants)
     bt = build_benefit_table(aft, sbt, class_name, constants, ben_mult_fn, reduce_fn)
-    # TRS: members retire at earliest eligible age (normal or early).
-    # FRS: members retire at earliest normal retirement age.
-    use_earliest = isinstance(constants, PlanConfig) and constants.plan_name != "frs"
+    # Config-driven: use_earliest_retire determines whether members retire at
+    # earliest eligible age (incl. early) or earliest normal retirement age.
+    use_earliest = (constants.use_earliest_retire
+                    if isinstance(constants, PlanConfig) else False)
     fbt = build_final_benefit_table(bt, use_earliest_retire=use_earliest)
 
     # Step 5: Benefit valuation table (with expected ICR for CB PVFB projection)
@@ -663,10 +664,10 @@ def compute_current_term_vested_liability(
 
     years = list(range(r.start_year, r.start_year + r.model_period + 1))
 
-    plan_name = constants.plan_name if hasattr(constants, "plan_name") else "frs"
+    tv_method = (constants.term_vested_method
+                 if isinstance(constants, PlanConfig) else "growing_annuity")
 
-    if plan_name == "txtrs":
-        # TRS method: bell curve weighting (R's TxTRS_liability_model.R lines 286-306)
+    if tv_method == "bell_curve":
         mid = amo_period / 2
         spread = amo_period / 5
         amo_seq = np.arange(1, amo_period + 1)
@@ -921,7 +922,7 @@ def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
     if constants is None:
         constants = load_frs_config()
 
-    _, _, _, sep_type_fn = _make_callables(constants)
+    tier_fn, _, _, sep_type_fn = _make_callables(constants)
     sep_class = SEP_CLASS_MAP.get(class_name, constants.get_sep_class(class_name)
                                   if isinstance(constants, PlanConfig) else class_name)
 
@@ -968,7 +969,8 @@ def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
         tables["entrant_profile"], class_name,
         constants.ranges.start_year, constants.ranges.model_period,
         constants.economic.pop_growth, constants.benefit.retire_refund_ratio,
-        no_new_entrants=no_new_entrants)
+        no_new_entrants=no_new_entrants,
+        get_tier_fn=tier_fn)
 
     # Compute liability from projected workforce
     if on_stage:

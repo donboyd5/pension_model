@@ -27,7 +27,8 @@
       "tier_3_active": 0.0,
       "current_retire": 0.0,
       "current_retire_one_time": 0.0,
-      "one_time_cola": false
+      "one_time_cola": false,
+      "proration_cutoff_year": null
     },
     "cash_balance": {
       "ee_pay_credit": 0.06,
@@ -182,7 +183,14 @@
     }
   },
 
+  "modeling": {
+    "use_earliest_retire": true,
+    "term_vested_method": "bell_curve",
+    "male_mp_forward_shift": 2
+  },
+
   "plan_design": {
+    "cutoff_year": null,
     "default": {
       "before_new_year": 1.0,
       "new_db": 1.0,

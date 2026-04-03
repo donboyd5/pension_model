@@ -126,7 +126,7 @@ def compute_cohort_annuity_factors(
         # Determine distribution age
         # Vested: defer to earliest normal retirement age
         # Retiree/non-vested: distribute at term_age
-        from pension_model.core.tier_logic import get_sep_type
+        from pension_model.plan_config import get_sep_type
         sep_type = get_sep_type(tier)
         is_special = class_name in ("special", "admin")
 
@@ -246,7 +246,7 @@ def compute_cohort_benefits(
       salary, fas, db_benefit, pvfb_at_term, pvfb_wealth_at_term,
       pvfb_at_current, pvfs_at_current, indv_norm_cost, pvfnc
     """
-    from pension_model.core.tier_logic import get_sep_type
+    from pension_model.plan_config import get_sep_type
 
     r = constants.ranges
     econ = constants.economic
