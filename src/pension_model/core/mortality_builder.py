@@ -194,6 +194,7 @@ def build_compact_mortality_from_excel(
     min_year: int = 1970,
     max_year: int = 2154,
     base_year: int = 2010,
+    constants=None,
 ) -> CompactMortality:
     """
     Build a CompactMortality from raw Excel files.
@@ -205,12 +206,17 @@ def build_compact_mortality_from_excel(
         min_age, max_age: Age range
         min_year, max_year: Year range
         base_year: Base year for mortality improvement adjustment (2010 for pub-2010)
+        constants: Optional PlanConfig for config-driven base table lookup.
 
     Returns:
         CompactMortality with employee and retiree rates by (age, year)
     """
-    # Read base mortality tables
-    base_type = BASE_TABLE_MAP[class_name]
+    # Read base mortality tables — use config map if available, else hardcoded FRS map
+    from pension_model.plan_config import PlanConfig
+    if isinstance(constants, PlanConfig) and constants.base_table_map:
+        base_type = constants.get_base_table_type(class_name)
+    else:
+        base_type = BASE_TABLE_MAP[class_name]
     if base_type == "regular":
         general = _read_base_mort_table(pub2010_path, "PubG.H-2010")
         teacher = _read_base_mort_table(pub2010_path, "PubT.H-2010")
@@ -293,6 +299,7 @@ def build_compact_mortality_for_plan(
             raw_dir / "mortality-improvement-scale-mp-2018-rates.xlsx",
             class_name,
             min_age=constants.ranges.min_age,
+            constants=constants,
         )
 
     # Config-driven mortality (TRS and future plans)

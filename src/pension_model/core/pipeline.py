@@ -18,7 +18,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pension_model.core.tier_logic import get_tier, get_ben_mult, get_reduce_factor, get_sep_type
 from pension_model.plan_config import (
     PlanConfig, load_frs_config,
     get_tier as pc_get_tier,
@@ -88,20 +87,20 @@ def compute_adjustment_ratio(class_name: str, headcount: pd.DataFrame,
 def _make_callables(constants, class_name=None):
     """Create tier/benefit callables from constants.
 
-    When constants is a PlanConfig, returns config-driven callables.
-    When it's a ModelConstants, returns the original tier_logic callables.
+    Always uses config-driven callables. When constants is a ModelConstants
+    (legacy path), loads the FRS PlanConfig for tier/benefit lookups.
     """
     if isinstance(constants, PlanConfig):
         cfg = constants
-        return (
-            lambda cn, ey, age, yos, **kw: pc_get_tier(cfg, cn, ey, age, yos),
-            lambda cn, tier, da, yos, dy=0: pc_get_ben_mult(cfg, cn, tier, da, yos, dy),
-            lambda cn, tier, da, yos=0, ey=0: pc_get_reduce_factor(cfg, cn, tier, da, yos, ey),
-            pc_get_sep_type,
-        )
-    return (get_tier, get_ben_mult,
-            lambda cn, tier, da, yos=0, ey=0: get_reduce_factor(cn, tier, da),
-            get_sep_type)
+    else:
+        # Legacy ModelConstants — use FRS config for tier/benefit rules
+        cfg = load_frs_config()
+    return (
+        lambda cn, ey, age, yos, ny=None, **kw: pc_get_tier(cfg, cn, ey, age, yos),
+        lambda cn, tier, da, yos, dy=0: pc_get_ben_mult(cfg, cn, tier, da, yos, dy),
+        lambda cn, tier, da, yos=0, ey=0: pc_get_reduce_factor(cfg, cn, tier, da, yos, ey),
+        pc_get_sep_type,
+    )
 
 
 def build_benefit_tables(class_name: str, inputs: dict, constants,
@@ -118,8 +117,8 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
     tier_fn, ben_mult_fn, reduce_fn, sep_type_fn = _make_callables(constants)
 
     adj_ratio = compute_adjustment_ratio(class_name, inputs["headcount"], constants, baseline_dir)
-    sep_class = SEP_CLASS_MAP.get(class_name, constants.get_sep_class(class_name)
-                                  if isinstance(constants, PlanConfig) else class_name)
+    sep_class = (constants.get_sep_class(class_name) if isinstance(constants, PlanConfig)
+                 else SEP_CLASS_MAP.get(class_name, class_name))
 
     # --- ICR computation (when cash balance is active) ---
     has_cb = (hasattr(constants, "benefit_types") and "cb" in constants.benefit_types
@@ -150,6 +149,7 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
     sh = build_salary_headcount_table(
         inputs["salary"], inputs["headcount"], inputs["salary_growth"],
         class_name, adj_ratio, constants.ranges.start_year,
+        constants=constants,
     )
     # Use explicit entrant profile if provided (e.g., TRS reads from Excel sheet),
     # otherwise derive from salary_headcount (FRS approach).
@@ -166,6 +166,7 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
         sep_sh = build_salary_headcount_table(
             sep_sal, sep_hc, inputs["salary_growth"],
             sep_class, sep_adj, constants.ranges.start_year,
+            constants=constants,
         )
         sep_ep = build_entrant_profile(sep_sh)
     else:
@@ -236,14 +237,14 @@ def _get_bt_columns(bt: str) -> dict:
     return {"pvfb": None, "pvfnc": None, "nc": None}
 
 
-def _allocate_members(wf, benefit_types, design_ratios, new_year):
+def _allocate_members(wf, benefit_types, design_ratios, new_year, design_cutoff_year=2018):
     """Allocate workforce members to benefit type buckets (legacy/new)."""
     ey = wf["entry_year"]
     n = wf["n_active"]
     for bt in benefit_types:
         before, after, new = design_ratios[bt]
         wf[f"n_{bt}_legacy"] = np.where(
-            ey < new_year, np.where(ey < 2018, n * before, n * after), 0.0)
+            ey < new_year, np.where(ey < design_cutoff_year, n * before, n * after), 0.0)
         wf[f"n_{bt}_new"] = np.where(ey < new_year, 0.0, n * new)
     return wf
 
@@ -258,6 +259,8 @@ def compute_active_liability(wf_active: pd.DataFrame, benefit_val: pd.DataFrame,
     """
     r = constants.ranges
     new_year = r.new_year
+    design_cutoff = (constants.plan_design_cutoff_year or new_year
+                     if hasattr(constants, "plan_design_cutoff_year") else 2018)
 
     # Get design ratios — use generalized method if available, else legacy
     if hasattr(constants, "get_design_ratios"):
@@ -288,7 +291,7 @@ def compute_active_liability(wf_active: pd.DataFrame, benefit_val: pd.DataFrame,
     wf = wf.fillna(0)
 
     # Allocate members to benefit types
-    wf = _allocate_members(wf, benefit_types, design_ratios, new_year)
+    wf = _allocate_members(wf, benefit_types, design_ratios, new_year, design_cutoff)
 
     # Aggregate by year — build result dict dynamically
     def _agg(g):
@@ -355,7 +358,7 @@ def _get_design_ratios(constants, class_name):
     return {"db": (db_b, db_a, db_n), "dc": (1 - db_b, 1 - db_a, 1 - db_n)}, ["db", "dc"]
 
 
-def _allocate_term(wf, pop_col, design_ratios, benefit_types, new_year):
+def _allocate_term(wf, pop_col, design_ratios, benefit_types, new_year, design_cutoff_year=2018):
     """Allocate term/refund/retire workforce to benefit type buckets.
 
     pop_col is e.g. "n_term", "n_refund", "n_retire".
@@ -368,7 +371,7 @@ def _allocate_term(wf, pop_col, design_ratios, benefit_types, new_year):
     for bt in benefit_types:
         before, after, new = design_ratios[bt]
         wf[f"n_{base}_{bt}_legacy"] = np.where(
-            ey < new_year, np.where(ey < 2018, n * before, n * after), 0.0)
+            ey < new_year, np.where(ey < design_cutoff_year, n * before, n * after), 0.0)
         wf[f"n_{base}_{bt}_new"] = np.where(ey < new_year, 0.0, n * new)
     return wf
 
@@ -379,6 +382,8 @@ def compute_term_liability(wf_term: pd.DataFrame, benefit_val: pd.DataFrame,
     """Compute projected terminated vested liability by year."""
     r = constants.ranges
     design_ratios, benefit_types = _get_design_ratios(constants, class_name)
+    design_cutoff = (constants.plan_design_cutoff_year or r.new_year
+                     if hasattr(constants, "plan_design_cutoff_year") else 2018)
 
     wf = wf_term[(wf_term["year"] <= r.start_year + r.model_period) & (wf_term["n_term"] > 0)].copy()
     wf["entry_year"] = wf["year"] - (wf["age"] - wf["entry_age"])
@@ -397,7 +402,7 @@ def compute_term_liability(wf_term: pd.DataFrame, benefit_val: pd.DataFrame,
 
     wf["pvfb_db_term"] = wf["pvfb_db_at_term_age"] / wf["cum_mort_dr"]
 
-    wf = _allocate_term(wf, "n_term", design_ratios, benefit_types, r.new_year)
+    wf = _allocate_term(wf, "n_term", design_ratios, benefit_types, r.new_year, design_cutoff)
 
     # Aggregate by benefit type
     agg_dict = {}
@@ -421,6 +426,8 @@ def compute_refund_liability(wf_refund: pd.DataFrame, benefit: pd.DataFrame,
     """Compute refund liability by year."""
     r = constants.ranges
     design_ratios, benefit_types = _get_design_ratios(constants, class_name)
+    design_cutoff = (constants.plan_design_cutoff_year or r.new_year
+                     if hasattr(constants, "plan_design_cutoff_year") else 2018)
 
     wf = wf_refund[(wf_refund["year"] <= r.start_year + r.model_period) & (wf_refund["n_refund"] > 0)].copy()
     wf["entry_year"] = wf["year"] - (wf["age"] - wf["entry_age"])
@@ -434,7 +441,7 @@ def compute_refund_liability(wf_refund: pd.DataFrame, benefit: pd.DataFrame,
     wf = wf.merge(bt_cols, left_on=["entry_age", "entry_year", "age", "year", "term_year"],
                   right_on=["entry_age", "entry_year", "dist_age", "dist_year", "term_year"], how="left")
 
-    wf = _allocate_term(wf, "n_refund", design_ratios, benefit_types, r.new_year)
+    wf = _allocate_term(wf, "n_refund", design_ratios, benefit_types, r.new_year, design_cutoff)
 
     agg_dict = {}
     for bt in benefit_types:
@@ -458,6 +465,8 @@ def compute_retire_liability(wf_retire: pd.DataFrame, benefit: pd.DataFrame,
     """Compute projected retiree liability by year."""
     r = constants.ranges
     design_ratios, benefit_types = _get_design_ratios(constants, class_name)
+    design_cutoff = (constants.plan_design_cutoff_year or r.new_year
+                     if hasattr(constants, "plan_design_cutoff_year") else 2018)
 
     wf = wf_retire[wf_retire["year"] <= r.start_year + r.model_period].copy()
     wf["entry_year"] = wf["year"] - (wf["age"] - wf["entry_age"])
@@ -484,7 +493,7 @@ def compute_retire_liability(wf_retire: pd.DataFrame, benefit: pd.DataFrame,
         wf["cb_benefit_final"] = wf["cb_benefit"] * (1 + wf["cola"]) ** (wf["year"] - wf["retire_year"])
         wf["pvfb_cb_retire"] = wf["cb_benefit_final"] * (wf["ann_factor"] - 1)
 
-    wf = _allocate_term(wf, "n_retire", design_ratios, benefit_types, r.new_year)
+    wf = _allocate_term(wf, "n_retire", design_ratios, benefit_types, r.new_year, design_cutoff)
 
     agg_dict = {}
     for bt in benefit_types:
@@ -851,6 +860,7 @@ def _load_frs_inputs(class_name: str, sep_class: str,
         raw_dir / "pub-2010-headcount-mort-rates.xlsx",
         raw_dir / "mortality-improvement-scale-mp-2018-rates.xlsx",
         class_name,
+        constants=constants,
     )
     afr = build_ann_factor_retire_table(
         cm, class_name, constants.ranges.start_year, constants.ranges.model_period,
@@ -923,8 +933,8 @@ def run_class_pipeline_e2e(class_name: str, baseline_dir: Path,
         constants = load_frs_config()
 
     tier_fn, _, _, sep_type_fn = _make_callables(constants)
-    sep_class = SEP_CLASS_MAP.get(class_name, constants.get_sep_class(class_name)
-                                  if isinstance(constants, PlanConfig) else class_name)
+    sep_class = (constants.get_sep_class(class_name) if isinstance(constants, PlanConfig)
+                 else SEP_CLASS_MAP.get(class_name, class_name))
 
     plan_name = constants.plan_name if hasattr(constants, "plan_name") else "frs"
 

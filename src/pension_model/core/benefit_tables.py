@@ -31,8 +31,16 @@ SALARY_GROWTH_COL_MAP = {
 }
 
 
-def _get_salary_growth_col(class_name: str) -> str:
-    """Resolve salary growth column name for a class."""
+def _get_salary_growth_col(class_name: str, constants=None) -> str:
+    """Resolve salary growth column name for a class.
+
+    Uses config map if constants is a PlanConfig, else falls back to hardcoded FRS map.
+    """
+    from pension_model.plan_config import PlanConfig
+    if isinstance(constants, PlanConfig):
+        col_map = constants.salary_growth_col_map
+        if col_map:
+            return col_map.get(class_name, f"salary_increase_{class_name}")
     return SALARY_GROWTH_COL_MAP.get(class_name, f"salary_increase_{class_name}")
 
 
@@ -47,6 +55,7 @@ def build_salary_headcount_table(
     class_name: str,
     adjustment_ratio: float,
     start_year: int,
+    constants=None,
 ) -> pd.DataFrame:
     """
     Convert wide-format salary/headcount to long-format with entry_salary.
@@ -66,7 +75,7 @@ def build_salary_headcount_table(
     Returns:
         Long-format DataFrame: entry_year, entry_age, age, yos, count, entry_salary
     """
-    growth_col = _get_salary_growth_col(class_name)
+    growth_col = _get_salary_growth_col(class_name, constants)
 
     # Build cumulative salary growth: extend to full yos range, then cumprod
     # R extends the table with fill-forward before computing cumprod (benefit model lines 6-9)
@@ -224,7 +233,7 @@ def build_salary_benefit_table(
     ben = constants.benefit
 
     # Salary growth for this class: extend to full yos range, then cumprod
-    growth_col = _get_salary_growth_col(class_name)
+    growth_col = _get_salary_growth_col(class_name, constants)
     sg = salary_growth[["yos", growth_col]].copy()
     sg = sg.rename(columns={growth_col: "salary_increase"})
 
@@ -508,10 +517,11 @@ def build_separation_rate_table(
 
 
 def get_tier_vectorized(class_name, entry_year, age, yos, new_year=2024, get_tier_fn=None):
-    """Vectorized get_tier. Uses provided callable or falls back to tier_logic."""
+    """Vectorized get_tier. Uses provided callable or falls back to FRS config."""
     if get_tier_fn is None:
-        from pension_model.core.tier_logic import get_tier as _get_tier
-        get_tier_fn = _get_tier
+        from pension_model.plan_config import load_frs_config, get_tier as _pc_get_tier
+        _cfg = load_frs_config()
+        get_tier_fn = lambda cn, ey, a, y, ny=None: _pc_get_tier(_cfg, cn, ey, a, y)
     n = len(entry_year)
     result = np.empty(n, dtype=object)
     for i in range(n):
@@ -563,11 +573,13 @@ def build_ann_factor_table(
     if ben.cola_tier_1_active_constant:
         cola_tier1 = ben.cola_tier_1_active
     else:
-        # Prorated: cola * yos_before_2011 / total_yos
-        yos_b4_2011 = np.clip(2011 - df["entry_year"].values, 0, df["yos"].values)
+        # Prorated: cola * yos_before_cutoff / total_yos
+        # Legacy ModelConstants path — FRS cutoff is always 2011
+        cutoff = 2011
+        yos_b4_cutoff = np.clip(cutoff - df["entry_year"].values, 0, df["yos"].values)
         cola_tier1 = np.where(
             df["yos"] > 0,
-            ben.cola_tier_1_active * yos_b4_2011 / df["yos"],
+            ben.cola_tier_1_active * yos_b4_cutoff / df["yos"],
             0.0,
         )
 
@@ -633,11 +645,15 @@ def build_ann_factor_table_compact(
     r = constants.ranges
     # Use config-driven COLA/DR when running through PlanConfig with a tier function.
     use_config_cola = get_tier_fn is not None and isinstance(constants, PlanConfig)
+    # COLA proration cutoff year: read from config (e.g. FRS=2011), or None if no proration
+    cola_cutoff = (constants.cola_proration_cutoff_year
+                   if isinstance(constants, PlanConfig) else 2011)
 
     # Resolve tier function
     if get_tier_fn is None:
-        from pension_model.core.tier_logic import get_tier as _get_tier
-        get_tier_fn = lambda cn, ey, da, yos: _get_tier(cn, ey, da, yos, r.new_year)
+        from pension_model.plan_config import load_frs_config, get_tier as _pc_get_tier
+        _cfg = load_frs_config()
+        get_tier_fn = lambda cn, ey, da, yos: _pc_get_tier(_cfg, cn, ey, da, yos)
 
     # CB parameters (if active)
     has_cb = expected_icr is not None
@@ -655,11 +671,12 @@ def build_ann_factor_table_compact(
                 if td["name"] in tier:
                     cola_key = td.get("cola_key", "tier_1_active")
                     raw_cola = constants.cola.get(cola_key, 0.0)
-                    # FRS-style proration: tier_1 COLA prorated by pre-2011 YOS
+                    # COLA proration: tier_1 COLA prorated by pre-cutoff YOS
                     if (cola_key == "tier_1_active"
                             and not constants.cola.get("tier_1_active_constant", False)
+                            and cola_cutoff is not None
                             and raw_cola > 0 and yos > 0):
-                        yos_b4 = min(max(2011 - ey, 0), yos)
+                        yos_b4 = min(max(cola_cutoff - ey, 0), yos)
                         return raw_cola * yos_b4 / yos
                     return raw_cola
             return 0.0
@@ -669,7 +686,7 @@ def build_ann_factor_table_compact(
         if is_tier1:
             if ben.cola_tier_1_active_constant:
                 return ben.cola_tier_1_active
-            yos_b4 = min(max(2011 - ey, 0), yos)
+            yos_b4 = min(max(cola_cutoff - ey, 0), yos) if cola_cutoff else 0
             return ben.cola_tier_1_active * yos_b4 / yos if yos > 0 else 0
         elif is_tier2:
             return ben.cola_tier_2_active

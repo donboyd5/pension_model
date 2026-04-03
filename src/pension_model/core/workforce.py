@@ -196,8 +196,9 @@ def project_workforce(
                             if get_tier_fn is not None:
                                 tier = get_tier_fn(class_name, entry_yr, age, yos_at_term)
                             else:
-                                from pension_model.core.tier_logic import get_tier as _gt
-                                tier = _gt(class_name, entry_yr, age, yos_at_term, 2024)
+                                from pension_model.plan_config import load_frs_config, get_tier as _pc_gt
+                                _cfg = load_frs_config()
+                                tier = _pc_gt(_cfg, class_name, entry_yr, age, yos_at_term)
                             is_ret = "norm" in tier or "early" in tier
                             mort = mortality_rates.get_rate(age, year - 1, is_retiree=is_ret)
                             ts[ei, ai] *= (1 - mort)

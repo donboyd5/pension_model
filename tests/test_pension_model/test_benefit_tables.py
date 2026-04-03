@@ -173,7 +173,7 @@ class TestSeparationRateTable:
 class TestAnnFactorTable:
     """Test build_ann_factor_table_compact against R's extracted cum_mort_dr and ann_factor."""
 
-    RAW_DIR = Path(__file__).parent.parent.parent / "R_model" / "R_model_original"
+    RAW_DIR = Path(__file__).parent.parent.parent / "R_model" / "R_model_frs"
 
     def _build_compact_aft(self):
         """Build ann_factor_table from raw Excel for Regular, entry_year=2000 only."""
@@ -182,10 +182,12 @@ class TestAnnFactorTable:
             build_entrant_profile, build_salary_benefit_table,
         )
         from pension_model.core.mortality_builder import build_compact_mortality_from_excel
-        from pension_model.core.tier_logic import get_tier
+        from pension_model.plan_config import load_frs_config, get_tier as pc_get_tier
         from pension_model.core.model_constants import frs_constants
 
         constants = frs_constants()
+        cfg = load_frs_config()
+        get_tier = lambda cn, ey, age, yos, ny=None: pc_get_tier(cfg, cn, ey, age, yos)
         cm = build_compact_mortality_from_excel(
             self.RAW_DIR / "pub-2010-headcount-mort-rates.xlsx",
             self.RAW_DIR / "mortality-improvement-scale-mp-2018-rates.xlsx",
@@ -255,10 +257,12 @@ class TestSalaryBenefitTable:
             build_entrant_profile,
             build_salary_benefit_table,
         )
-        from pension_model.core.tier_logic import get_tier
+        from pension_model.plan_config import load_frs_config, get_tier as pc_get_tier
         from pension_model.core.model_constants import frs_constants
 
         constants = frs_constants()
+        cfg = load_frs_config()
+        get_tier = lambda cn, ey, age, yos, ny=None: pc_get_tier(cfg, cn, ey, age, yos)
         salary_growth = pd.read_csv(BASELINE / "salary_growth_table.csv")
         sal = pd.read_csv(BASELINE / f"{class_name}_salary.csv")
         hc = pd.read_csv(BASELINE / f"{class_name}_headcount.csv")

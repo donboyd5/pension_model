@@ -309,6 +309,16 @@
     "senior_management": "salary_increase_senior_management"
   },
 
+  "base_table_map": {
+    "regular": "regular",
+    "special": "safety",
+    "admin": "safety",
+    "eco": "general",
+    "eso": "general",
+    "judges": "general",
+    "senior_management": "general"
+  },
+
   "ben_payment_ratio_components": {
     "pension_payment": 11944986866,
     "contribution_refunds": 28343757,

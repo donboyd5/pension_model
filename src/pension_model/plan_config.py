@@ -132,6 +132,15 @@ class PlanConfig:
         return self.raw.get("salary_growth_col_map", {})
 
     @property
+    def base_table_map(self) -> Dict[str, str]:
+        """Map class names to mortality base table type (regular/safety/general)."""
+        return self.raw.get("base_table_map", {})
+
+    def get_base_table_type(self, class_name: str) -> str:
+        """Resolve mortality base table type for a class."""
+        return self.base_table_map.get(class_name, "general")
+
+    @property
     def max_entry_year(self) -> int:
         return self.start_year + self.model_period
 
