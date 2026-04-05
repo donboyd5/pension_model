@@ -3,10 +3,13 @@
 CLI entry point for the pension model.
 
 Usage:
-    pension-model frs              # run FRS model + tests
-    pension-model frs --no-test    # run FRS model only
-    pension-model frs --test-only  # tests only (no model run)
-    pension-model txtrs            # run Texas TRS model (future)
+    pension-model run <plan>              # run plan model + tests
+    pension-model run <plan> --no-test    # run plan model only
+    pension-model run <plan> --test-only  # tests only (no model run)
+    pension-model calibrate <plan>        # compute calibration factors
+    pension-model list                    # list discovered plans
+
+Plans are auto-discovered from ``configs/<plan>/plan_config.json``.
 """
 
 import sys
@@ -185,7 +188,7 @@ def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
 def cmd_calibrate(args):
     """Run calibration: compute nc_cal and pvfb_term_current from AV targets."""
     from pension_model.core.pipeline import run_class_pipeline_e2e
-    from pension_model.plan_config import load_plan_config
+    from pension_model.plan_config import discover_plans, load_plan_config
     from pension_model.core.funding_model import load_funding_inputs
     from pension_model.core.calibration import (
         load_targets_from_init_funding, run_calibration, format_diagnostics,
@@ -197,10 +200,11 @@ def cmd_calibrate(args):
         print(f"  Calibration for '{plan_name}' is not yet supported. Only 'frs' is available.")
         sys.exit(1)
 
-    config_path = Path("configs") / plan_name / "plan_config.json"
-    if not config_path.exists():
-        print(f"  Config not found: {config_path}")
+    plans = discover_plans()
+    if plan_name not in plans:
+        print(f"  Config not found for plan {plan_name!r}. Discovered: {sorted(plans)}")
         sys.exit(1)
+    config_path = plans[plan_name]
 
     print("=" * 60)
     print(f"{plan_name.upper()} Calibration")
@@ -246,21 +250,23 @@ def cmd_calibrate(args):
         print(f"\n  Calibration written to {output_path}")
 
 
-def cmd_frs(args):
-    """Run the Florida FRS pension model."""
-    if args.test_only:
-        print("Running tests...")
-        ok = run_tests()
-        sys.exit(0 if ok else 1)
+# ---------------------------------------------------------------------------
+# Per-plan runners
+#
+# Each plan currently has its own funding pipeline shape (FRS uses the
+# per-class dict + compute_funding; TRS uses compute_funding_trs on the
+# single 'all' class), so we dispatch internally. Collapsing these into a
+# single generic runner is goal 2b — removing the legacy loaders — which
+# will come next on its own branch.
+# ---------------------------------------------------------------------------
 
-    from pension_model.plan_config import load_frs_config
-
+def _run_frs(constants, args):
+    """Run the FRS liability + funding pipeline and emit outputs."""
     print("=" * 60)
     print("FRS Pension Model Pipeline")
     print("=" * 60)
 
     t0 = time.time()
-    constants = load_frs_config()
     liability, funding, liability_stacked = run_pipeline(constants)
     elapsed = time.time() - t0
     print(f"  Pipeline complete: {elapsed:.0f}s")
@@ -269,22 +275,15 @@ def cmd_frs(args):
     print_parameters(constants)
     write_output(funding, list(constants.classes), output_dir)
 
-    # Write stacked liability
     output_dir.mkdir(parents=True, exist_ok=True)
     liability_stacked.to_csv(output_dir / "liability_stacked.csv", index=False)
 
     # Truth table BEFORE tests so it prints regardless of --no-test
-    _emit_truth_table("frs", liability, funding, constants, output_dir)
-
-    if not args.no_test:
-        print("\nRunning tests...")
-        tests_ok = run_tests()
-        sys.exit(0 if tests_ok else 1)
+    _emit_truth_table(constants.plan_name, liability, funding, constants, output_dir)
 
 
-def cmd_txtrs(args):
-    """Run the Texas TRS pension model (liability + funding)."""
-    from pension_model.plan_config import load_txtrs_config
+def _run_txtrs(constants, args):
+    """Run the Texas TRS liability + funding pipeline and emit outputs."""
     from pension_model.core.pipeline import run_class_pipeline_e2e
     from pension_model.core.funding_model import compute_funding_trs
     from pension_model.core.txtrs_loader import load_txtrs_funding_data
@@ -294,7 +293,6 @@ def cmd_txtrs(args):
     print("=" * 60)
 
     t0 = time.time()
-    constants = load_txtrs_config()
 
     # Run liability pipeline for each class (TRS has only "all")
     print("  Building benefit tables, workforce, and liabilities...")
@@ -309,7 +307,6 @@ def cmd_txtrs(args):
 
     liability_stacked = pd.concat(liability_frames, ignore_index=True)
 
-    # Run funding model
     print("  Running funding model...")
     raw_dir = Path("R_model/R_model_txtrs")
     funding_inputs = load_txtrs_funding_data(raw_dir)
@@ -318,17 +315,14 @@ def cmd_txtrs(args):
     elapsed = time.time() - t0
     print(f"  Pipeline complete: {elapsed:.0f}s")
 
-    # Write output
     output_dir = OUTPUT_BASE / constants.plan_name
     output_dir.mkdir(parents=True, exist_ok=True)
     liability_stacked.to_csv(output_dir / "liability_stacked.csv", index=False)
     funding_df.to_csv(output_dir / "funding.csv", index=False)
     print(f"  Output written to {output_dir}/")
 
-    # Truth table BEFORE tests so it prints regardless of --no-test
-    _emit_truth_table("txtrs", liability_results, funding_df, constants, output_dir)
+    _emit_truth_table(constants.plan_name, liability_results, funding_df, constants, output_dir)
 
-    # Print summary
     row1 = liability_stacked.iloc[0]
     total_aal = row1.get("total_aal_est", row1.get("aal_est", 0))
     print(f"\n  Year 1 summary:")
@@ -337,40 +331,102 @@ def cmd_txtrs(args):
         print(f"    Payroll:       {_fmt_dollars(row1['payroll_est'])}")
     if "nc_rate_est" in row1:
         print(f"    NC Rate:       {_fmt_pct(row1['nc_rate_est'])}")
-    # Funding summary
     if len(funding_df) > 1:
-        fy1 = funding_df.iloc[1]  # first projection year
+        fy1 = funding_df.iloc[1]
         print(f"    Funded Ratio:  {_fmt_pct(fy1.get('FR_AVA', 0))}")
         print(f"    ER Cont Rate:  {_fmt_pct(fy1.get('er_cont_rate', 0))}")
+
+
+# Registry mapping plan name → runner. A plan must be listed here to be
+# runnable via `pension-model run`; discover_plans() alone is not enough
+# because each plan still has plan-specific pipeline glue.
+_PLAN_RUNNERS = {
+    "frs": _run_frs,
+    "txtrs": _run_txtrs,
+}
+
+
+def cmd_run(args):
+    """Dispatch `pension-model run <plan>` to the per-plan runner."""
+    from pension_model.plan_config import discover_plans, load_plan_config
+
+    if args.test_only:
+        print(f"Running tests...")
+        ok = run_tests()
+        sys.exit(0 if ok else 1)
+
+    plans = discover_plans()
+    if args.plan not in plans:
+        available = ", ".join(sorted(plans)) or "(none found)"
+        print(f"Unknown plan: {args.plan!r}. Available plans: {available}")
+        sys.exit(2)
+
+    if args.plan not in _PLAN_RUNNERS:
+        print(f"Plan {args.plan!r} has a config but no runner registered in cli._PLAN_RUNNERS.")
+        sys.exit(2)
+
+    config_path = plans[args.plan]
+    cal_path = config_path.parent / "calibration.json"
+    constants = load_plan_config(
+        config_path,
+        calibration_path=cal_path if cal_path.exists() else None,
+    )
+
+    _PLAN_RUNNERS[args.plan](constants, args)
+
+    if not args.no_test:
+        print("\nRunning tests...")
+        tests_ok = run_tests()
+        sys.exit(0 if tests_ok else 1)
+
+
+def cmd_list(args):
+    """List discovered plans and whether each has a registered runner."""
+    from pension_model.plan_config import discover_plans
+
+    plans = discover_plans()
+    if not plans:
+        print("No plans found under configs/")
+        return
+    print("Discovered plans:")
+    for name, path in sorted(plans.items()):
+        status = "runnable" if name in _PLAN_RUNNERS else "config only"
+        rel = path.relative_to(Path.cwd()) if path.is_relative_to(Path.cwd()) else path
+        print(f"  {name:20s} {status:12s} {rel}")
 
 
 def main():
     warnings.filterwarnings("ignore")
 
-    parser = argparse.ArgumentParser(description="Pension model CLI")
-    subparsers = parser.add_subparsers(dest="plan", help="Plan to run")
+    from pension_model.plan_config import discover_plans
+    discovered = sorted(discover_plans().keys())
 
-    frs = subparsers.add_parser("frs", help="Florida Retirement System")
-    frs.add_argument("--no-test", action="store_true", help="Skip tests")
-    frs.add_argument("--test-only", action="store_true", help="Run tests only")
+    parser = argparse.ArgumentParser(prog="pension-model", description="Pension model CLI")
+    subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-    txtrs = subparsers.add_parser("txtrs", help="Texas Teacher Retirement System")
-    txtrs.add_argument("--no-test", action="store_true", help="Skip tests")
+    run_p = subparsers.add_parser("run", help="Run a plan's liability + funding pipeline")
+    run_p.add_argument("plan", choices=discovered or None,
+                       help=f"Plan to run. Discovered: {', '.join(discovered) or '(none)'}")
+    run_p.add_argument("--no-test", action="store_true", help="Skip tests after the run")
+    run_p.add_argument("--test-only", action="store_true", help="Run tests only, skip the model")
 
     cal = subparsers.add_parser("calibrate", help="Compute calibration factors")
-    cal.add_argument("plan_name", help="Plan to calibrate (e.g., frs)")
+    cal.add_argument("plan_name", choices=discovered or None,
+                     help=f"Plan to calibrate. Discovered: {', '.join(discovered) or '(none)'}")
     cal.add_argument("--write", action="store_true", help="Write calibration to JSON")
     cal.add_argument("--output", type=str, default=None, help="Output path for calibration JSON")
 
+    subparsers.add_parser("list", help="List discovered plans")
+
     args = parser.parse_args()
 
-    if args.plan is None:
+    if args.command is None:
         parser.print_help()
         sys.exit(1)
 
-    if args.plan == "frs":
-        cmd_frs(args)
-    elif args.plan == "txtrs":
-        cmd_txtrs(args)
-    elif args.plan == "calibrate":
+    if args.command == "run":
+        cmd_run(args)
+    elif args.command == "calibrate":
         cmd_calibrate(args)
+    elif args.command == "list":
+        cmd_list(args)

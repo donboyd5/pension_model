@@ -32,18 +32,24 @@ You must activate the virtual environment each time you open a new terminal. You
 From the project directory:
 
 ```bash
-pension-model frs                # run the FRS model + baseline validation tests
-pension-model frs --no-test      # run model only, skip tests
-pension-model frs --test-only    # run tests only
+pension-model list                     # list discovered plans
+pension-model run frs                  # run FRS model + baseline validation tests
+pension-model run frs --no-test        # run model only, skip tests
+pension-model run frs --test-only      # run tests only
+pension-model run txtrs                # run Texas TRS model
 ```
+
+Plans are auto-discovered from `configs/<plan>/plan_config.json`; adding a
+new plan is just a matter of dropping a config directory (and, for now,
+registering a runner in `cli._PLAN_RUNNERS`).
 
 ## Calibration
 
 Calibration computes adjustment factors so the model's baseline output matches the actuarial valuation report. Run it after changing benefit formulas, data, or decrement tables — not after changing policy assumptions.
 
 ```bash
-pension-model calibrate            # compute calibration and print diagnostics
-pension-model calibrate --write    # also write factors to configs/frs/calibration.json
+pension-model calibrate frs            # compute calibration and print diagnostics
+pension-model calibrate frs --write    # also write factors to configs/frs/calibration.json
 ```
 
 See [docs/calibration.md](docs/calibration.md) for details and [docs/developer.md](docs/developer.md) for the full developer guide.
