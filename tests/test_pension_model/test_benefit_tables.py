@@ -171,14 +171,14 @@ class TestSeparationRateTable:
 
 
 class TestAnnFactorTable:
-    """Test build_ann_factor_table_compact against R's extracted cum_mort_dr and ann_factor."""
+    """Test build_ann_factor_table against R's extracted cum_mort_dr and ann_factor."""
 
     RAW_DIR = Path(__file__).parent.parent.parent / "R_model" / "R_model_frs"
 
     def _build_compact_aft(self):
         """Build ann_factor_table from raw Excel for Regular, entry_year=2000 only."""
         from pension_model.core.benefit_tables import (
-            build_ann_factor_table_compact, build_salary_headcount_table,
+            build_ann_factor_table, build_salary_headcount_table,
             build_entrant_profile, build_salary_benefit_table,
         )
         from pension_model.core.mortality_builder import build_compact_mortality_from_excel
@@ -201,7 +201,11 @@ class TestAnnFactorTable:
         sbt = build_salary_benefit_table(sh, ep, sg, "regular", constants, get_tier)
         # Filter to single entry_year for speed
         sbt_sub = sbt[sbt["entry_year"] == 2000].copy()
-        return build_ann_factor_table_compact(sbt_sub, cm, "regular", constants)
+        return build_ann_factor_table(
+            salary_benefit_table=sbt_sub,
+            compact_mortality_by_class={"regular": cm},
+            constants=constants,
+        )
 
     def test_cum_mort_dr_matches_r(self):
         """Verify cum_mort_dr matches R for a subset of Regular class."""

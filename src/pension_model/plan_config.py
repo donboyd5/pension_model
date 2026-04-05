@@ -924,7 +924,7 @@ def resolve_cola_vec(config: PlanConfig,
                      entry_year: np.ndarray,
                      yos: np.ndarray) -> np.ndarray:
     """Vectorized COLA lookup — bit-identical to the _get_cola closure in
-    build_ann_factor_table_compact.
+    build_ann_factor_table.
 
     Matches each row's tier string against tier_def names (substring match,
     first hit wins) and returns the prorated or flat COLA.

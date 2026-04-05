@@ -164,11 +164,15 @@ def build_benefit_tables(class_name: str, inputs: dict, constants,
         )
 
     # Step 4: Annuity factor table → benefit table → final benefit table
-    from pension_model.core.benefit_tables import build_ann_factor_table_compact
-    aft_tier_fn = lambda cn, ey, da, yos: tier_fn(cn, ey, da, yos)
-    aft = build_ann_factor_table_compact(sbt, inputs["_compact_mortality"], class_name, constants,
-                                         expected_icr=expected_icr,
-                                         get_tier_fn=aft_tier_fn)
+    from pension_model.core.benefit_tables import build_ann_factor_table
+    aft = build_ann_factor_table(
+        salary_benefit_table=sbt,
+        compact_mortality_by_class={class_name: inputs["_compact_mortality"]},
+        constants=constants,
+        expected_icr_by_class=(
+            {class_name: expected_icr} if expected_icr is not None else None
+        ),
+    )
     bt = build_benefit_table(aft, sbt, class_name, constants, ben_mult_fn, reduce_fn)
     fbt = build_final_benefit_table(bt, use_earliest_retire=constants.use_earliest_retire)
 

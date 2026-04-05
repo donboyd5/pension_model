@@ -546,96 +546,111 @@ def get_tier_vectorized(class_name, entry_year, age, yos, new_year=2024, get_tie
 # 3. Annuity factor table (cumulative survival × discount)
 # ---------------------------------------------------------------------------
 
-def build_ann_factor_table_compact(
+def build_ann_factor_table(
     salary_benefit_table: pd.DataFrame,
-    compact_mortality,
-    class_name: str,
+    compact_mortality_by_class: dict,
     constants,
-    expected_icr: "Optional[float]" = None,
-    get_tier_fn: "Optional[Callable]" = None,
+    expected_icr_by_class: "Optional[dict]" = None,
 ) -> pd.DataFrame:
+    """Build annuity factor table for one or more classes in a single pass.
+
+    Stacked / vectorized replacement for the former per-class
+    ``build_ann_factor_table_compact``. The input ``salary_benefit_table``
+    carries a ``class_name`` column; the output carries it through. All tier,
+    COLA, mortality, discount, and cumulative-product resolution is done
+    via numpy/pandas vectorized ops — no per-row Python loops.
+
+    Args:
+        salary_benefit_table: stacked salary/benefit frame with at least
+            (class_name, entry_year, entry_age, yos). One or more classes.
+        compact_mortality_by_class: dict of class_name -> CompactMortality.
+            Each class has its own base table so mortality is resolved per
+            class slice (vectorized within each slice).
+        constants: PlanConfig.
+        expected_icr_by_class: optional dict of class_name -> expected_icr
+            for classes with cash-balance benefits. Classes not present in
+            the dict do not get CB columns.
+
+    Returns:
+        DataFrame with columns (class_name, entry_year, entry_age, yos,
+        dist_age, dist_year, term_year, tier_at_dist_age, dr, cola,
+        mort_final, cum_dr, cum_mort, cum_cola, cum_mort_dr,
+        cum_mort_dr_cola, ann_factor) plus (surv_icr, ann_factor_acr)
+        when CB is active for any class.
     """
-    Build annuity factor table using CompactMortality (no 3M-row CSV needed).
+    from pension_model.plan_config import resolve_tiers_vec, resolve_cola_vec
 
-    For each (entry_year, entry_age, yos) from the salary_benefit_table,
-    generates mortality/COLA/discount vectors and computes annuity factors.
-
-    When CB is active (expected_icr is not None), also computes:
-      - surv_icr: survival discounted by expected ICR
-      - ann_factor_acr: annuity factor at the annuity conversion rate (ACR)
-
-    Reads COLA, discount rate, and tier assignments from the PlanConfig.
-    """
     econ = constants.economic
     r = constants.ranges
-    cola_cutoff = constants.cola_proration_cutoff_year
+    max_age = r.max_age
+    expected_icr_by_class = expected_icr_by_class or {}
 
-    # Resolve tier function (PlanConfig-driven by default)
-    if get_tier_fn is None:
-        from pension_model.plan_config import get_tier as _pc_get_tier
-        get_tier_fn = lambda cn, ey, da, yos: _pc_get_tier(constants, cn, ey, da, yos)
+    # --- 1. Unique cohorts, filter to term_age <= max_age ---
+    cohorts = salary_benefit_table[
+        ["class_name", "entry_year", "entry_age", "yos"]
+    ].drop_duplicates().reset_index(drop=True)
+    term_age_c = cohorts["entry_age"].values + cohorts["yos"].values
+    cohorts = cohorts[term_age_c <= max_age].reset_index(drop=True)
 
-    # CB parameters (if active)
-    has_cb = expected_icr is not None
-    acr = None
-    if has_cb:
-        cb_cfg = getattr(constants, "cash_balance", None)
-        if cb_cfg is not None:
-            acr = cb_cfg.get("annuity_conversion_rate", 0.04)
-
-    # COLA lookup: match tier name to cola_key in the tier definitions
-    def _get_cola(tier, ey, yos):
-        for td in constants.tier_defs:
-            if td["name"] in tier:
-                cola_key = td.get("cola_key", "tier_1_active")
-                raw_cola = constants.cola.get(cola_key, 0.0)
-                # COLA proration: tier_1 COLA prorated by pre-cutoff YOS
-                if (cola_key == "tier_1_active"
-                        and not constants.cola.get("tier_1_active_constant", False)
-                        and cola_cutoff is not None
-                        and raw_cola > 0 and yos > 0):
-                    yos_b4 = min(max(cola_cutoff - ey, 0), yos)
-                    return raw_cola * yos_b4 / yos
-                return raw_cola
-        return 0.0
-
-    # Get unique cohorts from salary_benefit_table
-    sbt = salary_benefit_table[["entry_year", "entry_age", "yos"]].drop_duplicates()
-
-    rows = []
-    for _, cohort in sbt.iterrows():
-        ey = int(cohort["entry_year"])
-        ea = int(cohort["entry_age"])
-        yos = int(cohort["yos"])
-        term_age = ea + yos
-        term_year = ey + yos
-
-        if term_age > r.max_age:
-            continue
-
-        # Generate dist_age range
-        for dist_age in range(term_age, r.max_age + 1):
-            dist_year = ey + dist_age - ea
-
-            # Determine tier and mortality status
-            tier = get_tier_fn(class_name, ey, dist_age, yos)
-            is_retiree = "norm" in tier or "early" in tier
-            mort = compact_mortality.get_rate(dist_age, dist_year, is_retiree)
-
-            # Discount rate (all current plans use a single rate)
-            dr = econ.dr_current
-
-            cola = _get_cola(tier, ey, yos)
-
-            rows.append((ey, ea, dist_year, dist_age, yos, term_year, mort, tier, dr, cola))
-
-    df = pd.DataFrame(rows, columns=[
-        "entry_year", "entry_age", "dist_year", "dist_age", "yos",
-        "term_year", "mort_final", "tier_at_dist_age", "dr", "cola",
+    # --- 2. Cross-join with dist_age range, filter dist_age >= term_age ---
+    # np.repeat + per-cohort dist_age range via concatenation (avoids 2x waste)
+    term_ages = cohorts["entry_age"].values + cohorts["yos"].values
+    n_per_cohort = max_age - term_ages + 1
+    # Repeat cohort columns
+    cn_arr = np.repeat(cohorts["class_name"].values, n_per_cohort)
+    ey_arr = np.repeat(cohorts["entry_year"].values, n_per_cohort).astype(np.int64)
+    ea_arr = np.repeat(cohorts["entry_age"].values, n_per_cohort).astype(np.int64)
+    yos_arr = np.repeat(cohorts["yos"].values, n_per_cohort).astype(np.int64)
+    # dist_age ranges concatenated
+    dist_age_arr = np.concatenate([
+        np.arange(ta, max_age + 1, dtype=np.int64) for ta in term_ages
     ])
 
-    # Vectorized cumulative products within each cohort
-    group_cols = ["entry_year", "entry_age", "yos"]
+    dist_year_arr = ey_arr + dist_age_arr - ea_arr
+    term_year_arr = ey_arr + yos_arr
+
+    # --- 3. Vectorized tier-at-dist-age resolution ---
+    tier_arr = resolve_tiers_vec(constants, cn_arr, ey_arr, dist_age_arr, yos_arr)
+
+    # --- 4. Discount rate (single value across all current plans) ---
+    dr_arr = np.full(len(dist_age_arr), econ.dr_current, dtype=np.float64)
+
+    # --- 5. Vectorized COLA ---
+    cola_arr = resolve_cola_vec(constants, tier_arr, ey_arr, yos_arr)
+
+    # --- 6. Mortality — per-class slice (each class has its own CompactMortality) ---
+    tier_s = pd.Series(tier_arr)
+    is_retiree_arr = (tier_s.str.contains("norm", regex=False, na=False)
+                      | tier_s.str.contains("early", regex=False, na=False)).values
+    mort_arr = np.zeros(len(dist_age_arr), dtype=np.float64)
+    for cn, cm in compact_mortality_by_class.items():
+        cmask = cn_arr == cn
+        if not cmask.any():
+            continue
+        sub_ages = dist_age_arr[cmask]
+        sub_years = np.clip(dist_year_arr[cmask], cm.min_year, cm.max_year)
+        sub_is_ret = is_retiree_arr[cmask]
+        # Fetch both statuses vectorized, then select per row
+        emp_rates = cm.get_rates_vec(sub_ages, sub_years, is_retiree=False)
+        ret_rates = cm.get_rates_vec(sub_ages, sub_years, is_retiree=True)
+        mort_arr[cmask] = np.where(sub_is_ret, ret_rates, emp_rates)
+
+    # --- 7. Assemble DataFrame, sort, compute cumulative products ---
+    df = pd.DataFrame({
+        "class_name": cn_arr,
+        "entry_year": ey_arr,
+        "entry_age": ea_arr,
+        "dist_year": dist_year_arr,
+        "dist_age": dist_age_arr,
+        "yos": yos_arr,
+        "term_year": term_year_arr,
+        "mort_final": mort_arr,
+        "tier_at_dist_age": tier_arr,
+        "dr": dr_arr,
+        "cola": cola_arr,
+    })
+
+    group_cols = ["class_name", "entry_year", "entry_age", "yos"]
     df = df.sort_values(group_cols + ["dist_age"]).reset_index(drop=True)
 
     g = df.groupby(group_cols)
@@ -656,28 +671,40 @@ def build_ann_factor_table_compact(
     rev_cumsum = group_total - cum_forward + df["cum_mort_dr_cola"]
     df["ann_factor"] = rev_cumsum / df["cum_mort_dr_cola"]
 
-    # --- CB annuity factors (when cash balance is active) ---
-    if has_cb and acr is not None:
-        # periods = dist_age - term_age (0, 1, 2, ... within each group)
-        g_term = df.groupby(group_cols)
-        periods = g_term.cumcount()
+    # --- 8. CB annuity factors (per class that has CB) ---
+    if expected_icr_by_class:
+        cb_cfg = getattr(constants, "cash_balance", None)
+        if cb_cfg is not None:
+            acr = cb_cfg.get("annuity_conversion_rate", 0.04)
+            surv_icr_col = np.full(len(df), np.nan, dtype=np.float64)
+            ann_factor_acr_col = np.full(len(df), np.nan, dtype=np.float64)
 
-        # surv_icr: survival / (1 + expected_icr)^periods
-        df["surv_icr"] = df["cum_mort"] / (1 + expected_icr) ** periods
+            for cn, expected_icr in expected_icr_by_class.items():
+                cmask = (df["class_name"].values == cn)
+                if not cmask.any():
+                    continue
+                sub = df.loc[cmask]
+                periods = sub.groupby(group_cols).cumcount().values
 
-        # ACR-based survival and annuity factor
-        # surv_acr = cum_mort / (1 + acr)^periods
-        surv_acr = df["cum_mort"] / (1 + acr) ** periods
-        surv_acr_cola = surv_acr * df["cum_cola"]
+                surv_icr = sub["cum_mort"].values / (1 + expected_icr) ** periods
+                surv_acr = sub["cum_mort"].values / (1 + acr) ** periods
+                surv_acr_cola = surv_acr * sub["cum_cola"].values
 
-        # ann_factor_acr = rev_cumsum(surv_acr_cola) / surv_acr_cola
-        grp_acr = surv_acr_cola.groupby([df[c] for c in group_cols])
-        group_total_acr = grp_acr.transform("sum")
-        cum_forward_acr = grp_acr.cumsum()
-        rev_cumsum_acr = group_total_acr - cum_forward_acr + surv_acr_cola
-        df["ann_factor_acr"] = rev_cumsum_acr / surv_acr_cola
+                sac = pd.Series(surv_acr_cola, index=sub.index)
+                grp2 = sac.groupby([sub[c] for c in group_cols])
+                gt = grp2.transform("sum")
+                cf = grp2.cumsum()
+                rev_cumsum_acr = gt - cf + sac
+                ann_factor_acr = (rev_cumsum_acr / sac).values
 
-    df["class_name"] = class_name
+                positions = np.where(cmask)[0]
+                surv_icr_col[positions] = surv_icr
+                ann_factor_acr_col[positions] = ann_factor_acr
+
+            if not np.all(np.isnan(surv_icr_col)):
+                df["surv_icr"] = surv_icr_col
+                df["ann_factor_acr"] = ann_factor_acr_col
+
     return df
 
 
