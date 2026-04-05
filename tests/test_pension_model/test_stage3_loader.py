@@ -19,9 +19,16 @@ Bugs discovered on 2026-04-04:
    uses long format (age, yos, count), so the `yos` column was silently
    summed into the headcount denominator, deflating adj_ratio by ~0.3%.
 
-Both bugs were invisible to the existing 230-test FRS suite because those
-tests use ModelConstants + _load_frs_inputs (the Excel loader) and never
-touch the stage 3 code path.
+3. Admin's DB-vs-DC design ratios were being taken from `class_groups`,
+   which puts admin in `special_group` for tier eligibility. But R's
+   liability model hardcodes `if (class_name == "special")` for design
+   ratios, so admin actually gets regular-group ratios (0.75, 0.25, 0.25)
+   in R. Config now has `design_ratio_group_map` to express this override.
+   See GH issue #22 for a discussion of R's split grouping approach.
+
+All three bugs were invisible to the existing 230-test FRS suite because
+those tests use ModelConstants + _load_frs_inputs (the Excel loader) and
+never touch the stage 3 code path.
 """
 
 import sys
@@ -159,4 +166,92 @@ def test_adj_ratio_handles_long_format(class_name, frs_config):
     assert abs(adj - expected_adj) < 1e-12, (
         f"{class_name}: adj_ratio={adj} but expected {expected_adj} "
         f"from count.sum()={expected_denom}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Bug 3 regression: admin must use regular-group design ratios (matching R)
+# ---------------------------------------------------------------------------
+
+def test_admin_design_ratios_match_r(frs_config):
+    """Admin must get regular-group DB design ratios (0.75, 0.25, 0.25),
+    NOT special-group (0.95, 0.85, 0.75), even though admin is in
+    special_group for tier eligibility. See GH issue #22.
+
+    R's liability model uses a hardcoded `if (class_name == "special")`
+    string check, so only the literal 'special' class gets special ratios.
+    Admin falls through to the non-special branch.
+    """
+    ratios = frs_config.get_design_ratios("admin")
+    assert ratios["db"] == (0.75, 0.25, 0.25), (
+        f"admin must use regular-group DB ratios, got {ratios['db']}. "
+        f"Check design_ratio_group_map in plan_config.json."
+    )
+
+
+def test_special_still_uses_special_design_ratios(frs_config):
+    """Sanity check: the design_ratio_group_map override must not affect
+    the 'special' class itself, which really does use special-group ratios
+    (0.95, 0.85, 0.75) in R."""
+    ratios = frs_config.get_design_ratios("special")
+    assert ratios["db"] == (0.95, 0.85, 0.75), (
+        f"special must use special-group DB ratios, got {ratios['db']}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# End-to-end: stage 3 pipeline must reproduce R's total_aal_est exactly
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def stage3_liability(frs_config):
+    """Run the stage 3 liability pipeline once for all FRS classes."""
+    from pension_model.core.pipeline import run_class_pipeline_e2e
+
+    results = {}
+    for cn in FRS_CLASSES:
+        results[cn] = run_class_pipeline_e2e(cn, BASELINE, frs_config)
+    return results
+
+
+@pytest.mark.parametrize("class_name", FRS_CLASSES)
+def test_stage3_total_aal_matches_r_year_1(class_name, stage3_liability):
+    """The stage 3 pipeline must reproduce R's total_aal_est at year 1
+    to within $1 for every FRS class.
+
+    This is the single most important reproduction test: it catches any
+    bug anywhere in the stage 3 loading, benefit-table building, workforce
+    projection, or liability computation that causes a year-0/1 divergence.
+    """
+    py = stage3_liability[class_name]
+    r = pd.read_csv(BASELINE / f"{class_name}_liability.csv")
+
+    py_val = float(py["total_aal_est"].iloc[0])
+    r_val = float(r["total_aal_est"].iloc[0])
+
+    assert abs(py_val - r_val) < 1.0, (
+        f"{class_name} year-1 total_aal_est: Py={py_val:.2f} "
+        f"R={r_val:.2f} diff={py_val - r_val:+.2f}"
+    )
+
+
+@pytest.mark.parametrize("class_name", FRS_CLASSES)
+def test_stage3_total_aal_matches_r_year_30(class_name, stage3_liability):
+    """The stage 3 pipeline must reproduce R's total_aal_est at year 30
+    for every FRS class. Catches trajectory drift that wouldn't be visible
+    at year 1 (e.g., a wrong growth/mortality/tier-assignment rule applied
+    to projected cohorts).
+    """
+    py = stage3_liability[class_name]
+    r = pd.read_csv(BASELINE / f"{class_name}_liability.csv")
+
+    assert len(py) > 30, f"{class_name} pipeline produced fewer than 31 rows"
+    assert len(r) > 30, f"{class_name} R baseline has fewer than 31 rows"
+
+    py_val = float(py["total_aal_est"].iloc[30])
+    r_val = float(r["total_aal_est"].iloc[30])
+
+    assert abs(py_val - r_val) < 1.0, (
+        f"{class_name} year-30 total_aal_est: Py={py_val:.2f} "
+        f"R={r_val:.2f} diff={py_val - r_val:+.2f}"
     )

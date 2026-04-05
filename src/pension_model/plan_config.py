@@ -276,8 +276,16 @@ class PlanConfig:
 
         For FRS: {"db": (0.75, 0.25, 0.25), "dc": (0.25, 0.75, 0.75)}
         For TRS: {"db": (1.0, 1.0, 1.0), "cb": (0.0, 0.0, 0.0)}
+
+        Design-ratio grouping can differ from tier-eligibility grouping.
+        If `design_ratio_group_map` is present in config, it overrides the
+        default class_group lookup for this class. FRS uses this so that
+        "admin" (tier-eligibility group = special_group) gets regular-group
+        design ratios, matching R's `if (class_name == "special")` check in
+        the liability model.
         """
-        group = self.class_group(class_name)
+        override_map = self.raw.get("design_ratio_group_map", {})
+        group = override_map.get(class_name, self.class_group(class_name))
         pd_defs = self.plan_design_defs
         ratios = pd_defs.get(group, pd_defs.get("default", {}))
 

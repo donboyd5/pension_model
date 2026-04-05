@@ -68,6 +68,11 @@
     "special_group": ["special", "admin"]
   },
 
+  "design_ratio_group_map_notes": "Override for DB/DC design ratios only. R's liability model uses 'if (class_name == \"special\")' so only the literal 'special' class gets special-group design ratios; admin (in special_group for tier eligibility) gets regular-group design ratios.",
+  "design_ratio_group_map": {
+    "admin": "regular_group"
+  },
+
   "sep_class_map": {
     "regular": "regular",
     "special": "special",
