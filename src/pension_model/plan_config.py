@@ -845,6 +845,29 @@ def load_plan_config(config_path: Path,
     return config
 
 
+def discover_plans(configs_dir: Optional[Path] = None) -> dict[str, Path]:
+    """Return a mapping of {plan_name: plan_config.json path} for every plan
+    directory under ``configs/`` that contains a ``plan_config.json``.
+
+    The plan name is taken from the directory name (not from the JSON's own
+    ``plan_name`` field) so the CLI can validate user input without parsing
+    every config file. Callers that need the parsed config should call
+    ``load_plan_config`` on the returned path.
+    """
+    if configs_dir is None:
+        configs_dir = Path(__file__).parents[2] / "configs"
+    plans: dict[str, Path] = {}
+    if not configs_dir.is_dir():
+        return plans
+    for entry in sorted(configs_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        cfg = entry / "plan_config.json"
+        if cfg.exists():
+            plans[entry.name] = cfg
+    return plans
+
+
 def load_frs_config(calibration_path: Optional[Path] = None) -> PlanConfig:
     """Convenience: load the FRS plan config with default paths."""
     base = Path(__file__).parents[2] / "configs" / "frs"

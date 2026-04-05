@@ -68,9 +68,9 @@ The model computes NC rates with `cal_factor=0.9` already applied. `nc_cal` is t
 ## Running Calibration
 
 ```bash
-pension-model calibrate              # compute and print diagnostics
-pension-model calibrate --write      # overwrite configs/frs/calibration.json
-pension-model calibrate --write --output path/to/file.json
+pension-model calibrate frs              # compute and print diagnostics
+pension-model calibrate frs --write      # overwrite configs/frs/calibration.json
+pension-model calibrate frs --write --output path/to/file.json
 ```
 
 Output includes:

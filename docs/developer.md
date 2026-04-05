@@ -3,12 +3,14 @@
 ## Getting Started
 
 ```bash
-pip install -e .                    # install in development mode
-pension-model frs                   # run FRS model + tests
-pension-model frs --no-test         # run without tests
-pension-model frs --test-only       # tests only
-pension-model calibrate             # compute and print calibration diagnostics
-pension-model calibrate --write     # also write to configs/frs/calibration.json
+pip install -e .                       # install in development mode
+pension-model list                     # list discovered plans
+pension-model run frs                  # run FRS model + tests
+pension-model run frs --no-test        # run without tests
+pension-model run frs --test-only      # tests only
+pension-model run txtrs                # run Texas TRS
+pension-model calibrate frs            # compute and print calibration diagnostics
+pension-model calibrate frs --write    # also write to configs/frs/calibration.json
 ```
 
 ## Project Layout
@@ -49,13 +51,13 @@ See [calibration.md](calibration.md) for full details.
 ```bash
 # 1. Make your changes to model code or data
 # 2. Recalibrate and review diagnostics
-pension-model calibrate
+pension-model calibrate frs
 
 # 3. If diagnostics look reasonable, write the new calibration
-pension-model calibrate --write
+pension-model calibrate frs --write
 
 # 4. Run the model to verify outputs
-pension-model frs
+pension-model run frs
 
 # 5. All 41+ tests should pass
 ```
