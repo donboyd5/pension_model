@@ -45,17 +45,15 @@ def _load_retiree_distribution(path: Path) -> pd.DataFrame:
 
 def load_plan_data(
     class_name: str,
-    sep_class: str,
     constants: PlanConfig,
 ) -> dict:
     """Load stage 3 data for a plan class.
 
-    Reads CSVs from data_dir (resolved from config), builds mortality and
-    decrement tables, returns the inputs dict for build_benefit_tables().
+    Each class owns its own decrement files ({class_name}_*.csv in the
+    decrements directory). There is no sep_class indirection.
 
     Args:
         class_name: Membership class (e.g., 'regular', 'all')
-        sep_class: Separation rate class (may differ from class_name)
         constants: Plan configuration
 
     Returns:
@@ -102,7 +100,7 @@ def load_plan_data(
     inputs["_compact_mortality"] = cm
 
     # --- Decrements (stage 3 standard format) ---
-    _load_decrements(inputs, constants, decr_dir, class_name, sep_class)
+    _load_decrements(inputs, constants, decr_dir, class_name)
 
     return inputs
 
@@ -157,13 +155,12 @@ def _load_decrements(
     constants: PlanConfig,
     decr_dir: Path,
     class_name: str,
-    sep_class: str,
 ):
     """Load decrement data from stage 3 CSVs.
 
-    Reads termination_rates.csv and retirement_rates.csv in the standard
-    lookup_type format, then converts to the format expected by the existing
-    separation rate builders.
+    Reads {class_name}_termination_rates.csv and
+    {class_name}_retirement_rates.csv in the standard lookup_type format,
+    falling back to unprefixed filenames for single-class plans (e.g., TRS).
 
     For plans with years_from_nr termination rates (e.g., TRS), builds the
     full separation rate table directly.
@@ -171,15 +168,13 @@ def _load_decrements(
     For plans with yos-only termination rates (e.g., FRS), converts back to
     the term_rate_avg + retirement rate table format.
     """
-    # Find termination rates file (may be sep_class-prefixed for multi-class plans)
-    term_path = decr_dir / f"{sep_class}_termination_rates.csv"
+    term_path = decr_dir / f"{class_name}_termination_rates.csv"
     if not term_path.exists():
         term_path = decr_dir / "termination_rates.csv"
 
     term_df = pd.read_csv(term_path)
 
-    # Find retirement rates file
-    ret_path = decr_dir / f"{sep_class}_retirement_rates.csv"
+    ret_path = decr_dir / f"{class_name}_retirement_rates.csv"
     if not ret_path.exists():
         ret_path = decr_dir / "retirement_rates.csv"
 

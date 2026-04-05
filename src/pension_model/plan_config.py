@@ -73,7 +73,6 @@ class PlanConfig:
     # Classes
     classes: Tuple[str, ...]
     class_groups: Dict[str, List[str]]
-    sep_class_map: Dict[str, str]
 
     # Tiers (raw list of tier dicts from config — interpreted by evaluator)
     tier_defs: Tuple[dict, ...]
@@ -319,10 +318,6 @@ class PlanConfig:
     def is_special(self, class_name: str) -> bool:
         """Whether a class is in the special group (FRS concept)."""
         return self.class_group(class_name) == "special_group"
-
-    def get_sep_class(self, class_name: str) -> str:
-        """Get the separation rate class for a given class."""
-        return self.sep_class_map.get(class_name, class_name)
 
     def get_fas_years(self, tier_name: str) -> int:
         """Look up FAS averaging period from tier config.
@@ -1325,7 +1320,6 @@ def load_plan_config(config_path: Path,
 
         classes=tuple(raw["classes"]),
         class_groups=raw.get("class_groups", {}),
-        sep_class_map=raw.get("sep_class_map", {}),
 
         tier_defs=tuple(raw.get("tiers", [])),
         benefit_mult_defs=raw.get("benefit_multipliers", {}),
