@@ -72,16 +72,41 @@ def load_raw_inputs(class_name: str, baseline_dir: Path) -> dict:
     }
 
 
+def _headcount_total(df: pd.DataFrame) -> float:
+    """Sum total active headcount from either long or wide format DataFrame.
+
+    Stage 3 long format has an explicit 'count' column. Legacy wide format
+    has one column per yos bucket with the age in the first column.
+    """
+    if "count" in df.columns:
+        return float(df["count"].sum())
+    return float(df.iloc[:, 1:].sum().sum())
+
+
 def compute_adjustment_ratio(class_name: str, headcount: pd.DataFrame,
                              constants, baseline_dir: Path) -> float:
-    """Compute headcount adjustment ratio matching R model."""
+    """Compute headcount adjustment ratio matching R model.
+
+    Handles both stage 3 long format and legacy wide format headcount inputs.
+    For grouped classes (eco/eso/judges in FRS) the denominator is the sum
+    across the group — read from the plan's stage 3 data dir if available,
+    otherwise from baseline_dir.
+    """
     if class_name in ("eco", "eso", "judges"):
+        # Prefer stage 3 demographics if available (resolves via PlanConfig)
+        demo_dir = None
+        if hasattr(constants, "resolve_data_dir"):
+            d = constants.resolve_data_dir() / "demographics"
+            if d.exists():
+                demo_dir = d
+        if demo_dir is None:
+            demo_dir = baseline_dir
         combined_raw = sum(
-            pd.read_csv(baseline_dir / f"{c}_headcount.csv").iloc[:, 1:].sum().sum()
+            _headcount_total(pd.read_csv(demo_dir / f"{c}_headcount.csv"))
             for c in ("eco", "eso", "judges")
         )
         return 2075 / combined_raw  # eco_eso_judges_total_active_member_
-    return constants.class_data[class_name].total_active_member / headcount.iloc[:, 1:].sum().sum()
+    return constants.class_data[class_name].total_active_member / _headcount_total(headcount)
 
 
 def _make_callables(constants, class_name=None):

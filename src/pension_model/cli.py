@@ -147,6 +147,41 @@ def run_tests():
     return result.returncode == 0
 
 
+def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
+    """Build the Python truth table, write CSV + Excel sheet, log to stdout.
+
+    Called before tests run so users always see the aggregate comparison
+    even when tests are skipped. Failures here are logged but do not abort
+    the run — the truth table is a diagnostic aid, not a gate.
+    """
+    try:
+        from pension_model.truth_table import (
+            build_python_truth_table,
+            format_truth_table_for_log,
+            upsert_sheet_to_excel,
+        )
+
+        df = build_python_truth_table(plan_name, liability, funding, constants)
+
+        # CSV next to the other outputs
+        output_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = output_dir / "truth_table.csv"
+        df.to_csv(csv_path, index=False)
+
+        # Python sheet in the shared workbook (preserves frozen R sheets)
+        xlsx_path = OUTPUT_BASE / "truth_tables.xlsx"
+        upsert_sheet_to_excel(df, xlsx_path, f"{plan_name}_Py")
+
+        print("\n  Truth table (Python, plan-wide):")
+        print(format_truth_table_for_log(df))
+        rel_csv = csv_path.relative_to(Path.cwd()) if csv_path.is_relative_to(Path.cwd()) else csv_path
+        rel_xlsx = xlsx_path.relative_to(Path.cwd()) if xlsx_path.is_relative_to(Path.cwd()) else xlsx_path
+        print(f"\n  Wrote {rel_csv}")
+        print(f"  Updated sheet '{plan_name}_Py' in {rel_xlsx}")
+    except Exception as e:  # noqa: BLE001 — diagnostic aid must not crash the run
+        print(f"\n  WARNING: truth table could not be written: {type(e).__name__}: {e}")
+
+
 def cmd_calibrate(args):
     """Run calibration: compute nc_cal and pvfb_term_current from AV targets."""
     from pension_model.core.pipeline import run_class_pipeline_e2e
@@ -238,6 +273,9 @@ def cmd_frs(args):
     output_dir.mkdir(parents=True, exist_ok=True)
     liability_stacked.to_csv(output_dir / "liability_stacked.csv", index=False)
 
+    # Truth table BEFORE tests so it prints regardless of --no-test
+    _emit_truth_table("frs", liability, funding, constants, output_dir)
+
     if not args.no_test:
         print("\nRunning tests...")
         tests_ok = run_tests()
@@ -286,6 +324,9 @@ def cmd_txtrs(args):
     liability_stacked.to_csv(output_dir / "liability_stacked.csv", index=False)
     funding_df.to_csv(output_dir / "funding.csv", index=False)
     print(f"  Output written to {output_dir}/")
+
+    # Truth table BEFORE tests so it prints regardless of --no-test
+    _emit_truth_table("txtrs", liability_results, funding_df, constants, output_dir)
 
     # Print summary
     row1 = liability_stacked.iloc[0]
