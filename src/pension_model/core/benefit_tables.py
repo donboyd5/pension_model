@@ -1138,18 +1138,19 @@ def build_benefit_val_table(
         how="left",
     )
 
-    # Join separation rates. Note: sep_rate_table is keyed by the sep_class
-    # (from constants.sep_class_map), which may differ from this row's
-    # class_name — e.g., FRS eso/eco/judges all share sep_class=regular. The
-    # join key is therefore (entry_year, entry_age, term_age, yos, term_year)
-    # without class_name; the sep table's own class_name column is dropped
-    # before the merge to avoid a spurious column collision.
-    # TODO (stacked rewrite, C6): make the join explicit by keying
-    # sep_rate_table on sep_class and joining via class_name -> sep_class map.
-    sep_cols = [c for c in sep_rate_table.columns if c != "class_name"]
+    # Join separation rates. sep_rate_table is keyed by sep_class, not
+    # class_name: FRS eco / eso / judges all share the "regular" sep rates
+    # via constants.sep_class_map. The caller (build_plan_benefit_tables)
+    # attaches a sep_class column to salary_benefit_table; we rename the
+    # sep_rate_table's own class_name column to sep_class and join on the
+    # full compound key so rows from different sep_classes with the same
+    # (entry_year, entry_age, term_age, yos, term_year) tuple cannot cross
+    # into each other's joins.
+    sep_rename = sep_rate_table.rename(columns={"class_name": "sep_class"})
     sbt = sbt.merge(
-        sep_rate_table[sep_cols],
-        on=["entry_year", "entry_age", "term_age", "yos", "term_year"],
+        sep_rename,
+        on=["sep_class", "entry_year", "entry_age", "term_age", "yos",
+            "term_year"],
         how="left",
     )
 
