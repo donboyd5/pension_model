@@ -8,23 +8,33 @@ survive the existing suite.
 
 History
 -------
-On 2026-04-04 `_build_mortality_from_csv` was found to hardcode the mortality
-table to "general" for every class, ignoring the per-class `base_table_map`
-in plan_config. This caused FRS special and admin classes to silently use
-general mortality rates instead of safety rates, which in turn made active
-annuity factors diverge from R by ~2-3% for those classes. The bug was
-invisible to the existing tests because they never called the stage 3 loader.
+Bugs discovered on 2026-04-04:
+
+1. `_build_mortality_from_csv` hardcoded the mortality table to "general"
+   for every class, ignoring the per-class `base_table_map` in plan_config.
+   Affected FRS special/admin (should use safety mortality).
+
+2. `compute_adjustment_ratio` used `headcount.iloc[:, 1:].sum().sum()`,
+   which assumes the legacy wide format (age + yos_2 + yos_7 + ...). Stage 3
+   uses long format (age, yos, count), so the `yos` column was silently
+   summed into the headcount denominator, deflating adj_ratio by ~0.3%.
+
+Both bugs were invisible to the existing 230-test FRS suite because those
+tests use ModelConstants + _load_frs_inputs (the Excel loader) and never
+touch the stage 3 code path.
 """
 
 import sys
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 FRS_CLASSES = ["regular", "special", "admin", "eco", "eso",
                "judges", "senior_management"]
+BASELINE = Path(__file__).parent.parent.parent / "baseline_outputs"
 
 
 @pytest.fixture(scope="module")
@@ -113,3 +123,40 @@ def test_stage3_mortality_uses_safety_table(class_name, frs_config):
         abs(cm_via_loader.get_rate(30, 2022, False)
             - cm_safety.get_rate(30, 2022, False)) < 1e-12
     ), f"{class_name} should load the safety table via base_table_map"
+
+
+# ---------------------------------------------------------------------------
+# Bug 2 regression: compute_adjustment_ratio must handle long-format headcount
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("class_name", ["regular", "special", "admin",
+                                        "senior_management"])
+def test_adj_ratio_handles_long_format(class_name, frs_config):
+    """`compute_adjustment_ratio` must sum the 'count' column for stage 3
+    long-format headcount, not `iloc[:, 1:].sum().sum()` which would add
+    the yos column values to the count.
+
+    Guards against: stage 3 headcount shape (age, yos, count) being summed
+    with the legacy wide-format logic, which silently inflates the
+    denominator by the sum of yos values and deflates adj_ratio by ~0.3%.
+    """
+    from pension_model.core.pipeline import compute_adjustment_ratio
+
+    demo_dir = Path(__file__).parent.parent.parent / "data" / "frs" / "demographics"
+    if not demo_dir.exists():
+        pytest.skip("Stage 3 FRS demographics not available")
+
+    hc_long = pd.read_csv(demo_dir / f"{class_name}_headcount.csv")
+    assert "count" in hc_long.columns, "stage 3 headcount must have count column"
+
+    adj = compute_adjustment_ratio(class_name, hc_long, frs_config, BASELINE)
+
+    # Independently compute expected value
+    expected_denom = float(hc_long["count"].sum())
+    expected_adj = (frs_config.class_data[class_name].total_active_member
+                    / expected_denom)
+
+    assert abs(adj - expected_adj) < 1e-12, (
+        f"{class_name}: adj_ratio={adj} but expected {expected_adj} "
+        f"from count.sum()={expected_denom}"
+    )
