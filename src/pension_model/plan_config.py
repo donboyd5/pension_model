@@ -253,6 +253,7 @@ class PlanConfig:
             funding_lag=self.funding_lag,
             amo_period_term=self.amo_period_term,
             amo_term_growth=self.amo_term_growth,
+            ava_smoothing=self.ava_smoothing,
         )
 
     @property
