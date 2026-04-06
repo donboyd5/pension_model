@@ -119,16 +119,7 @@ def build_plan_benefit_tables(
               and "cb" in constants.benefit_types
               and getattr(constants, "cash_balance", None) is not None)
 
-    # Reduction tables (TRS early-retire factor lookup) live on the config
-    # object as a side-attached dict. Attach from the first class that
-    # provides them; every class in a given plan shares the same tables.
-    for cn in classes:
-        rt = inputs_by_class[cn].get("_reduction_tables")
-        if rt is not None:
-            object.__setattr__(constants, "_reduce_tables", rt)
-            break
-
-    cm_by_class: dict = {}
+    cm_by_class = {cn: inputs_by_class[cn]["_compact_mortality"] for cn in classes}
     expected_icr_by_class: dict = {}
 
     sh_frames: list = []
@@ -138,7 +129,6 @@ def build_plan_benefit_tables(
 
     for cn in classes:
         inputs = inputs_by_class[cn]
-        cm_by_class[cn] = inputs["_compact_mortality"]
 
         adj_ratio = compute_adjustment_ratio(
             cn, inputs["headcount"], constants, baseline_dir,
@@ -963,15 +953,12 @@ def run_plan_pipeline(
         constants.classes, matching the old run_class_pipeline_e2e output
         shape per class.
     """
-    from pension_model.core.data_loader import load_plan_data
+    from pension_model.core.data_loader import load_plan_inputs
 
     classes = list(constants.classes)
 
-    # Load raw inputs once per class
-    inputs_by_class = {
-        cn: load_plan_data(cn, constants)
-        for cn in classes
-    }
+    # Load raw inputs for all classes; attaches reduction tables to config
+    inputs_by_class = load_plan_inputs(constants)
 
     if on_stage:
         on_stage("benefit_tables")

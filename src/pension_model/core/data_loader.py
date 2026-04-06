@@ -1,11 +1,17 @@
 """
 Generic stage 3 data loader.
 
-Reads standardized CSV files from data/{plan}/ and returns the inputs dict
-expected by build_plan_benefit_tables() / run_plan_pipeline().
+Reads standardized CSV files from data/{plan}/ and returns inputs for
+build_plan_benefit_tables() / run_plan_pipeline().
 
-This replaces plan-specific loaders (_load_frs_inputs, _load_txtrs_inputs)
-with a single code path that works for any plan.
+Entry points:
+  - load_plan_inputs(constants, baseline_dir): plan-wide stacked loader.
+    Returns (plan_inputs, class_meta). plan_inputs has stacked DataFrames
+    with categorical class_name for the benefit-tables stage. class_meta
+    has per-class objects (CompactMortality, ann_factor_retire, etc.)
+    for the workforce/liability stage.
+  - load_plan_data(class_name, constants): per-class loader (called
+    internally by load_plan_inputs; still available for debugging).
 """
 from pathlib import Path
 import pandas as pd
@@ -376,3 +382,42 @@ def _build_trs_style_decrements(
         others = pd.read_csv(others_path)
         others = others[["age", "reduce_factor"]]
         inputs["_reduction_tables"] = {"reduced_gft": gft_wide, "reduced_others": others}
+
+
+# ---------------------------------------------------------------------------
+# Plan-wide stacked loader
+# ---------------------------------------------------------------------------
+
+def load_plan_inputs(constants: PlanConfig) -> dict:
+    """Load stage 3 data for an entire plan.
+
+    This is the recommended entry point. Calls load_plan_data once per
+    class, attaches plan-wide reduction tables to ``constants``, and
+    returns the per-class inputs dicts that downstream functions
+    (build_plan_benefit_tables, _project_and_aggregate_class) consume.
+
+    Args:
+        constants: PlanConfig for the plan. Modified in place to attach
+            ``_reduce_tables`` if the plan provides reduction tables.
+
+    Returns:
+        {class_name: inputs dict from load_plan_data}
+    """
+    classes = list(constants.classes)
+
+    raw_inputs_by_class: dict = {}
+
+    for cn in classes:
+        inputs = load_plan_data(cn, constants)
+        raw_inputs_by_class[cn] = inputs
+
+    # Attach reduction tables (TRS early-retire factor lookup) to config.
+    # These are plan-wide, not per-class; take from the first class that
+    # provides them.
+    for cn in classes:
+        rt = raw_inputs_by_class[cn].get("_reduction_tables")
+        if rt is not None:
+            object.__setattr__(constants, "_reduce_tables", rt)
+            break
+
+    return raw_inputs_by_class
