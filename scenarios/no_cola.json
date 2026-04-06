@@ -1,0 +1,16 @@
+{
+  "name": "no_cola",
+  "description": "Eliminate all COLA for current and future retirees",
+  "overrides": {
+    "benefit": {
+      "cola": {
+        "tier_1_active": 0.0,
+        "tier_2_active": 0.0,
+        "tier_3_active": 0.0,
+        "current_retire": 0.0,
+        "current_retire_one_time": 0.0,
+        "one_time_cola": false
+      }
+    }
+  }
+}

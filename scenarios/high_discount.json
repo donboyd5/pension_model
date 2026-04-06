@@ -1,0 +1,11 @@
+{
+  "name": "high_discount",
+  "description": "Discount rate sensitivity: 7.5% (FRS baseline is 6.7%)",
+  "overrides": {
+    "economic": {
+      "dr_current": 0.075,
+      "dr_new": 0.075,
+      "model_return": 0.075
+    }
+  }
+}

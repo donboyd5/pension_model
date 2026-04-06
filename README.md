@@ -38,6 +38,7 @@ pension-model run frs --no-test        # run model only, skip tests
 pension-model run frs --test-only      # run tests only
 pension-model run frs --truth-table    # also write R-vs-Python truth table to Excel
 pension-model run txtrs --no-test      # run Texas TRS model
+pension-model run frs --no-test --scenario scenarios/high_discount.json
 ```
 
 Plans are auto-discovered from `plans/<plan>/config/plan_config.json`. Each plan
@@ -58,7 +59,8 @@ plans/
 ### Output
 
 Every plan produces the same console output (parameters, year 1/30 summary)
-and the same output files under `output/<plan>/`:
+and the same output files under `output/<plan>/` (or `output/<plan>/<scenario>/`
+when `--scenario` is used):
 
 | File | Contents |
 |------|----------|
@@ -71,6 +73,24 @@ With `--truth-table`, two additional files are written for R-vs-Python compariso
 |------|----------|
 | `truth_table.csv` | Plan-wide truth table (same columns as R baseline) |
 | `truth_tables.xlsx` | Shared workbook with R and Python sheets per plan |
+
+### Scenarios
+
+Scenarios override baseline assumptions while keeping calibration factors fixed.
+Create a JSON file with an `overrides` dict that deep-merges into the plan config:
+
+```json
+{
+  "name": "high_discount",
+  "description": "Discount rate sensitivity: 7.5%",
+  "overrides": {
+    "economic": { "dr_current": 0.075, "dr_new": 0.075, "model_return": 0.075 }
+  }
+}
+```
+
+See `scenarios/` for examples. Overridable sections: `economic`, `benefit.cola`,
+`funding` (amortization, smoothing), `ranges` (model_period).
 
 ## Calibration
 
