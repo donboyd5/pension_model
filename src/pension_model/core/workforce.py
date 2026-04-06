@@ -188,7 +188,7 @@ def project_workforce(
     # Deferred vested members use employee mortality until they reach a
     # retirement-eligible tier (norm/early), then switch to retiree mortality.
     # We batch-resolve tiers per term stock using resolve_tiers_vec.
-    from pension_model.plan_config import resolve_tiers_vec as _resolve_tiers_vec
+    from pension_model.plan_config import resolve_tiers_vec as _resolve_tiers_vec, EARLY
 
     ea_arr_int = np.array(entry_ages, dtype=np.int64)
 
@@ -279,12 +279,10 @@ def project_workforce(
             # Batch resolve tiers to determine mortality type
             if constants is not None:
                 cn_arr = np.full(len(nz_ei), class_name, dtype=object)
-                tiers = _resolve_tiers_vec(
+                _, ret_status = _resolve_tiers_vec(
                     constants, cn_arr, entry_yr, nz_age, yos_at_term,
                 )
-                is_ret = np.array(
-                    ["norm" in t_str or "early" in t_str for t_str in tiers]
-                )
+                is_ret = ret_status >= EARLY
             else:
                 # Fallback: all use employee mortality
                 is_ret = np.zeros(len(nz_ei), dtype=bool)

@@ -19,6 +19,16 @@ import numpy as np
 
 
 # ---------------------------------------------------------------------------
+# Retirement status constants — universal across all plans.
+# Ordered so status >= EARLY means retirement-eligible.
+# ---------------------------------------------------------------------------
+NON_VESTED = 0
+VESTED = 1
+EARLY = 2      # includes "reduced" (never produced, only defensively checked)
+NORM = 3
+
+
+# ---------------------------------------------------------------------------
 # Config dataclass
 # ---------------------------------------------------------------------------
 
@@ -94,6 +104,12 @@ class PlanConfig:
 
     # Precomputed: class→group mapping for fast lookup
     _class_to_group: Dict[str, str] = field(default_factory=dict)
+
+    # Precomputed tier lookup tables (built from tier_defs at init)
+    _tier_name_to_id: Dict[str, int] = field(default_factory=dict)
+    _tier_id_to_name: Tuple[str, ...] = ()
+    _tier_id_to_cola_key: Tuple[str, ...] = ()
+    _tier_id_to_fas_years: Tuple[int, ...] = ()
 
     # --- Derived properties ---
 
@@ -812,13 +828,18 @@ def _matches_any_vec(rules: list, age: np.ndarray,
     return result
 
 
+_STATUS_SUFFIX = {NON_VESTED: "_non_vested", VESTED: "_vested",
+                  EARLY: "_early", NORM: "_norm"}
+
+
 def resolve_tiers_vec(config: PlanConfig,
                       class_name: np.ndarray,
                       entry_year: np.ndarray,
                       age: np.ndarray,
                       yos: np.ndarray,
-                      entry_age: Optional[np.ndarray] = None) -> np.ndarray:
-    """Vectorized tier resolution — bit-identical to scalar get_tier.
+                      entry_age: Optional[np.ndarray] = None,
+                      ) -> Tuple[np.ndarray, np.ndarray]:
+    """Vectorized tier resolution — returns integer tier_id and ret_status.
 
     Args:
         class_name: object array of class name strings
@@ -827,7 +848,9 @@ def resolve_tiers_vec(config: PlanConfig,
             age - yos (matching scalar default behavior)
 
     Returns:
-        Object array of tier strings like 'tier_1_norm', 'grandfathered_early'.
+        (tier_id, ret_status) where:
+          tier_id: int32 array — index into config.tier_defs
+          ret_status: int8 array — NON_VESTED/VESTED/EARLY/NORM
     """
     entry_year = np.asarray(entry_year, dtype=np.int64)
     age = np.asarray(age, dtype=np.int64)
@@ -858,9 +881,9 @@ def resolve_tiers_vec(config: PlanConfig,
         gf_mask_global = np.zeros(n, dtype=bool)
 
     # Assign tier_def index to each row — first match wins
-    tier_idx = np.full(n, -1, dtype=np.int32)
+    tier_id = np.full(n, -1, dtype=np.int32)
     for i, td in enumerate(config.tier_defs):
-        unassigned = tier_idx == -1
+        unassigned = tier_id == -1
         if not unassigned.any():
             break
         if td.get("assignment") == "grandfathered_rule":
@@ -870,25 +893,24 @@ def resolve_tiers_vec(config: PlanConfig,
             mask &= unassigned
             if td.get("not_grandfathered"):
                 mask &= ~gf_mask_global
-        tier_idx[mask] = i
+        tier_id[mask] = i
 
     # Fallback: anything still unassigned gets the last tier def
-    tier_idx[tier_idx == -1] = len(config.tier_defs) - 1
+    tier_id[tier_id == -1] = len(config.tier_defs) - 1
 
-    # Resolve status per (tier_def, group) combination
-    result = np.empty(n, dtype=object)
+    # Resolve retirement status per (tier_def, group) combination
+    ret_status = np.full(n, NON_VESTED, dtype=np.int8)
     unique_groups = set(group.tolist())
     for ti, td in enumerate(config.tier_defs):
-        tier_name = td["name"]
         for grp in unique_groups:
-            combo_mask = (tier_idx == ti) & (group == grp)
+            combo_mask = (tier_id == ti) & (group == grp)
             if not combo_mask.any():
                 continue
 
             elig = _get_eligibility(td, grp, config.tier_defs)
 
             if not elig:
-                result[combo_mask] = f"{tier_name}_non_vested"
+                # NON_VESTED is already the default
                 continue
 
             sub_age = age[combo_mask]
@@ -901,45 +923,55 @@ def resolve_tiers_vec(config: PlanConfig,
             norm_m = _matches_any_vec(normal_rules, sub_age, sub_yos)
             early_m = _matches_any_vec(early_rules, sub_age, sub_yos) & ~norm_m
             vested_m = (sub_yos >= vesting_yos) & ~norm_m & ~early_m
-            nonvested_m = ~(norm_m | early_m | vested_m)
 
-            sub_result = np.empty(combo_mask.sum(), dtype=object)
-            sub_result[norm_m] = f"{tier_name}_norm"
-            sub_result[early_m] = f"{tier_name}_early"
-            sub_result[vested_m] = f"{tier_name}_vested"
-            sub_result[nonvested_m] = f"{tier_name}_non_vested"
+            sub_status = np.full(combo_mask.sum(), NON_VESTED, dtype=np.int8)
+            sub_status[norm_m] = NORM
+            sub_status[early_m] = EARLY
+            sub_status[vested_m] = VESTED
 
-            result[combo_mask] = sub_result
+            ret_status[combo_mask] = sub_status
 
+    return tier_id, ret_status
+
+
+def resolve_tiers_vec_str(config: PlanConfig,
+                          class_name: np.ndarray,
+                          entry_year: np.ndarray,
+                          age: np.ndarray,
+                          yos: np.ndarray,
+                          entry_age: Optional[np.ndarray] = None,
+                          ) -> np.ndarray:
+    """Backward-compatible wrapper: returns tier strings like 'tier_1_norm'.
+
+    Temporary — will be removed once all consumers migrate to integer encoding.
+    """
+    tier_id, ret_status = resolve_tiers_vec(
+        config, class_name, entry_year, age, yos, entry_age)
+    id_to_name = config._tier_id_to_name
+    result = np.empty(len(tier_id), dtype=object)
+    for i in range(len(tier_id)):
+        result[i] = id_to_name[tier_id[i]] + _STATUS_SUFFIX[ret_status[i]]
     return result
 
 
 def resolve_cola_vec(config: PlanConfig,
-                     tier: np.ndarray,
+                     tier_id: np.ndarray,
                      entry_year: np.ndarray,
                      yos: np.ndarray) -> np.ndarray:
-    """Vectorized COLA lookup — bit-identical to the _get_cola closure in
-    build_ann_factor_table.
+    """Vectorized COLA lookup — bit-identical to the _get_cola closure.
 
-    Matches each row's tier string against tier_def names (substring match,
-    first hit wins) and returns the prorated or flat COLA.
+    Uses integer tier_id to match tier_defs directly (no string operations).
     """
+    tier_id = np.asarray(tier_id, dtype=np.int32)
     entry_year = np.asarray(entry_year, dtype=np.int64)
     yos = np.asarray(yos, dtype=np.int64)
-    n = len(tier)
+    n = len(tier_id)
     cola_cutoff = config.cola_proration_cutoff_year
 
     result = np.zeros(n, dtype=np.float64)
-    assigned = np.zeros(n, dtype=bool)
 
-    # Use pandas str.contains for vectorized substring match (regex=False)
-    import pandas as pd
-    tier_s = pd.Series(tier)
-
-    for td in config.tier_defs:
-        td_name = td["name"]
-        contains = tier_s.str.contains(td_name, regex=False, na=False).values
-        mask = contains & ~assigned
+    for i, td in enumerate(config.tier_defs):
+        mask = tier_id == i
         if not mask.any():
             continue
 
@@ -960,15 +992,11 @@ def resolve_cola_vec(config: PlanConfig,
             with np.errstate(divide="ignore", invalid="ignore"):
                 safe_yos = np.where(sub_yos > 0, sub_yos, 1)
                 prorated = raw_cola * yos_b4 / safe_yos
-            # If yos <= 0, scalar returns raw_cola (skips proration branch)
             vals = np.where(sub_yos > 0, prorated, raw_cola)
             result[mask] = vals
         else:
             result[mask] = raw_cola
 
-        assigned |= mask
-
-    # Unassigned rows remain 0 (matching scalar fallback)
     return result
 
 
@@ -986,60 +1014,50 @@ def _resolve_ben_mult_rules(class_rules: dict, tier_base: str) -> Optional[dict]
     return rules
 
 
-def _tier_base_vec(tier: np.ndarray) -> np.ndarray:
-    """Vectorized version of the scalar tier_base extraction:
-      tier.split('_')[0] + '_' + tier.split('_')[1]  if '_' in tier else tier.
-    Preserves scalar behavior exactly, including cases like 'grandfathered_early'
-    → 'grandfathered_early' (not 'grandfathered').
-    """
-    result = np.empty(len(tier), dtype=object)
-    for i, t in enumerate(tier):
-        if "_" in t:
-            parts = t.split("_")
-            if len(parts) >= 2:
-                result[i] = parts[0] + "_" + parts[1]
-            else:
-                result[i] = t
-        else:
-            result[i] = t
-    return result
-
 
 def resolve_ben_mult_vec(config: PlanConfig,
                          class_name: np.ndarray,
-                         tier: np.ndarray,
+                         tier_id: np.ndarray,
+                         ret_status: np.ndarray,
                          dist_age: np.ndarray,
                          yos: np.ndarray,
                          dist_year: np.ndarray) -> np.ndarray:
-    """Vectorized benefit multiplier — bit-identical to scalar get_ben_mult."""
+    """Vectorized benefit multiplier — bit-identical to scalar get_ben_mult.
+
+    Uses integer tier_id for rule lookup (replaces _tier_base_vec string splitting)
+    and ret_status for early-retirement fallback (replaces str.contains).
+    """
+    tier_id = np.asarray(tier_id, dtype=np.int32)
+    ret_status = np.asarray(ret_status, dtype=np.int8)
     dist_age = np.asarray(dist_age, dtype=np.int64)
     yos = np.asarray(yos, dtype=np.int64)
     dist_year = np.asarray(dist_year, dtype=np.int64)
-    n = len(tier)
+    n = len(tier_id)
 
     result = np.full(n, np.nan, dtype=np.float64)
     bm_defs = config.benefit_mult_defs
+    id_to_name = config._tier_id_to_name
 
-    tier_base_arr = _tier_base_vec(tier)
-
-    # Group rows by (class_name, tier_base) — this is a small set (few dozen
-    # unique combos across FRS classes), so the outer loop is cheap.
+    # Group rows by (class_name, tier_id) — small set (few dozen combos)
     import pandas as pd
-    keys = pd.Series(list(zip(class_name.tolist(), tier_base_arr.tolist())))
-    for (cn, tb), idx in keys.groupby(keys).groups.items():
+    keys = pd.Series(list(zip(
+        class_name.tolist() if hasattr(class_name, 'tolist') else list(class_name),
+        tier_id.tolist(),
+    )))
+    for (cn, tid), idx in keys.groupby(keys).groups.items():
         idx_arr = np.asarray(idx, dtype=np.int64)
         class_rules = bm_defs.get(cn)
         if class_rules is None:
-            continue  # leaves NaN
+            continue
 
-        rules = _resolve_ben_mult_rules(class_rules, tb)
+        tier_name = id_to_name[tid]
+        rules = _resolve_ben_mult_rules(class_rules, tier_name)
         if rules is None:
             continue
 
         sub_age = dist_age[idx_arr]
         sub_yos = yos[idx_arr]
         sub_year = dist_year[idx_arr]
-        sub_tier = tier[idx_arr]
 
         if "flat" in rules:
             vals = np.full(len(idx_arr), rules["flat"], dtype=np.float64)
@@ -1051,7 +1069,6 @@ def resolve_ben_mult_vec(config: PlanConfig,
             continue
 
         if "graded" in rules:
-            # Evaluate graded entries in order — first match wins per row.
             sub_vals = np.full(len(idx_arr), np.nan, dtype=np.float64)
             assigned = np.zeros(len(idx_arr), dtype=bool)
             for entry in rules["graded"]:
@@ -1063,74 +1080,59 @@ def resolve_ben_mult_vec(config: PlanConfig,
                 if new_assign.any():
                     sub_vals[new_assign] = entry["mult"]
                     assigned |= new_assign
-            # Early-retire fallback for unmatched rows whose tier contains "early"
+            # Early-retire fallback for unmatched rows
             if "early_fallback" in rules:
-                early_s = pd.Series(sub_tier).str.contains("early", regex=False,
-                                                           na=False).values
-                fallback_mask = ~assigned & early_s
+                sub_ret_status = ret_status[idx_arr]
+                fallback_mask = ~assigned & (sub_ret_status == EARLY)
                 sub_vals[fallback_mask] = rules["early_fallback"]
             result[idx_arr] = sub_vals
             continue
-        # Unknown rule shape → leaves NaN
 
     return result
 
 
 def resolve_reduce_factor_vec(config: PlanConfig,
                               class_name: np.ndarray,
-                              tier: np.ndarray,
+                              tier_id: np.ndarray,
+                              ret_status: np.ndarray,
                               dist_age: np.ndarray,
                               yos: np.ndarray,
                               entry_year: np.ndarray) -> np.ndarray:
     """Vectorized early retirement reduction — bit-identical to get_reduce_factor.
 
-    Handles both FRS NRA-based (simple linear) and TRS rule-based (linear or
-    table lookup) reduction formulas.
+    Uses integer ret_status for norm/early dispatch (replaces str.contains)
+    and tier_id for tier_def lookup (replaces string rsplit).
     """
+    tier_id = np.asarray(tier_id, dtype=np.int32)
+    ret_status = np.asarray(ret_status, dtype=np.int8)
     dist_age = np.asarray(dist_age, dtype=np.int64)
     yos = np.asarray(yos, dtype=np.int64)
     entry_year = np.asarray(entry_year, dtype=np.int64)
-    n = len(tier)
+    n = len(tier_id)
 
     result = np.full(n, np.nan, dtype=np.float64)
 
-    import pandas as pd
-    tier_s = pd.Series(tier)
-    has_norm = tier_s.str.contains("norm", regex=False, na=False).values
-    has_early = tier_s.str.contains("early", regex=False, na=False).values
-    has_reduced = tier_s.str.contains("reduced", regex=False, na=False).values
-
     # Normal retirement → 1.0
-    result[has_norm] = 1.0
+    result[ret_status == NORM] = 1.0
 
-    # Neither early nor reduced → NaN (leaves default)
-    needs_reduction = (has_early | has_reduced) & ~has_norm
+    # Early retirement needs reduction factor
+    needs_reduction = ret_status == EARLY
     if not needs_reduction.any():
         return result
 
-    # Extract tier_name via scalar logic: tier.rsplit('_', 1)[0] if '_' in tier else tier
-    # Examples: 'tier_1_early' → 'tier_1', 'grandfathered_early' → 'grandfathered'
-    tier_name_arr = np.empty(n, dtype=object)
-    for i in range(n):
-        if needs_reduction[i]:
-            t = tier[i]
-            tier_name_arr[i] = t.rsplit("_", 1)[0] if "_" in t else t
-
-    # Resolve per (class_name, tier_name) group
+    # Resolve per (class_name, tier_id) group
+    import pandas as pd
     reduce_tables = getattr(config, "_reduce_tables", None)
-    keys = pd.Series(list(zip(class_name.tolist(), tier_name_arr.tolist())))
+    id_to_name = config._tier_id_to_name
+    keys = pd.Series(list(zip(class_name.tolist(), tier_id.tolist())))
     keys = keys[needs_reduction]
-    for (cn, tname), idx in keys.groupby(keys).groups.items():
+    for (cn, tid), idx in keys.groupby(keys).groups.items():
         idx_arr = np.asarray(idx, dtype=np.int64)
-        if tname is None:
-            continue
+
+        tname = id_to_name[tid]
 
         # Find tier def + follow early_retire_reduction_same_as chain
-        tier_def = None
-        for td in config.tier_defs:
-            if td["name"] == tname:
-                tier_def = td
-                break
+        tier_def = config.tier_defs[tid]
         if tier_def is None:
             continue
 
@@ -1279,6 +1281,18 @@ def load_plan_config(config_path: Path,
             ben = dict(ben)
             ben["cal_factor"] = cal_raw["cal_factor"]
 
+    # Build tier lookup tables from tier_defs
+    tier_defs_raw = raw.get("tiers", [])
+    tier_name_to_id = {td["name"]: i for i, td in enumerate(tier_defs_raw)}
+    tier_id_to_name = tuple(td["name"] for td in tier_defs_raw)
+    tier_id_to_cola_key = tuple(
+        td.get("cola_key", "tier_1_active") for td in tier_defs_raw
+    )
+    fas_default = ben.get("fas_years_default", 5)
+    tier_id_to_fas_years = tuple(
+        td.get("fas_years", fas_default) for td in tier_defs_raw
+    )
+
     config = PlanConfig(
         plan_name=raw["plan_name"],
         plan_description=raw.get("plan_description", ""),
@@ -1329,6 +1343,10 @@ def load_plan_config(config_path: Path,
         calibration=calibration,
 
         _class_to_group=class_to_group,
+        _tier_name_to_id=tier_name_to_id,
+        _tier_id_to_name=tier_id_to_name,
+        _tier_id_to_cola_key=tier_id_to_cola_key,
+        _tier_id_to_fas_years=tier_id_to_fas_years,
     )
 
     return config

@@ -13,6 +13,7 @@ from pension_model.plan_config import (
     get_ben_mult,
     get_reduce_factor,
     resolve_tiers_vec,
+    resolve_tiers_vec_str,
     resolve_cola_vec,
     resolve_ben_mult_vec,
     resolve_reduce_factor_vec,
@@ -86,7 +87,7 @@ def test_resolve_tiers_vec_matches_scalar(plan_loader, grid_builder):
         for i in range(len(rows))
     ], dtype=object)
 
-    actual = resolve_tiers_vec(config, cn, ey, age, yos)
+    actual = resolve_tiers_vec_str(config, cn, ey, age, yos)
 
     mismatches = np.where(expected != actual)[0]
     if len(mismatches) > 0:
@@ -110,7 +111,7 @@ def test_resolve_tiers_vec_entry_age_override_frs():
     # Override with 25 (earlier entry)
     ea_override = np.array([25, 0], dtype=np.int64)  # second row falls back
 
-    actual = resolve_tiers_vec(config, cn, ey, age, yos, entry_age=ea_override)
+    actual = resolve_tiers_vec_str(config, cn, ey, age, yos, entry_age=ea_override)
     expected = np.array([
         get_tier(config, "regular", 2000, 40, 10, entry_age=25),
         get_tier(config, "regular", 2000, 40, 10, entry_age=30),
@@ -148,15 +149,16 @@ def test_resolve_cola_vec_matches_scalar(plan_loader, grid_builder):
     rows = grid_builder()
     cn, ey, age, yos = _rows_to_arrays(rows)
 
-    # First resolve tiers so we have realistic tier strings
-    tiers = resolve_tiers_vec(config, cn, ey, age, yos)
+    # Resolve tiers (string for scalar comparison, integer for vectorized)
+    tiers_str = resolve_tiers_vec_str(config, cn, ey, age, yos)
+    tier_id, ret_status = resolve_tiers_vec(config, cn, ey, age, yos)
 
     expected = np.array([
-        _scalar_cola(config, tiers[i], int(ey[i]), int(yos[i]))
+        _scalar_cola(config, tiers_str[i], int(ey[i]), int(yos[i]))
         for i in range(len(rows))
     ], dtype=np.float64)
 
-    actual = resolve_cola_vec(config, tiers, ey, yos)
+    actual = resolve_cola_vec(config, tier_id, ey, yos)
 
     assert np.allclose(actual, expected, equal_nan=True), \
         f"COLA mismatch. Max diff: {np.nanmax(np.abs(actual - expected))}"
@@ -175,18 +177,18 @@ def test_resolve_ben_mult_vec_matches_scalar(plan_loader, grid_builder):
     rows = grid_builder()
     cn, ey, age, yos = _rows_to_arrays(rows)
 
-    # Resolve tiers; ben_mult uses tier_at_dist_age with dist_age=age
-    tiers = resolve_tiers_vec(config, cn, ey, age, yos)
-    # dist_year = entry_year + (age - entry_age) = entry_year + yos
+    # Resolve tiers (string for scalar, integer for vectorized)
+    tiers_str = resolve_tiers_vec_str(config, cn, ey, age, yos)
+    tier_id, ret_status = resolve_tiers_vec(config, cn, ey, age, yos)
     dist_year = ey + yos
 
     expected = np.array([
-        get_ben_mult(config, rows[i][0], tiers[i], int(age[i]), int(yos[i]),
+        get_ben_mult(config, rows[i][0], tiers_str[i], int(age[i]), int(yos[i]),
                      int(dist_year[i]))
         for i in range(len(rows))
     ], dtype=np.float64)
 
-    actual = resolve_ben_mult_vec(config, cn, tiers, age, yos, dist_year)
+    actual = resolve_ben_mult_vec(config, cn, tier_id, ret_status, age, yos, dist_year)
 
     assert np.allclose(actual, expected, equal_nan=True), \
         f"ben_mult mismatch. Max diff: {np.nanmax(np.abs(actual - expected))}"
@@ -205,15 +207,16 @@ def test_resolve_reduce_factor_vec_matches_scalar(plan_loader, grid_builder):
     rows = grid_builder()
     cn, ey, age, yos = _rows_to_arrays(rows)
 
-    tiers = resolve_tiers_vec(config, cn, ey, age, yos)
+    tiers_str = resolve_tiers_vec_str(config, cn, ey, age, yos)
+    tier_id, ret_status = resolve_tiers_vec(config, cn, ey, age, yos)
 
     expected = np.array([
-        get_reduce_factor(config, rows[i][0], tiers[i], int(age[i]),
+        get_reduce_factor(config, rows[i][0], tiers_str[i], int(age[i]),
                           int(yos[i]), int(ey[i]))
         for i in range(len(rows))
     ], dtype=np.float64)
 
-    actual = resolve_reduce_factor_vec(config, cn, tiers, age, yos, ey)
+    actual = resolve_reduce_factor_vec(config, cn, tier_id, ret_status, age, yos, ey)
 
     # Both should match (including NaN positions)
     nan_match = np.isnan(expected) == np.isnan(actual)

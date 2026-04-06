@@ -19,12 +19,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pension_model.plan_config import (
-    get_tier as pc_get_tier,
-    get_ben_mult as pc_get_ben_mult,
-    get_reduce_factor as pc_get_reduce_factor,
-    get_sep_type as pc_get_sep_type,
-)
+
 from pension_model.core.benefit_tables import (
     build_salary_headcount_table,
     build_entrant_profile,
@@ -66,15 +61,6 @@ def compute_adjustment_ratio(class_name: str, headcount: pd.DataFrame,
         return 2075 / combined_raw  # eco_eso_judges_total_active_member_
     return constants.class_data[class_name].total_active_member / _headcount_total(headcount)
 
-
-def _make_callables(constants, class_name=None):
-    """Create tier/benefit callables from a PlanConfig."""
-    return (
-        lambda cn, ey, age, yos, ny=None, **kw: pc_get_tier(constants, cn, ey, age, yos),
-        lambda cn, tier, da, yos, dy=0: pc_get_ben_mult(constants, cn, tier, da, yos, dy),
-        lambda cn, tier, da, yos=0, ey=0: pc_get_reduce_factor(constants, cn, tier, da, yos, ey),
-        pc_get_sep_type,
-    )
 
 
 def build_plan_benefit_tables(
@@ -820,13 +806,13 @@ def _project_and_aggregate_class(
     """
     from pension_model.core.workforce import project_workforce
 
-    _, _, _, sep_type_fn = _make_callables(constants)
+    from pension_model.core.benefit_tables import _resolve_sep_type_vec
 
     bvt = class_tables["benefit_val"]
     fbt = class_tables["final_benefit"]
     bvt_bd = bvt[["entry_year", "entry_age", "yos", "term_age",
-                  "tier_at_term_age"]].copy()
-    bvt_bd["sep_type"] = bvt_bd["tier_at_term_age"].apply(sep_type_fn)
+                  "ret_status"]].copy()
+    bvt_bd["sep_type"] = _resolve_sep_type_vec(bvt_bd["ret_status"].values)
     bvt_bd["ben_decision"] = bvt_bd["sep_type"].map(
         {"retire": "retire", "vested": "mix", "non_vested": "refund"})
     bvt_bd.loc[bvt_bd["yos"] == 0, "ben_decision"] = np.nan
