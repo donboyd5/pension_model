@@ -293,9 +293,13 @@ def _execute_pipeline(constants):
 def _run_plan(constants, args):
     """Run any plan's pipeline and emit standardized output."""
     plan_name = constants.plan_name
+    scenario = constants.scenario_name
 
+    header = f"{plan_name.upper()} Pension Model Pipeline"
+    if scenario:
+        header += f"  [scenario: {scenario}]"
     print("=" * 60)
-    print(f"{plan_name.upper()} Pension Model Pipeline")
+    print(header)
     print("=" * 60)
 
     t0 = time.time()
@@ -307,7 +311,10 @@ def _run_plan(constants, args):
     print_parameters(constants)
 
     # Summary
-    output_dir = OUTPUT_BASE / plan_name
+    if scenario:
+        output_dir = OUTPUT_BASE / plan_name / scenario
+    else:
+        output_dir = OUTPUT_BASE / plan_name
     summary = build_plan_summary(plan_name, liability, funding, constants)
     print_summary_table(summary)
     _write_outputs(summary, liability_stacked, output_dir)
@@ -416,9 +423,11 @@ def cmd_run(args):
 
     config_path = plans[args.plan]
     cal_path = config_path.parent / "calibration.json"
+    scenario_path = Path(args.scenario) if args.scenario else None
     constants = load_plan_config(
         config_path,
         calibration_path=cal_path if cal_path.exists() else None,
+        scenario_path=scenario_path,
     )
 
     _run_plan(constants, args)
@@ -459,6 +468,8 @@ def main():
     run_p.add_argument("--test-only", action="store_true", help="Run tests only, skip the model")
     run_p.add_argument("--truth-table", action="store_true",
                        help="Write R-vs-Python truth table to CSV and Excel")
+    run_p.add_argument("--scenario", type=str, default=None,
+                       help="Path to scenario JSON file (overrides baseline assumptions)")
 
     cal = subparsers.add_parser("calibrate", help="Compute calibration factors")
     cal.add_argument("plan_name", choices=discovered or None,

@@ -114,6 +114,11 @@ class PlanConfig:
 
     # --- Derived properties ---
 
+    @property
+    def scenario_name(self) -> Optional[str]:
+        """Name of the active scenario, or None for baseline."""
+        return self.raw.get("_scenario_name")
+
     # --- Modeling behavioral flags ---
 
     def resolve_data_dir(self) -> Path:
@@ -1259,16 +1264,43 @@ def get_plan_design_ratios(config: PlanConfig, class_name: str) -> Tuple[float, 
 # Loader
 # ---------------------------------------------------------------------------
 
+def _deep_merge(base: dict, overrides: dict) -> dict:
+    """Recursively merge overrides into base dict (returns a new dict)."""
+    result = dict(base)
+    for key, val in overrides.items():
+        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
+            result[key] = _deep_merge(result[key], val)
+        else:
+            result[key] = val
+    return result
+
+
 def load_plan_config(config_path: Path,
-                     calibration_path: Optional[Path] = None) -> PlanConfig:
+                     calibration_path: Optional[Path] = None,
+                     scenario_path: Optional[Path] = None) -> PlanConfig:
     """Load a PlanConfig from a JSON file.
 
     Args:
         config_path: Path to plan_config.json
         calibration_path: Optional path to calibration.json (overrides)
+        scenario_path: Optional path to a scenario JSON file. The
+            ``overrides`` dict is deep-merged into the plan config before
+            constructing PlanConfig. Calibration factors are not affected.
     """
     with open(config_path) as f:
         raw = json.load(f)
+
+    # Apply scenario overrides (before calibration, so calibration wins)
+    scenario_name = None
+    if scenario_path is not None:
+        with open(scenario_path) as f:
+            scenario = json.load(f)
+        scenario_name = scenario.get("name", scenario_path.stem)
+        raw = _deep_merge(raw, scenario.get("overrides", {}))
+
+    # Stash scenario name in raw for downstream access
+    if scenario_name:
+        raw["_scenario_name"] = scenario_name
 
     eco = raw["economic"]
     ben = raw["benefit"]
