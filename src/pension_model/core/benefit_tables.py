@@ -241,8 +241,6 @@ def build_salary_benefit_table(
                    salary, fas, db_ee_balance, cumprod_salary_increase,
                    [cb_ee_cont, cb_er_cont, cb_ee_balance, cb_er_balance, cb_balance]
     """
-    from pension_model.plan_config import resolve_tiers_vec
-
     r = constants.ranges
     econ = constants.economic
     ben = constants.benefit
@@ -291,10 +289,13 @@ def build_salary_benefit_table(
     })
 
     # Vectorized tier at term_age (resolve_tiers_vec takes (class, ey, age, yos))
+    from pension_model.plan_config import resolve_tiers_vec as _resolve_tiers_int
     cn_arr = np.full(len(df), class_name, dtype=object)
-    df["tier_at_term_age"] = resolve_tiers_vec(
+    tier_id_arr, ret_status_arr = _resolve_tiers_int(
         constants, cn_arr, ey_flat, term_age_flat, yos_flat,
     )
+    df["tier_id"] = tier_id_arr
+    df["ret_status"] = ret_status_arr
 
     # Join entrant profile for start_sal
     df = df.merge(entrant_profile[["entry_age", "start_sal"]], on="entry_age", how="left")
@@ -323,13 +324,9 @@ def build_salary_benefit_table(
         * (1 + econ.payroll_growth) ** (df["entry_year"] - max_hist_year),
     )
 
-    # FAS period: config-driven from tier definition
-    tier_bases = df["tier_at_term_age"].str.extract(r"^(\w+)$|^(\w+_\w+)")[1].fillna(
-        df["tier_at_term_age"].str.extract(r"^(\w+_\w+)_")[0]
-    ).fillna(df["tier_at_term_age"])
-    df["fas_period"] = tier_bases.map(
-        lambda t: constants.get_fas_years(t) if pd.notna(t) else constants.fas_years_default
-    ).astype(int)
+    # FAS period: direct lookup from tier_id
+    fas_by_tier = np.array(constants._tier_id_to_fas_years, dtype=np.int64)
+    df["fas_period"] = fas_by_tier[df["tier_id"].values]
 
     # Drop rows with NaN salary (entry_age not in profile)
     df = df[df["salary"].notna()].copy()
@@ -405,7 +402,7 @@ def build_salary_benefit_table(
 
     df = df[df["salary"].notna()].copy()
 
-    out_cols = ["entry_year", "entry_age", "yos", "term_age", "tier_at_term_age",
+    out_cols = ["entry_year", "entry_age", "yos", "term_age", "tier_id", "ret_status",
                 "salary", "fas", "db_ee_balance", "cumprod_salary_increase"]
     # Include CB columns if they were computed
     for col in ["cb_ee_cont", "cb_er_cont", "cb_ee_balance", "cb_er_balance", "cb_balance"]:
@@ -450,8 +447,6 @@ def build_separation_rate_table(
         DataFrame: entry_year, entry_age, term_age, yos, term_year,
                    separation_rate, remaining_prob, separation_prob, class_name
     """
-    from pension_model.plan_config import resolve_tiers_vec
-
     r = constants.ranges
 
     # Age group breaks and labels matching R's cut()
@@ -522,26 +517,34 @@ def build_separation_rate_table(
     )
 
     # Vectorized tier at term_age
+    from pension_model.plan_config import resolve_tiers_vec as _resolve_tiers_int
     n = len(df)
     cn_arr = np.full(n, class_name, dtype=object)
-    df["tier_at_term_age"] = resolve_tiers_vec(
+    tid_arr, rs_arr = _resolve_tiers_int(
         constants,
         cn_arr,
         df["entry_year"].values.astype(np.int64),
         df["term_age"].values.astype(np.int64),
         df["yos"].values.astype(np.int64),
     )
+    df["tier_id"] = tid_arr
+    df["ret_status"] = rs_arr
 
-    # Separation rate depends on tier
-    tier = df["tier_at_term_age"]
+    # Separation rate depends on tier_id and ret_status
+    from pension_model.plan_config import NORM, EARLY
+    t1_id = constants._tier_name_to_id.get("tier_1", -1)
+    is_tier_1 = tid_arr == t1_id
+    is_tier_23 = ~is_tier_1
+    is_norm = rs_arr == NORM
+    is_early = rs_arr == EARLY
     df["separation_rate"] = np.where(
-        tier.isin(["tier_3_norm", "tier_2_norm"]), df["normal_retire_rate_tier_2"],
+        is_tier_23 & is_norm, df["normal_retire_rate_tier_2"],
         np.where(
-            tier.isin(["tier_3_early", "tier_2_early"]), df["early_retire_rate_tier_2"],
+            is_tier_23 & is_early, df["early_retire_rate_tier_2"],
             np.where(
-                tier == "tier_1_norm", df["normal_retire_rate_tier_1"],
+                is_tier_1 & is_norm, df["normal_retire_rate_tier_1"],
                 np.where(
-                    tier == "tier_1_early", df["early_retire_rate_tier_1"],
+                    is_tier_1 & is_early, df["early_retire_rate_tier_1"],
                     df["term_rate"],  # vested or non_vested
                 ),
             ),
@@ -593,12 +596,14 @@ def build_ann_factor_table(
 
     Returns:
         DataFrame with columns (class_name, entry_year, entry_age, yos,
-        dist_age, dist_year, term_year, tier_at_dist_age, dr, cola,
+        dist_age, dist_year, term_year, tier_id_at_da, ret_status_at_da, dr, cola,
         mort_final, cum_dr, cum_mort, cum_cola, cum_mort_dr,
         cum_mort_dr_cola, ann_factor) plus (surv_icr, ann_factor_acr)
         when CB is active for any class.
     """
-    from pension_model.plan_config import resolve_tiers_vec, resolve_cola_vec
+    from pension_model.plan_config import (
+        resolve_tiers_vec as _resolve_tiers_int, resolve_cola_vec, EARLY,
+    )
 
     econ = constants.economic
     r = constants.ranges
@@ -613,15 +618,12 @@ def build_ann_factor_table(
     cohorts = cohorts[term_age_c <= max_age].reset_index(drop=True)
 
     # --- 2. Cross-join with dist_age range, filter dist_age >= term_age ---
-    # np.repeat + per-cohort dist_age range via concatenation (avoids 2x waste)
     term_ages = cohorts["entry_age"].values + cohorts["yos"].values
     n_per_cohort = max_age - term_ages + 1
-    # Repeat cohort columns
     cn_arr = np.repeat(cohorts["class_name"].values, n_per_cohort)
     ey_arr = np.repeat(cohorts["entry_year"].values, n_per_cohort).astype(np.int64)
     ea_arr = np.repeat(cohorts["entry_age"].values, n_per_cohort).astype(np.int64)
     yos_arr = np.repeat(cohorts["yos"].values, n_per_cohort).astype(np.int64)
-    # dist_age ranges concatenated
     dist_age_arr = np.concatenate([
         np.arange(ta, max_age + 1, dtype=np.int64) for ta in term_ages
     ])
@@ -629,19 +631,17 @@ def build_ann_factor_table(
     dist_year_arr = ey_arr + dist_age_arr - ea_arr
     term_year_arr = ey_arr + yos_arr
 
-    # --- 3. Vectorized tier-at-dist-age resolution ---
-    tier_arr = resolve_tiers_vec(constants, cn_arr, ey_arr, dist_age_arr, yos_arr)
+    # --- 3. Vectorized tier-at-dist-age resolution (integer) ---
+    tid_da, rs_da = _resolve_tiers_int(constants, cn_arr, ey_arr, dist_age_arr, yos_arr)
 
     # --- 4. Discount rate (single value across all current plans) ---
     dr_arr = np.full(len(dist_age_arr), econ.dr_current, dtype=np.float64)
 
-    # --- 5. Vectorized COLA ---
-    cola_arr = resolve_cola_vec(constants, tier_arr, ey_arr, yos_arr)
+    # --- 5. Vectorized COLA (now takes tier_id, not string) ---
+    cola_arr = resolve_cola_vec(constants, tid_da, ey_arr, yos_arr)
 
-    # --- 6. Mortality — per-class slice (each class has its own CompactMortality) ---
-    tier_s = pd.Series(tier_arr)
-    is_retiree_arr = (tier_s.str.contains("norm", regex=False, na=False)
-                      | tier_s.str.contains("early", regex=False, na=False)).values
+    # --- 6. Mortality — per-class slice ---
+    is_retiree_arr = rs_da >= EARLY
     mort_arr = np.zeros(len(dist_age_arr), dtype=np.float64)
     for cn, cm in compact_mortality_by_class.items():
         cmask = cn_arr == cn
@@ -650,7 +650,6 @@ def build_ann_factor_table(
         sub_ages = dist_age_arr[cmask]
         sub_years = np.clip(dist_year_arr[cmask], cm.min_year, cm.max_year)
         sub_is_ret = is_retiree_arr[cmask]
-        # Fetch both statuses vectorized, then select per row
         emp_rates = cm.get_rates_vec(sub_ages, sub_years, is_retiree=False)
         ret_rates = cm.get_rates_vec(sub_ages, sub_years, is_retiree=True)
         mort_arr[cmask] = np.where(sub_is_ret, ret_rates, emp_rates)
@@ -665,7 +664,8 @@ def build_ann_factor_table(
         "yos": yos_arr,
         "term_year": term_year_arr,
         "mort_final": mort_arr,
-        "tier_at_dist_age": tier_arr,
+        "tier_id_at_da": tid_da,
+        "ret_status_at_da": rs_da,
         "dr": dr_arr,
         "cola": cola_arr,
     })
@@ -780,11 +780,12 @@ def build_benefit_table(
         how="left",
     )
 
-    # Vectorized benefit multiplier and reduction factor
+    # Vectorized benefit multiplier and reduction factor (integer tier/status)
     df["ben_mult"] = resolve_ben_mult_vec(
         constants,
         df["class_name"].values,
-        df["tier_at_dist_age"].values,
+        df["tier_id_at_da"].values,
+        df["ret_status_at_da"].values,
         df["dist_age"].values.astype(np.int64),
         df["yos"].values.astype(np.int64),
         df["dist_year"].values.astype(np.int64),
@@ -792,7 +793,8 @@ def build_benefit_table(
     df["reduce_factor"] = resolve_reduce_factor_vec(
         constants,
         df["class_name"].values,
-        df["tier_at_dist_age"].values,
+        df["tier_id_at_da"].values,
+        df["ret_status_at_da"].values,
         df["dist_age"].values.astype(np.int64),
         df["yos"].values.astype(np.int64),
         df["entry_year"].values.astype(np.int64),
@@ -852,13 +854,12 @@ def build_final_benefit_table(benefit_table: pd.DataFrame,
     bt = benefit_table.copy()
     bt["term_age"] = bt["entry_age"] + bt["yos"]
 
-    # FRS R uses earliest NORMAL retirement age for vested distribution
-    # (is_norm_retire_elig). TRS R uses earliest ANY retirement age including
-    # early (can_retire). We use can_retire when use_earliest_retire=True.
+    # Retirement eligibility from integer ret_status
+    from pension_model.plan_config import EARLY, NORM, VESTED
     if use_earliest_retire:
-        bt["can_retire"] = bt["tier_at_dist_age"].str.contains("norm|early|reduced")
+        bt["can_retire"] = bt["ret_status_at_da"] >= EARLY  # norm, early
     else:
-        bt["can_retire"] = bt["tier_at_dist_age"].str.contains("norm")
+        bt["can_retire"] = bt["ret_status_at_da"] == NORM
 
     # Determine distribution age per (class_name, entry_year, entry_age, term_age)
     # R formula: retire_age = n() - sum(can_retire) + min(retire_age)
@@ -868,7 +869,7 @@ def build_final_benefit_table(benefit_table: pd.DataFrame,
         "count": g["can_retire"].transform("count"),
         "retire_count": g["can_retire"].transform("sum"),
         "min_dist_age": g["dist_age"].transform("min"),
-        "term_status": g["tier_at_dist_age"].transform("first"),
+        "term_ret_status": g["ret_status_at_da"].transform("first"),
     })
     dist_age_df["earliest_retire_age"] = (
         dist_age_df["count"] - dist_age_df["retire_count"] + dist_age_df["min_dist_age"]
@@ -878,8 +879,7 @@ def build_final_benefit_table(benefit_table: pd.DataFrame,
 
     # For vested (not non_vested): use earliest_norm_retire_age
     # For non_vested and retirees: use term_age
-    is_vested = (dist_age_df["term_status"].str.contains("vested")
-                 & ~dist_age_df["term_status"].str.contains("non_vested"))
+    is_vested = dist_age_df["term_ret_status"] == VESTED
     dist_age_df["dist_age"] = np.where(
         is_vested, dist_age_df["earliest_retire_age"], dist_age_df["term_age"]
     ).astype(int)
@@ -1056,26 +1056,16 @@ def _get_pvfb_cb(
     return pvfb_cb
 
 
-def _resolve_sep_type_vec(tier: np.ndarray) -> np.ndarray:
-    """Vectorized get_sep_type — bit-identical to the scalar version.
+def _resolve_sep_type_vec(ret_status: np.ndarray) -> np.ndarray:
+    """Vectorized get_sep_type using integer ret_status.
 
-    Scalar logic: retire if tier contains any of (early, norm, reduced);
-    else non_vested if tier contains 'non_vested';
-    else vested if tier contains 'vested';
-    else non_vested.
+    Returns string sep_type: "retire" | "vested" | "non_vested".
     """
-    tier_s = pd.Series(tier)
-    has_retire = (tier_s.str.contains("early", regex=False, na=False)
-                  | tier_s.str.contains("norm", regex=False, na=False)
-                  | tier_s.str.contains("reduced", regex=False, na=False)).values
-    has_nonvested = tier_s.str.contains("non_vested", regex=False, na=False).values
-    has_vested = tier_s.str.contains("vested", regex=False, na=False).values
-
-    result = np.full(len(tier), "non_vested", dtype=object)
-    # Order matches scalar: retire > non_vested > vested > fallthrough(non_vested)
-    result[has_vested & ~has_nonvested] = "vested"
-    result[has_nonvested] = "non_vested"
-    result[has_retire] = "retire"
+    from pension_model.plan_config import EARLY, VESTED
+    ret_status = np.asarray(ret_status, dtype=np.int8)
+    result = np.full(len(ret_status), "non_vested", dtype=object)
+    result[ret_status == VESTED] = "vested"
+    result[ret_status >= EARLY] = "retire"  # EARLY or NORM
     return result
 
 
@@ -1147,11 +1137,11 @@ def build_benefit_val_table(
         how="left",
     )
 
-    # Vectorized separation type
-    sbt["sep_type"] = _resolve_sep_type_vec(sbt["tier_at_term_age"].values)
-    sbt["dr"] = np.where(
-        sbt["tier_at_term_age"].str.contains("tier_3"), econ.dr_new, econ.dr_current
-    )
+    # Vectorized separation type (from integer ret_status)
+    sbt["sep_type"] = _resolve_sep_type_vec(sbt["ret_status"].values)
+    # Discount rate by tier_id
+    tier_3_id = constants._tier_name_to_id.get("tier_3", -1)
+    sbt["dr"] = np.where(sbt["tier_id"] == tier_3_id, econ.dr_new, econ.dr_current)
 
     # PVFB at termination: mix of annuity and refund based on sep_type.
     # Retirees get full annuity PV; vested get retire_refund_ratio-weighted
