@@ -1138,18 +1138,11 @@ def build_benefit_val_table(
         how="left",
     )
 
-    # Join separation rates. sep_rate_table is keyed by sep_class, not
-    # class_name: FRS eco / eso / judges all share the "regular" sep rates
-    # via constants.sep_class_map. The caller (build_plan_benefit_tables)
-    # attaches a sep_class column to salary_benefit_table; we rename the
-    # sep_rate_table's own class_name column to sep_class and join on the
-    # full compound key so rows from different sep_classes with the same
-    # (entry_year, entry_age, term_age, yos, term_year) tuple cannot cross
-    # into each other's joins.
-    sep_rename = sep_rate_table.rename(columns={"class_name": "sep_class"})
+    # Join separation rates. Each class now owns its own decrement data,
+    # so the sep_rate_table carries class_name matching sbt's class_name.
     sbt = sbt.merge(
-        sep_rename,
-        on=["sep_class", "entry_year", "entry_age", "term_age", "yos",
+        sep_rate_table,
+        on=["class_name", "entry_year", "entry_age", "term_age", "yos",
             "term_year"],
         how="left",
     )

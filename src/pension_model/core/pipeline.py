@@ -96,23 +96,19 @@ def build_plan_benefit_tables(
     individual builders are fast and the outputs are stacked
     immediately via pd.concat.
 
-    separation_rate is built once per unique sep_class (FRS eco / eso /
-    judges all share regular's sep rates via constants.sep_class_map)
-    and the stacked frame is keyed by sep_class rather than class_name.
+    Each class owns its own decrement files, so separation_rate is built
+    once per class (no sep_class indirection).
 
     Args:
         inputs_by_class: dict {class_name: inputs dict from load_plan_data}.
         constants: PlanConfig.
-        baseline_dir: Baseline directory (for cross-class sep_class files
-            the FRS combined eco/eso/judges pool reads during
-            compute_adjustment_ratio).
+        baseline_dir: Baseline directory (for compute_adjustment_ratio).
 
     Returns:
         Dict of stacked DataFrames keyed by:
           salary_headcount, entrant_profile, salary_benefit,
-          separation_rate (keyed by sep_class), ann_factor, benefit,
-          final_benefit, benefit_val.
-        Every frame except separation_rate carries class_name.
+          separation_rate, ann_factor, benefit, final_benefit, benefit_val.
+        Every frame carries class_name.
     """
     from pension_model.core.benefit_tables import build_ann_factor_table
 
@@ -123,35 +119,22 @@ def build_plan_benefit_tables(
               and "cb" in constants.benefit_types
               and getattr(constants, "cash_balance", None) is not None)
 
-    # Reduction tables (TRS early-retire factor lookup) live on the config
-    # object as a side-attached dict. Attach from the first class that
-    # provides them; every class in a given plan shares the same tables.
-    for cn in classes:
-        rt = inputs_by_class[cn].get("_reduction_tables")
-        if rt is not None:
-            object.__setattr__(constants, "_reduce_tables", rt)
-            break
-
-    cm_by_class: dict = {}
+    cm_by_class = {cn: inputs_by_class[cn]["_compact_mortality"] for cn in classes}
     expected_icr_by_class: dict = {}
 
     sh_frames: list = []
     ep_frames: list = []
     sbt_frames: list = []
     sep_frames: list = []
-    sep_built_for: set = set()
 
     for cn in classes:
         inputs = inputs_by_class[cn]
-        cm_by_class[cn] = inputs["_compact_mortality"]
-        sep_class = constants.get_sep_class(cn)
 
         adj_ratio = compute_adjustment_ratio(
             cn, inputs["headcount"], constants, baseline_dir,
         )
 
-        # Per-class ICR (only for CB plans) — compute once and pass into
-        # build_salary_benefit_table for this class's CB balance accumulation.
+        # Per-class ICR (only for CB plans)
         actual_icr_series = None
         if has_cb:
             from pension_model.core.icr import (
@@ -188,78 +171,41 @@ def build_plan_benefit_tables(
         ep_tagged = ep.copy()
         ep_tagged["class_name"] = cn
 
-        # Step 2: salary/benefit (uses the class's own entrant profile)
+        # Step 2: salary/benefit
         sbt = build_salary_benefit_table(
             sh, ep, inputs["salary_growth"], cn, constants,
             actual_icr_series=actual_icr_series,
         )
 
-        # Step 3: separation rate — dedupe by sep_class. eco/eso/judges
-        # share "regular"; the first class that asks for a given sep_class
-        # builds it (using its own sep_class's salary/headcount data) and
-        # subsequent classes reference the already-built frame by key.
-        if sep_class not in sep_built_for:
-            if "_separation_rate" in inputs:
-                sep = inputs["_separation_rate"]
-            else:
-                # Build the sep_class's own entrant profile for use here.
-                # When sep_class == cn, reuse the ep we already have.
-                if sep_class == cn:
-                    sep_ep = ep
-                else:
-                    sep_sal = pd.read_csv(baseline_dir / f"{sep_class}_salary.csv")
-                    sep_hc = pd.read_csv(baseline_dir / f"{sep_class}_headcount.csv")
-                    sep_adj = compute_adjustment_ratio(
-                        sep_class, sep_hc, constants, baseline_dir,
-                    )
-                    sep_sh = build_salary_headcount_table(
-                        sep_sal, sep_hc, inputs["salary_growth"],
-                        sep_class, sep_adj, constants.ranges.start_year,
-                        constants=constants,
-                    )
-                    sep_ep = build_entrant_profile(sep_sh)
-                sep = build_separation_rate_table(
-                    inputs["term_rate_avg"], inputs["normal_retire_tier1"],
-                    inputs["normal_retire_tier2"], inputs["early_retire_tier1"],
-                    inputs["early_retire_tier2"], sep_ep, sep_class, constants,
-                )
-            sep_frames.append(sep)
-            sep_built_for.add(sep_class)
+        # Step 3: separation rate — each class owns its own decrement data
+        if "_separation_rate" in inputs:
+            sep = inputs["_separation_rate"]
+        else:
+            sep = build_separation_rate_table(
+                inputs["term_rate_avg"], inputs["normal_retire_tier1"],
+                inputs["normal_retire_tier2"], inputs["early_retire_tier1"],
+                inputs["early_retire_tier2"], ep, cn, constants,
+            )
 
         sh_frames.append(sh)
         ep_frames.append(ep_tagged)
         sbt_frames.append(sbt)
+        sep_frames.append(sep)
 
     salary_headcount = pd.concat(sh_frames, ignore_index=True)
     entrant_profile = pd.concat(ep_frames, ignore_index=True)
     salary_benefit = pd.concat(sbt_frames, ignore_index=True)
     separation_rate = pd.concat(sep_frames, ignore_index=True)
 
-    # Attach sep_class to salary_benefit so build_benefit_val_table can join
-    # sep rates correctly when two classes share a sep_class (FRS eco / eso /
-    # judges all point at 'regular'). sep_rate_table is keyed on sep_class,
-    # not class_name, so without this column the merge could fan out across
-    # sep_classes with colliding (entry_year, entry_age, ...) tuples.
-    sep_class_map = {cn: constants.get_sep_class(cn) for cn in classes}
-    salary_benefit["sep_class"] = salary_benefit["class_name"].map(sep_class_map)
-
-    # Convert class_name and sep_class to pandas Categorical across every
-    # plan-wide frame. class_name is drawn from a fixed small set
-    # (constants.classes) and sep_class from an even smaller set; downstream
-    # pandas groupby / merge / sort operations hash and compare categorical
-    # int codes rather than Python str objects, which is materially faster
-    # on the large stacked frames (the plan-wide benefit_table has hundreds
-    # of thousands of rows). This has no effect on computed values — it's a
-    # pure encoding change.
+    # Convert class_name to pandas Categorical across every plan-wide frame.
+    # Downstream pandas groupby / merge / sort operations hash and compare
+    # categorical int codes rather than Python str objects, which is
+    # materially faster on the large stacked frames.
     class_cat = pd.CategoricalDtype(categories=list(classes))
-    sep_cat = pd.CategoricalDtype(
-        categories=sorted({sep_class_map[cn] for cn in classes})
-    )
     salary_headcount["class_name"] = salary_headcount["class_name"].astype(class_cat)
     entrant_profile["class_name"] = entrant_profile["class_name"].astype(class_cat)
     salary_benefit["class_name"] = salary_benefit["class_name"].astype(class_cat)
-    salary_benefit["sep_class"] = salary_benefit["sep_class"].astype(sep_cat)
-    separation_rate["class_name"] = separation_rate["class_name"].astype(sep_cat)
+    separation_rate["class_name"] = separation_rate["class_name"].astype(class_cat)
 
     # --- Stacked builders: one call each, spanning every class at once ---
     ann_factor = build_ann_factor_table(
@@ -946,35 +892,25 @@ def _project_and_aggregate_class(
     return result
 
 
-def _split_plan_tables_by_class(plan_tables: dict, classes: list,
-                                sep_class_map: dict) -> dict:
+def _split_plan_tables_by_class(plan_tables: dict, classes: list) -> dict:
     """Split plan-wide stacked tables into per-class views in one pass each.
 
     Returns {class_name: {table_name: DataFrame}}.
 
     Uses dict(tuple(df.groupby("class_name"))) which does a single O(n) pass
-    per frame instead of 7 full-frame boolean-index scans (N classes × M
-    frames = N*M scans otherwise). For separation_rate, the group key is
-    sep_class rather than class_name, so we build a sep_class-keyed dict
-    once and then map each class to its sep_class's slice.
+    per frame instead of N full-frame boolean-index scans. Every frame,
+    including separation_rate, is keyed by class_name — there is no
+    sep_class indirection.
 
     The class_name column is stripped from the sliced frames; inside the
     per-class projection step it is redundant (every row has the same
     value) and it measurably slows downstream .iterrows() calls in
     project_workforce.
     """
-    # Build sep_class-keyed slices for separation_rate once
-    sep_df = plan_tables["separation_rate"]
-    sep_by_class = dict(tuple(sep_df.groupby("class_name", sort=False)))
-
-    # Build class_name-keyed slices for every other table once
     by_table_then_class: dict = {}
     for name, df in plan_tables.items():
-        if name == "separation_rate":
-            continue
         if "class_name" in df.columns:
             groups = dict(tuple(df.groupby("class_name", sort=False)))
-            # Drop the redundant class_name column from each slice
             by_table_then_class[name] = {
                 cn: g.drop(columns=["class_name"]).reset_index(drop=True)
                 for cn, g in groups.items()
@@ -982,15 +918,10 @@ def _split_plan_tables_by_class(plan_tables: dict, classes: list,
         else:
             by_table_then_class[name] = {cn: df for cn in classes}
 
-    # Assemble per-class dicts
     result: dict = {}
     for cn in classes:
-        tables = {name: slices.get(cn) for name, slices in by_table_then_class.items()}
-        sep_slice = sep_by_class.get(sep_class_map[cn])
-        if sep_slice is not None:
-            sep_slice = sep_slice.drop(columns=["class_name"]).reset_index(drop=True)
-        tables["separation_rate"] = sep_slice
-        result[cn] = tables
+        result[cn] = {name: slices.get(cn)
+                      for name, slices in by_table_then_class.items()}
     return result
 
 
@@ -1022,15 +953,12 @@ def run_plan_pipeline(
         constants.classes, matching the old run_class_pipeline_e2e output
         shape per class.
     """
-    from pension_model.core.data_loader import load_plan_data
+    from pension_model.core.data_loader import load_plan_inputs
 
     classes = list(constants.classes)
 
-    # Load raw inputs once per class
-    inputs_by_class = {
-        cn: load_plan_data(cn, constants.get_sep_class(cn), constants)
-        for cn in classes
-    }
+    # Load raw inputs for all classes; attaches reduction tables to config
+    inputs_by_class = load_plan_inputs(constants)
 
     if on_stage:
         on_stage("benefit_tables")
@@ -1038,10 +966,7 @@ def run_plan_pipeline(
 
     # Split stacked tables into per-class views once (single groupby pass
     # per frame) instead of re-scanning inside the per-class loop.
-    sep_class_map = {cn: constants.get_sep_class(cn) for cn in classes}
-    class_tables_by_name = _split_plan_tables_by_class(
-        plan_tables, classes, sep_class_map,
-    )
+    class_tables_by_name = _split_plan_tables_by_class(plan_tables, classes)
 
     liability = {}
     n = len(classes)

@@ -84,10 +84,6 @@
     "default": ["all"]
   },
 
-  "sep_class_map": {
-    "all": "all"
-  },
-
   "tiers": [
     {
       "name": "grandfathered",

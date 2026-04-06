@@ -73,16 +73,6 @@
     "admin": "regular_group"
   },
 
-  "sep_class_map": {
-    "regular": "regular",
-    "special": "special",
-    "admin": "admin",
-    "eco": "eco",
-    "eso": "regular",
-    "judges": "judges",
-    "senior_management": "senior_management"
-  },
-
   "tiers": [
     {
       "name": "tier_1",
