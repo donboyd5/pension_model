@@ -6,6 +6,7 @@ Usage:
     pension-model run <plan>              # run plan model + tests
     pension-model run <plan> --no-test    # run plan model only
     pension-model run <plan> --test-only  # tests only (no model run)
+    pension-model run <plan> --truth-table  # also write R-vs-Python truth table
     pension-model calibrate <plan>        # compute calibration factors
     pension-model list                    # list discovered plans
 
@@ -26,6 +27,10 @@ BASELINE = Path("baseline_outputs")
 OUTPUT_BASE = Path("output")
 
 
+# ---------------------------------------------------------------------------
+# Formatting helpers
+# ---------------------------------------------------------------------------
+
 def _fmt_dollars(val):
     """Format a dollar value in billions."""
     return f"${val / 1e9:.1f}B"
@@ -36,8 +41,221 @@ def _fmt_pct(val):
     return f"{val * 100:.1f}%"
 
 
-def run_pipeline(constants):
-    """Run liability + funding pipeline for all groups in a plan."""
+def _fmt_smoothing(cfg):
+    """Describe asset smoothing from config dict."""
+    sm = cfg.ava_smoothing
+    method = sm.get("method", "unknown")
+    if method == "corridor":
+        lo = sm.get("corridor_low", 0.8)
+        hi = sm.get("corridor_high", 1.2)
+        recog = sm.get("gain_loss_recognition", 0.2)
+        return f"corridor ({lo:.0%}-{hi:.0%} of MVA), {recog:.0%}/yr gain-loss recognition"
+    elif method == "gain_loss":
+        period = sm.get("recognition_period", 4)
+        return f"{period}-year gain-loss recognition"
+    else:
+        return method
+
+
+# ---------------------------------------------------------------------------
+# Plan summary — standardized analysis output for any plan
+# ---------------------------------------------------------------------------
+
+# Columns in summary.csv (plan-wide, by year).
+SUMMARY_COLUMNS = [
+    "plan", "year",
+    "n_active", "payroll", "benefits",
+    "aal", "ual_ava", "ual_mva",
+    "er_cont", "ee_cont",
+    "mva", "ava", "invest_income",
+    "fr_mva", "fr_ava",
+]
+
+
+def _col(df, *names):
+    """Return the first matching column's values, or None."""
+    for n in names:
+        if n in df.columns:
+            return df[n].values
+    return None
+
+
+def _col_sum(df, *name_pairs):
+    """Sum two columns (legacy + new pattern). Return None if neither found."""
+    a = _col(df, *name_pairs[0]) if isinstance(name_pairs[0], tuple) else _col(df, name_pairs[0])
+    b = _col(df, *name_pairs[1]) if isinstance(name_pairs[1], tuple) else _col(df, name_pairs[1])
+    if a is not None and b is not None:
+        return a + b
+    return a if a is not None else b
+
+
+def build_plan_summary(plan_name, liability, funding, constants):
+    """Build a plan-wide summary DataFrame with standardized columns.
+
+    Works for any plan — extracts the same metrics regardless of whether
+    funding is a dict-of-DataFrames (FRS) or a single DataFrame (TRS).
+    This is the primary analysis output; it persists even after truth
+    tables are retired.
+    """
+    classes = list(constants.classes)
+
+    # Sum headcounts across all classes
+    n_active = None
+    for cn in classes:
+        col = liability[cn]["total_n_active"].values
+        n_active = col if n_active is None else n_active + col
+
+    # Get aggregate funding — FRS uses a plan-level key, TRS is a single df
+    if isinstance(funding, dict):
+        f = funding.get(plan_name, funding.get(classes[0]))
+    else:
+        f = funding
+
+    year = _col(f, "year", "fy")
+    payroll = _col(f, "total_payroll", "payroll")
+    benefits = _col_sum(f, ("ben_payment_legacy",), ("ben_payment_new",))
+    if benefits is None:
+        benefits = _col(f, "total_ben_payment")
+    aal = _col(f, "total_aal", "AAL")
+    ava = _col(f, "total_ava", "AVA")
+    mva = _col(f, "total_mva", "MVA")
+    ual_ava = _col(f, "total_ual_ava", "UAL_AVA")
+    ual_mva = _col(f, "total_ual_mva", "UAL_MVA")
+    er_cont = _col(f, "total_er_cont", "er_cont")
+    ee_cont = _col_sum(f, ("ee_nc_cont_legacy",), ("ee_nc_cont_new",))
+    if ee_cont is None:
+        ee_cont = _col(f, "total_ee_nc_cont")
+    fr_ava = _col(f, "fr_ava", "FR_AVA")
+    fr_mva = _col(f, "fr_mva", "FR_MVA")
+    invest_income = _col_sum(
+        f,
+        ("exp_inv_earnings_ava_legacy", "exp_inv_income_legacy"),
+        ("exp_inv_earnings_ava_new", "exp_inv_income_new"),
+    )
+
+    n_rows = len(year) if year is not None else len(f)
+
+    def _safe(arr):
+        return arr if arr is not None else np.full(n_rows, np.nan)
+
+    return pd.DataFrame({
+        "plan": plan_name,
+        "year": pd.array(year, dtype="Int64") if year is not None else range(n_rows),
+        "n_active": _safe(n_active),
+        "payroll": _safe(payroll),
+        "benefits": _safe(benefits),
+        "aal": _safe(aal),
+        "ual_ava": _safe(ual_ava),
+        "ual_mva": _safe(ual_mva),
+        "er_cont": _safe(er_cont),
+        "ee_cont": _safe(ee_cont),
+        "mva": _safe(mva),
+        "ava": _safe(ava),
+        "invest_income": _safe(invest_income),
+        "fr_mva": _safe(fr_mva),
+        "fr_ava": _safe(fr_ava),
+    })[SUMMARY_COLUMNS]
+
+
+# ---------------------------------------------------------------------------
+# Console output
+# ---------------------------------------------------------------------------
+
+def print_parameters(constants):
+    """Print key model parameters."""
+    ec = constants.economic
+    bn = constants.benefit
+    fn = constants.funding
+    rn = constants.ranges
+
+    print(f"\n  Parameters (baseline defaults):")
+    print(f"    Discount rate:          {ec.dr_current:.1%}")
+    print(f"    Investment return:      {ec.model_return:.1%}")
+    print(f"    Payroll growth:         {ec.payroll_growth:.2%}")
+    print(f"    Inflation:              {ec.inflation:.1%}")
+    print(f"    COLA (retirees):        {bn.cola_current_retire:.0%}")
+    print(f"    Funding policy:         {fn.funding_policy}")
+    print(f"    Amortization:           {fn.amo_method}, {fn.amo_period_new}-year period")
+    print(f"    Asset smoothing:        {_fmt_smoothing(fn)}")
+    print(f"    Projection horizon:     {rn.model_period} years ({rn.start_year}-{rn.start_year + rn.model_period})")
+    print(f"    Plan config:            {constants.plan_name}")
+
+
+def print_summary_table(summary):
+    """Print year 1 / year 30 comparison table to console."""
+    y1 = summary.iloc[0]
+    y_last = summary.iloc[min(29, len(summary) - 1)]
+
+    print(f"\n  Summary (all groups combined):")
+    print(f"  {'':30s} {'Year 1 (' + str(int(y1['year'])) + ')':>16s}  {'Year ' + str(min(30, len(summary))) + ' (' + str(int(y_last['year'])) + ')':>16s}")
+    print(f"  {'Assets (AVA)':30s} {_fmt_dollars(y1['ava']):>16s}  {_fmt_dollars(y_last['ava']):>16s}")
+    print(f"  {'Assets (MVA)':30s} {_fmt_dollars(y1['mva']):>16s}  {_fmt_dollars(y_last['mva']):>16s}")
+    print(f"  {'Liabilities (AAL)':30s} {_fmt_dollars(y1['aal']):>16s}  {_fmt_dollars(y_last['aal']):>16s}")
+    print(f"  {'Unfunded liability (UAL)':30s} {_fmt_dollars(y1['ual_ava']):>16s}  {_fmt_dollars(y_last['ual_ava']):>16s}")
+    print(f"  {'Funded ratio (AVA)':30s} {_fmt_pct(y1['fr_ava']):>16s}  {_fmt_pct(y_last['fr_ava']):>16s}")
+    print(f"  {'Funded ratio (MVA)':30s} {_fmt_pct(y1['fr_mva']):>16s}  {_fmt_pct(y_last['fr_mva']):>16s}")
+    print(f"  {'Active members':30s} {y1['n_active']:>16,.0f}  {y_last['n_active']:>16,.0f}")
+    print(f"  {'Payroll':30s} {_fmt_dollars(y1['payroll']):>16s}  {_fmt_dollars(y_last['payroll']):>16s}")
+    print(f"  {'Benefit payments':30s} {_fmt_dollars(y1['benefits']):>16s}  {_fmt_dollars(y_last['benefits']):>16s}")
+    print(f"  {'Employer contributions':30s} {_fmt_dollars(y1['er_cont']):>16s}  {_fmt_dollars(y_last['er_cont']):>16s}")
+    print(f"  {'Employee contributions':30s} {_fmt_dollars(y1['ee_cont']):>16s}  {_fmt_dollars(y_last['ee_cont']):>16s}")
+
+
+def _write_outputs(summary, liability_stacked, output_dir):
+    """Write summary.csv and liability_stacked.csv."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    summary.to_csv(output_dir / "summary.csv", index=False)
+    liability_stacked.to_csv(output_dir / "liability_stacked.csv", index=False)
+
+    rel = output_dir.relative_to(Path.cwd()) if output_dir.is_relative_to(Path.cwd()) else output_dir
+    print(f"\n  Files:")
+    print(f"    {rel}/summary.csv            - plan-wide summary by year")
+    print(f"    {rel}/liability_stacked.csv  - liability detail by class and year")
+
+
+# ---------------------------------------------------------------------------
+# Truth table (optional, for R-vs-Python comparison)
+# ---------------------------------------------------------------------------
+
+def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
+    """Build the Python truth table, write CSV + Excel sheet.
+
+    Called only when --truth-table is passed. Failures are logged but
+    do not abort the run — the truth table is a diagnostic aid.
+    """
+    try:
+        from pension_model.truth_table import (
+            build_python_truth_table,
+            upsert_sheet_to_excel,
+        )
+
+        df = build_python_truth_table(plan_name, liability, funding, constants)
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = output_dir / "truth_table.csv"
+        df.to_csv(csv_path, index=False)
+
+        xlsx_path = OUTPUT_BASE / "truth_tables.xlsx"
+        upsert_sheet_to_excel(df, xlsx_path, f"{plan_name}_Py")
+
+        rel_csv = csv_path.relative_to(Path.cwd()) if csv_path.is_relative_to(Path.cwd()) else csv_path
+        rel_xlsx = xlsx_path.relative_to(Path.cwd()) if xlsx_path.is_relative_to(Path.cwd()) else xlsx_path
+        print(f"    {rel_csv}")
+        print(f"    {rel_xlsx} (sheet '{plan_name}_Py')")
+    except Exception as e:  # noqa: BLE001 — diagnostic aid must not crash the run
+        print(f"\n  WARNING: truth table could not be written: {type(e).__name__}: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Plan-specific pipeline executors
+#
+# Each returns (liability_dict, funding_obj, liability_stacked).
+# The funding object shape varies by plan (dict for FRS, DataFrame for TRS)
+# but build_plan_summary() normalizes them into a common format.
+# ---------------------------------------------------------------------------
+
+def _execute_frs(constants):
+    """Run FRS liability + funding pipeline."""
     from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import load_funding_inputs, compute_funding
 
@@ -46,7 +264,6 @@ def run_pipeline(constants):
     print("  Building benefit tables, workforce, and liabilities (this may take a while)...")
     liability = run_plan_pipeline(constants, BASELINE, progress=True)
 
-    # Stacked liability: single DataFrame with plan_name + class_name columns
     liability_frames = []
     for cn in classes:
         df = liability[cn].copy()
@@ -62,118 +279,72 @@ def run_pipeline(constants):
     return liability, funding, liability_stacked
 
 
-def print_parameters(constants):
-    """Print key model parameters."""
-    ec = constants.economic
-    bn = constants.benefit
-    fn = constants.funding
-    rn = constants.ranges
+def _execute_txtrs(constants):
+    """Run Texas TRS liability + funding pipeline."""
+    from pension_model.core.pipeline import run_plan_pipeline
+    from pension_model.core.funding_model import compute_funding_trs
+    from pension_model.core.txtrs_loader import load_txtrs_funding_data
 
-    print(f"\n  Parameters (baseline defaults):")
-    print(f"    Discount rate:          {ec.dr_current:.1%}")
-    print(f"    Investment return:      {ec.model_return:.1%}")
-    print(f"    Payroll growth:         {ec.payroll_growth:.2%}")
-    print(f"    Inflation:              {ec.inflation:.1%}")
-    print(f"    COLA (current retire):  {bn.cola_current_retire:.0%}")
-    print(f"    Funding policy:         {fn.funding_policy}")
-    print(f"    Amortization method:    {fn.amo_method}, {fn.amo_period_new}-year period")
-    print(f"    Projection horizon:     {rn.model_period} years ({rn.start_year}-{rn.start_year + rn.model_period})")
-    print(f"    Plan config:            {constants.plan_name}")
-    print(f"    Mortality table:        Pub-2010, MP-2018 improvement scale")
+    print("  Building benefit tables, workforce, and liabilities (this may take a while)...")
+    liability = run_plan_pipeline(constants, BASELINE, progress=True)
 
+    liability_frames = []
+    for cn in constants.classes:
+        df = liability[cn].copy()
+        df["plan_name"] = constants.plan_name
+        df["class_name"] = cn
+        liability_frames.append(df)
+    liability_stacked = pd.concat(liability_frames, ignore_index=True)
 
-def write_output(funding, classes, output_dir):
-    """Write summary CSV and print console summary."""
-    # Aggregate across all groups by year
-    frames = []
-    for cn in classes:
-        df = funding[cn][["year", "total_aal", "total_ava", "total_ual_ava",
-                          "total_er_cont", "total_payroll", "fr_ava"]].copy()
-        df["group"] = cn
-        frames.append(df)
-    all_groups = pd.concat(frames, ignore_index=True)
+    print("  Computing funding...")
+    raw_dir = Path("R_model/R_model_txtrs")
+    funding_inputs = load_txtrs_funding_data(raw_dir)
+    funding = compute_funding_trs(liability["all"], funding_inputs, constants)
 
-    totals = all_groups.groupby("year").agg(
-        aal=("total_aal", "sum"),
-        ava=("total_ava", "sum"),
-        ual=("total_ual_ava", "sum"),
-        er_cont=("total_er_cont", "sum"),
-        payroll=("total_payroll", "sum"),
-    ).reset_index()
-    totals["funded_ratio"] = np.divide(
-        totals["ava"].values, totals["aal"].values,
-        out=np.zeros(len(totals)), where=totals["aal"].values != 0)
-
-    # Write detailed CSV
-    output_dir.mkdir(parents=True, exist_ok=True)
-    csv_path = output_dir / "funding_summary.csv"
-    totals.to_csv(csv_path, index=False)
-
-    # Also write per-group detail
-    all_groups.to_csv(output_dir / "funding_by_group.csv", index=False)
-
-    # Console summary
-    y1 = totals.iloc[0]
-    y30 = totals.iloc[min(29, len(totals) - 1)]
-
-    print(f"\n  Summary (all groups combined):")
-    print(f"  {'':30s} {'Year 1 (' + str(int(y1['year'])) + ')':>16s}  {'Year 30 (' + str(int(y30['year'])) + ')':>16s}")
-    print(f"  {'Assets (AVA)':30s} {_fmt_dollars(y1['ava']):>16s}  {_fmt_dollars(y30['ava']):>16s}")
-    print(f"  {'Liabilities (AAL)':30s} {_fmt_dollars(y1['aal']):>16s}  {_fmt_dollars(y30['aal']):>16s}")
-    print(f"  {'Unfunded liability (UAL)':30s} {_fmt_dollars(y1['ual']):>16s}  {_fmt_dollars(y30['ual']):>16s}")
-    print(f"  {'Funded ratio':30s} {_fmt_pct(y1['funded_ratio']):>16s}  {_fmt_pct(y30['funded_ratio']):>16s}")
-    print(f"  {'Employer contribution':30s} {_fmt_dollars(y1['er_cont']):>16s}  {_fmt_dollars(y30['er_cont']):>16s}")
-
-    rel = output_dir.relative_to(Path.cwd()) if output_dir.is_relative_to(Path.cwd()) else output_dir
-    print(f"\n  Files:")
-    print(f"    {rel}/funding_summary.csv   - plan-wide totals by year")
-    print(f"    {rel}/funding_by_group.csv  - detail by group and year")
-    print(f"    {rel}/liability_stacked.csv - liability by class and year")
+    return liability, funding, liability_stacked
 
 
-def run_tests():
-    """Run all baseline validation and unit tests via pytest."""
-    import subprocess
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", "tests/test_pension_model/", "-v", "--tb=short"],
-    )
-    return result.returncode == 0
+_PIPELINE_EXECUTORS = {
+    "frs": _execute_frs,
+    "txtrs": _execute_txtrs,
+}
 
 
-def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
-    """Build the Python truth table, write CSV + Excel sheet, log to stdout.
+# ---------------------------------------------------------------------------
+# Unified plan runner
+# ---------------------------------------------------------------------------
 
-    Called before tests run so users always see the aggregate comparison
-    even when tests are skipped. Failures here are logged but do not abort
-    the run — the truth table is a diagnostic aid, not a gate.
-    """
-    try:
-        from pension_model.truth_table import (
-            build_python_truth_table,
-            format_truth_table_for_log,
-            upsert_sheet_to_excel,
-        )
+def _run_plan(constants, args):
+    """Run any plan's pipeline and emit standardized output."""
+    plan_name = constants.plan_name
 
-        df = build_python_truth_table(plan_name, liability, funding, constants)
+    print("=" * 60)
+    print(f"{plan_name.upper()} Pension Model Pipeline")
+    print("=" * 60)
 
-        # CSV next to the other outputs
-        output_dir.mkdir(parents=True, exist_ok=True)
-        csv_path = output_dir / "truth_table.csv"
-        df.to_csv(csv_path, index=False)
+    t0 = time.time()
+    executor = _PIPELINE_EXECUTORS[plan_name]
+    liability, funding, liability_stacked = executor(constants)
+    elapsed = time.time() - t0
+    print(f"  Pipeline complete: {elapsed:.0f}s")
 
-        # Python sheet in the shared workbook (preserves frozen R sheets)
-        xlsx_path = OUTPUT_BASE / "truth_tables.xlsx"
-        upsert_sheet_to_excel(df, xlsx_path, f"{plan_name}_Py")
+    # Parameters
+    print_parameters(constants)
 
-        print("\n  Truth table (Python, plan-wide):")
-        print(format_truth_table_for_log(df))
-        rel_csv = csv_path.relative_to(Path.cwd()) if csv_path.is_relative_to(Path.cwd()) else csv_path
-        rel_xlsx = xlsx_path.relative_to(Path.cwd()) if xlsx_path.is_relative_to(Path.cwd()) else xlsx_path
-        print(f"\n  Wrote {rel_csv}")
-        print(f"  Updated sheet '{plan_name}_Py' in {rel_xlsx}")
-    except Exception as e:  # noqa: BLE001 — diagnostic aid must not crash the run
-        print(f"\n  WARNING: truth table could not be written: {type(e).__name__}: {e}")
+    # Summary
+    output_dir = OUTPUT_BASE / plan_name
+    summary = build_plan_summary(plan_name, liability, funding, constants)
+    print_summary_table(summary)
+    _write_outputs(summary, liability_stacked, output_dir)
 
+    # Truth table (optional)
+    if args.truth_table:
+        _emit_truth_table(plan_name, liability, funding, constants, output_dir)
+
+
+# ---------------------------------------------------------------------------
+# Calibration
+# ---------------------------------------------------------------------------
 
 def cmd_calibrate(args):
     """Run calibration: compute nc_cal and pvfb_term_current from AV targets."""
@@ -202,7 +373,7 @@ def cmd_calibrate(args):
 
     t0 = time.time()
 
-    # Load config without calibration → neutral (nc_cal=1.0, pvfb_term_current=0)
+    # Load config without calibration -> neutral (nc_cal=1.0, pvfb_term_current=0)
     constants = load_plan_config(config_path, calibration_path=Path("__no_calibration__"))
     cal_factor = constants.benefit.cal_factor
     classes = list(constants.classes)
@@ -233,102 +404,24 @@ def cmd_calibrate(args):
 
 
 # ---------------------------------------------------------------------------
-# Per-plan runners
-#
-# Each plan currently has its own funding pipeline shape (FRS uses the
-# per-class dict + compute_funding; TRS uses compute_funding_trs on the
-# single 'all' class), so we dispatch internally. Collapsing these into a
-# single generic runner is goal 2b — removing the legacy loaders — which
-# will come next on its own branch.
+# Tests
 # ---------------------------------------------------------------------------
 
-def _run_frs(constants, args):
-    """Run the FRS liability + funding pipeline and emit outputs."""
-    print("=" * 60)
-    print("FRS Pension Model Pipeline")
-    print("=" * 60)
-
-    t0 = time.time()
-    liability, funding, liability_stacked = run_pipeline(constants)
-    elapsed = time.time() - t0
-    print(f"  Pipeline complete: {elapsed:.0f}s")
-
-    output_dir = OUTPUT_BASE / constants.plan_name
-    print_parameters(constants)
-    write_output(funding, list(constants.classes), output_dir)
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    liability_stacked.to_csv(output_dir / "liability_stacked.csv", index=False)
-
-    # Truth table BEFORE tests so it prints regardless of --no-test
-    _emit_truth_table(constants.plan_name, liability, funding, constants, output_dir)
+def run_tests():
+    """Run all baseline validation and unit tests via pytest."""
+    import subprocess
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "tests/test_pension_model/", "-v", "--tb=short"],
+    )
+    return result.returncode == 0
 
 
-def _run_txtrs(constants, args):
-    """Run the Texas TRS liability + funding pipeline and emit outputs."""
-    from pension_model.core.pipeline import run_plan_pipeline
-    from pension_model.core.funding_model import compute_funding_trs
-    from pension_model.core.txtrs_loader import load_txtrs_funding_data
-
-    print("=" * 60)
-    print("Texas TRS Pension Model Pipeline")
-    print("=" * 60)
-
-    t0 = time.time()
-
-    # Run liability pipeline plan-wide (TRS has only "all")
-    print("  Building benefit tables, workforce, and liabilities...")
-    liability_results = run_plan_pipeline(constants, BASELINE)
-    liability_frames = []
-    for cn in constants.classes:
-        df = liability_results[cn].copy()
-        df["plan_name"] = constants.plan_name
-        df["class_name"] = cn
-        liability_frames.append(df)
-
-    liability_stacked = pd.concat(liability_frames, ignore_index=True)
-
-    print("  Running funding model...")
-    raw_dir = Path("R_model/R_model_txtrs")
-    funding_inputs = load_txtrs_funding_data(raw_dir)
-    funding_df = compute_funding_trs(liability_results["all"], funding_inputs, constants)
-
-    elapsed = time.time() - t0
-    print(f"  Pipeline complete: {elapsed:.0f}s")
-
-    output_dir = OUTPUT_BASE / constants.plan_name
-    output_dir.mkdir(parents=True, exist_ok=True)
-    liability_stacked.to_csv(output_dir / "liability_stacked.csv", index=False)
-    funding_df.to_csv(output_dir / "funding.csv", index=False)
-    print(f"  Output written to {output_dir}/")
-
-    _emit_truth_table(constants.plan_name, liability_results, funding_df, constants, output_dir)
-
-    row1 = liability_stacked.iloc[0]
-    total_aal = row1.get("total_aal_est", row1.get("aal_est", 0))
-    print(f"\n  Year 1 summary:")
-    print(f"    Total AAL:     {_fmt_dollars(total_aal)}")
-    if "payroll_est" in row1:
-        print(f"    Payroll:       {_fmt_dollars(row1['payroll_est'])}")
-    if "nc_rate_est" in row1:
-        print(f"    NC Rate:       {_fmt_pct(row1['nc_rate_est'])}")
-    if len(funding_df) > 1:
-        fy1 = funding_df.iloc[1]
-        print(f"    Funded Ratio:  {_fmt_pct(fy1.get('FR_AVA', 0))}")
-        print(f"    ER Cont Rate:  {_fmt_pct(fy1.get('er_cont_rate', 0))}")
-
-
-# Registry mapping plan name → runner. A plan must be listed here to be
-# runnable via `pension-model run`; discover_plans() alone is not enough
-# because each plan still has plan-specific pipeline glue.
-_PLAN_RUNNERS = {
-    "frs": _run_frs,
-    "txtrs": _run_txtrs,
-}
-
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
 
 def cmd_run(args):
-    """Dispatch `pension-model run <plan>` to the per-plan runner."""
+    """Dispatch `pension-model run <plan>` to the unified runner."""
     from pension_model.plan_config import discover_plans, load_plan_config
 
     if args.test_only:
@@ -342,8 +435,8 @@ def cmd_run(args):
         print(f"Unknown plan: {args.plan!r}. Available plans: {available}")
         sys.exit(2)
 
-    if args.plan not in _PLAN_RUNNERS:
-        print(f"Plan {args.plan!r} has a config but no runner registered in cli._PLAN_RUNNERS.")
+    if args.plan not in _PIPELINE_EXECUTORS:
+        print(f"Plan {args.plan!r} has a config but no pipeline executor registered.")
         sys.exit(2)
 
     config_path = plans[args.plan]
@@ -353,7 +446,7 @@ def cmd_run(args):
         calibration_path=cal_path if cal_path.exists() else None,
     )
 
-    _PLAN_RUNNERS[args.plan](constants, args)
+    _run_plan(constants, args)
 
     if not args.no_test:
         print("\nRunning tests...")
@@ -371,7 +464,7 @@ def cmd_list(args):
         return
     print("Discovered plans:")
     for name, path in sorted(plans.items()):
-        status = "runnable" if name in _PLAN_RUNNERS else "config only"
+        status = "runnable" if name in _PIPELINE_EXECUTORS else "config only"
         rel = path.relative_to(Path.cwd()) if path.is_relative_to(Path.cwd()) else path
         print(f"  {name:20s} {status:12s} {rel}")
 
@@ -390,6 +483,8 @@ def main():
                        help=f"Plan to run. Discovered: {', '.join(discovered) or '(none)'}")
     run_p.add_argument("--no-test", action="store_true", help="Skip tests after the run")
     run_p.add_argument("--test-only", action="store_true", help="Run tests only, skip the model")
+    run_p.add_argument("--truth-table", action="store_true",
+                       help="Write R-vs-Python truth table to CSV and Excel")
 
     cal = subparsers.add_parser("calibrate", help="Compute calibration factors")
     cal.add_argument("plan_name", choices=discovered or None,

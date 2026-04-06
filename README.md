@@ -36,12 +36,30 @@ pension-model list                     # list discovered plans
 pension-model run frs                  # run FRS model + baseline validation tests
 pension-model run frs --no-test        # run model only, skip tests
 pension-model run frs --test-only      # run tests only
-pension-model run txtrs                # run Texas TRS model
+pension-model run frs --truth-table    # also write R-vs-Python truth table to Excel
+pension-model run txtrs --no-test      # run Texas TRS model
 ```
 
 Plans are auto-discovered from `configs/<plan>/plan_config.json`; adding a
 new plan is just a matter of dropping a config directory (and, for now,
-registering a runner in `cli._PLAN_RUNNERS`).
+registering a pipeline executor in `cli._PIPELINE_EXECUTORS`).
+
+### Output
+
+Every plan produces the same console output (parameters, year 1/30 summary)
+and the same output files under `output/<plan>/`:
+
+| File | Contents |
+|------|----------|
+| `summary.csv` | Plan-wide annual summary: headcounts, payroll, AAL, UAL, assets, contributions, funded ratios |
+| `liability_stacked.csv` | Detailed liability components by class and year |
+
+With `--truth-table`, two additional files are written for R-vs-Python comparison:
+
+| File | Contents |
+|------|----------|
+| `truth_table.csv` | Plan-wide truth table (same columns as R baseline) |
+| `truth_tables.xlsx` | Shared workbook with R and Python sheets per plan |
 
 ## Calibration
 
