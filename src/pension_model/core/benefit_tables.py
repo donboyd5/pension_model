@@ -16,29 +16,18 @@ Design for generalization:
 import numpy as np
 import pandas as pd
 
-# Map class names to salary growth column names (R uses "special_risk" not "special")
-SALARY_GROWTH_COL_MAP = {
-    "regular": "salary_increase_regular",
-    "special": "salary_increase_special_risk",
-    "admin": "salary_increase_admin",
-    "eco": "salary_increase_eco",
-    "eso": "salary_increase_eso",
-    "judges": "salary_increase_judges",
-    "senior_management": "salary_increase_senior_management",
-}
-
-
 def _get_salary_growth_col(class_name: str, constants=None) -> str:
     """Resolve salary growth column name for a class.
 
-    Uses config map if constants is a PlanConfig, else falls back to hardcoded FRS map.
+    Uses salary_growth_col_map from config if available, otherwise
+    auto-generates ``salary_increase_{class_name}``.
     """
     from pension_model.plan_config import PlanConfig
     if isinstance(constants, PlanConfig):
         col_map = constants.salary_growth_col_map
         if col_map:
             return col_map.get(class_name, f"salary_increase_{class_name}")
-    return SALARY_GROWTH_COL_MAP.get(class_name, f"salary_increase_{class_name}")
+    return f"salary_increase_{class_name}"
 
 
 # ---------------------------------------------------------------------------
