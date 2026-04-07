@@ -125,29 +125,15 @@ def compute_cohort_annuity_factors(
         # Determine distribution age
         # Vested: defer to earliest normal retirement age
         # Retiree/non-vested: distribute at term_age
-        from pension_model.plan_config import get_sep_type
+        from pension_model.plan_config import get_sep_type, extract_normal_retirement_params
         sep_type = get_sep_type(tier)
-        is_special = class_name in ("special", "admin")
 
         if sep_type == "vested":
-            # Find earliest normal retirement age
-            if "tier_1" in tier:
-                nra = 55 if is_special else 62
-                nra_yos = 6
-            else:
-                nra = 60 if is_special else 65
-                nra_yos = 8
-            # Earliest age where normal retirement is reached
-            # Either age >= nra with enough yos, or yos reaches threshold
-            if "tier_1" in tier:
-                yos_threshold = 25 if is_special else 30
-            else:
-                yos_threshold = 30 if is_special else 33
-            # dist_age is the age when first eligible for norm retirement
-            # given current yos at termination
-            if yos >= yos_threshold:
+            nra, nra_yos, yos_threshold = extract_normal_retirement_params(
+                constants, tier, class_name)
+            if yos_threshold is not None and yos >= yos_threshold:
                 dist_ages[yos] = term_age  # already eligible by yos
-            elif yos >= nra_yos:
+            elif nra is not None and yos >= nra_yos:
                 dist_ages[yos] = max(term_age, nra)  # wait until NRA
             else:
                 dist_ages[yos] = term_age  # won't vest — shouldn't get here

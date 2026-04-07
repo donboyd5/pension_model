@@ -437,6 +437,56 @@ def _get_eligibility(tier_def: dict, group: str, all_tier_defs: tuple) -> dict:
     return elig.get(group, elig.get("default", {}))
 
 
+def extract_normal_retirement_params(
+    config, tier_name: str, class_name: str,
+) -> tuple:
+    """Extract NRA, min vesting YOS, and YOS-only threshold from tier eligibility.
+
+    Returns (nra, nra_yos, yos_threshold) where:
+      - nra: minimum normal retirement age (from age+YOS rule with lowest min_yos)
+      - nra_yos: min_yos from that same rule
+      - yos_threshold: min_yos from the YOS-only rule (no min_age)
+
+    These replace the hardcoded values in cohort_calculator.py.
+    """
+    # Strip retirement-status suffix (e.g. "tier_1_vested" -> "tier_1")
+    tier_base = tier_name
+    for suffix in ("_norm", "_early", "_vested", "_non_vested", "_reduced"):
+        if tier_base.endswith(suffix):
+            tier_base = tier_base[:-len(suffix)]
+            break
+
+    td = _resolve_tier_def(tier_base, config.tier_defs)
+    group = config.class_group(class_name)
+    elig = _get_eligibility(td, group, config.tier_defs)
+    normal_rules = elig.get("normal", [])
+
+    nra = None
+    nra_yos = None
+    yos_threshold = None
+
+    for rule in normal_rules:
+        has_age = "min_age" in rule
+        has_yos = "min_yos" in rule
+        has_rule_of = "rule_of" in rule
+
+        if has_yos and not has_age and not has_rule_of:
+            # YOS-only rule → yos_threshold
+            if yos_threshold is None or rule["min_yos"] < yos_threshold:
+                yos_threshold = rule["min_yos"]
+        elif has_age and has_yos and not has_rule_of:
+            # Age+YOS rule → NRA candidate (pick lowest min_yos variant)
+            if nra_yos is None or rule["min_yos"] < nra_yos:
+                nra = rule["min_age"]
+                nra_yos = rule["min_yos"]
+
+    # Fallback: if no age+YOS rule found, use vesting_yos
+    if nra_yos is None:
+        nra_yos = elig.get("vesting_yos", 5)
+
+    return nra, nra_yos, yos_threshold
+
+
 def _entry_year_in_tier(entry_year: int, tier_def: dict, new_year: int) -> bool:
     """Check if entry_year falls within this tier's range."""
     # Handle grandfathered assignment separately
