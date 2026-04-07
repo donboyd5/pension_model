@@ -177,8 +177,8 @@ def build_python_truth_table(
 
 
 def _build_python_truth_table_frs(liability, funding, constants) -> pd.DataFrame:
-    """FRS: funding is a dict containing 'frs' aggregate."""
-    f = funding["frs"]
+    """FRS-style: funding is a dict containing plan aggregate."""
+    f = funding[constants.plan_name]
 
     # Sum total_n_active across all classes
     classes = list(constants.classes)
