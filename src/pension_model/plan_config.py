@@ -649,7 +649,7 @@ def get_reduce_factor(config: PlanConfig, class_name: str, tier: str,
     # Simple NRA-based reduction (FRS style)
     if "nra" in reduction:
         nra_map = reduction["nra"]
-        rate = reduction.get("rate_per_year", 0.05)
+        rate = reduction["rate_per_year"]
         if class_name == "special" and "special" in nra_map:
             nra = nra_map["special"]
         else:
@@ -666,7 +666,7 @@ def get_reduce_factor(config: PlanConfig, class_name: str, tier: str,
                 continue
             formula = rule.get("formula", "linear")
             if formula == "linear":
-                rate = rule.get("rate_per_year", 0.05)
+                rate = rule["rate_per_year"]
                 nra = rule.get("nra", 65)
                 return max(0.0, 1.0 - rate * (nra - dist_age))
             elif formula == "table":
@@ -1169,7 +1169,7 @@ def resolve_reduce_factor_vec(config: PlanConfig,
         # FRS-style NRA-based reduction
         if "nra" in reduction:
             nra_map = reduction["nra"]
-            rate = reduction.get("rate_per_year", 0.05)
+            rate = reduction["rate_per_year"]
             if cn == "special" and "special" in nra_map:
                 nra = nra_map["special"]
             else:
@@ -1191,7 +1191,7 @@ def resolve_reduce_factor_vec(config: PlanConfig,
                     continue
                 formula = rule.get("formula", "linear")
                 if formula == "linear":
-                    rate = rule.get("rate_per_year", 0.05)
+                    rate = rule["rate_per_year"]
                     nra = rule.get("nra", 65)
                     vals = np.maximum(0.0, 1.0 - rate * (nra - sub_age[cmask]))
                     sub_vals[cmask] = vals
