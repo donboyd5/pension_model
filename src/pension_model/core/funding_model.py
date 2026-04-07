@@ -136,7 +136,7 @@ def compute_funding(
         constants: Model constants.
 
     Returns:
-        Dict mapping class_name -> funding DataFrame (also "drop" and "frs").
+        Dict mapping class_name -> funding DataFrame (also "drop" and aggregate).
     """
     if constants is None:
         constants = load_frs_config()
@@ -162,8 +162,11 @@ def compute_funding(
     start_year = r.start_year
     n_years = model_period + 1
 
-    class_names_7 = ["regular", "special", "admin", "eso", "eco", "judges", "senior_management"]
-    class_names_no_frs = class_names_7 + ["drop"]
+    class_names = list(constants.classes)
+    agg_name = constants.plan_name
+    has_drop = constants.raw.get("funding", {}).get("has_drop", False)
+    drop_ref_class = constants.raw.get("funding", {}).get("drop_reference_class", class_names[0])
+    all_classes = class_names + (["drop"] if has_drop else [])
 
     # Return scenario setup — select which column of return_scenarios to use.
     # "assumption" (default) → assets earn dr_current each year.
@@ -182,7 +185,7 @@ def compute_funding(
 
     # Initialize funding tables
     funding = {}
-    for cn in class_names_no_frs + ["frs"]:
+    for cn in all_classes + [agg_name]:
         init_row = _get_init_row(init_funding, cn)
         cols = [c for c in init_funding.columns if c != "class"]
         df = pd.DataFrame(0.0, index=range(n_years), columns=cols)
@@ -194,7 +197,7 @@ def compute_funding(
         funding[cn] = df
 
     # Calibration
-    for cn in class_names_7:
+    for cn in class_names:
         f = funding[cn]
         liab = liability_results[cn]
 
@@ -233,7 +236,7 @@ def compute_funding(
 
     # Amortization tables
     amo_tables = {}
-    for cn in class_names_no_frs:
+    for cn in all_classes:
         cur_per, fut_per, init_bal, max_col = build_amort_period_tables(
             amort_layers, cn, amo_period_new, funding_lag, model_period)
 
@@ -261,10 +264,10 @@ def compute_funding(
 
     # ========== Main year loop ==========
     for i in range(1, n_years):
-        frs = funding["frs"]
+        frs = funding[agg_name]
 
         # --- 7 membership classes ---
-        for cn in class_names_7:
+        for cn in class_names:
             f = funding[cn]
             liab = liability_results[cn]
 
@@ -317,54 +320,55 @@ def compute_funding(
         frs_pdb = frs.loc[i, "payroll_db_legacy"] + frs.loc[i, "payroll_db_new"]
         frs.loc[i, "total_nc_rate"] = (frs.loc[i, "nc_legacy"] + frs.loc[i, "nc_new"]) / frs_pdb if frs_pdb > 0 else 0
 
-        # --- DROP ---
-        drop = funding["drop"]
-        reg = funding["regular"]
-        drop.loc[i, "total_payroll"] = drop.loc[i - 1, "total_payroll"] * (1 + payroll_growth)
-        drop.loc[i, "payroll_db_legacy"] = drop.loc[i, "total_payroll"] * (reg.loc[i, "payroll_db_legacy_ratio"] + reg.loc[i, "payroll_dc_legacy_ratio"])
-        drop.loc[i, "payroll_db_new"] = drop.loc[i, "total_payroll"] * (reg.loc[i, "payroll_db_new_ratio"] + reg.loc[i, "payroll_dc_new_ratio"])
+        # --- DROP (only for plans with has_drop=true) ---
+        if has_drop:
+            drop = funding["drop"]
+            reg = funding[drop_ref_class]
+            drop.loc[i, "total_payroll"] = drop.loc[i - 1, "total_payroll"] * (1 + payroll_growth)
+            drop.loc[i, "payroll_db_legacy"] = drop.loc[i, "total_payroll"] * (reg.loc[i, "payroll_db_legacy_ratio"] + reg.loc[i, "payroll_dc_legacy_ratio"])
+            drop.loc[i, "payroll_db_new"] = drop.loc[i, "total_payroll"] * (reg.loc[i, "payroll_db_new_ratio"] + reg.loc[i, "payroll_dc_new_ratio"])
 
-        if reg.loc[i - 1, "total_ben_payment"] > 0:
-            drop.loc[i, "total_ben_payment"] = drop.loc[i - 1, "total_ben_payment"] * reg.loc[i, "total_ben_payment"] / reg.loc[i - 1, "total_ben_payment"]
-        if reg.loc[i - 1, "total_refund"] > 0:
-            drop.loc[i, "total_refund"] = drop.loc[i - 1, "total_refund"] * reg.loc[i, "total_refund"] / reg.loc[i - 1, "total_refund"]
+            if reg.loc[i - 1, "total_ben_payment"] > 0:
+                drop.loc[i, "total_ben_payment"] = drop.loc[i - 1, "total_ben_payment"] * reg.loc[i, "total_ben_payment"] / reg.loc[i - 1, "total_ben_payment"]
+            if reg.loc[i - 1, "total_refund"] > 0:
+                drop.loc[i, "total_refund"] = drop.loc[i - 1, "total_refund"] * reg.loc[i, "total_refund"] / reg.loc[i - 1, "total_refund"]
 
-        if reg.loc[i, "total_ben_payment"] > 0:
-            drop.loc[i, "ben_payment_legacy"] = drop.loc[i, "total_ben_payment"] * reg.loc[i, "ben_payment_legacy"] / reg.loc[i, "total_ben_payment"]
-            drop.loc[i, "ben_payment_new"] = drop.loc[i, "total_ben_payment"] * reg.loc[i, "ben_payment_new"] / reg.loc[i, "total_ben_payment"]
-        if reg.loc[i, "total_refund"] > 0:
-            drop.loc[i, "refund_legacy"] = drop.loc[i, "total_refund"] * reg.loc[i, "refund_legacy"] / reg.loc[i, "total_refund"]
-            drop.loc[i, "refund_new"] = drop.loc[i, "total_refund"] * reg.loc[i, "refund_new"] / reg.loc[i, "total_refund"]
+            if reg.loc[i, "total_ben_payment"] > 0:
+                drop.loc[i, "ben_payment_legacy"] = drop.loc[i, "total_ben_payment"] * reg.loc[i, "ben_payment_legacy"] / reg.loc[i, "total_ben_payment"]
+                drop.loc[i, "ben_payment_new"] = drop.loc[i, "total_ben_payment"] * reg.loc[i, "ben_payment_new"] / reg.loc[i, "total_ben_payment"]
+            if reg.loc[i, "total_refund"] > 0:
+                drop.loc[i, "refund_legacy"] = drop.loc[i, "total_refund"] * reg.loc[i, "refund_legacy"] / reg.loc[i, "total_refund"]
+                drop.loc[i, "refund_new"] = drop.loc[i, "total_refund"] * reg.loc[i, "refund_new"] / reg.loc[i, "total_refund"]
 
-        drop.loc[i, "nc_rate_db_legacy"] = frs.loc[i, "nc_legacy"] / frs.loc[i, "payroll_db_legacy"] if frs.loc[i, "payroll_db_legacy"] > 0 else 0
-        drop.loc[i, "nc_rate_db_new"] = frs.loc[i, "nc_new"] / frs.loc[i, "payroll_db_new"] if frs.loc[i, "payroll_db_new"] > 0 else 0
-        drop.loc[i, "nc_legacy"] = drop.loc[i, "nc_rate_db_legacy"] * drop.loc[i, "payroll_db_legacy"]
-        drop.loc[i, "nc_new"] = drop.loc[i, "nc_rate_db_new"] * drop.loc[i, "payroll_db_new"]
+            drop.loc[i, "nc_rate_db_legacy"] = frs.loc[i, "nc_legacy"] / frs.loc[i, "payroll_db_legacy"] if frs.loc[i, "payroll_db_legacy"] > 0 else 0
+            drop.loc[i, "nc_rate_db_new"] = frs.loc[i, "nc_new"] / frs.loc[i, "payroll_db_new"] if frs.loc[i, "payroll_db_new"] > 0 else 0
+            drop.loc[i, "nc_legacy"] = drop.loc[i, "nc_rate_db_legacy"] * drop.loc[i, "payroll_db_legacy"]
+            drop.loc[i, "nc_new"] = drop.loc[i, "nc_rate_db_new"] * drop.loc[i, "payroll_db_new"]
 
-        drop.loc[i, "aal_legacy"] = (drop.loc[i - 1, "aal_legacy"] * (1 + dr_current)
-            + (drop.loc[i, "nc_legacy"] - drop.loc[i, "ben_payment_legacy"] - drop.loc[i, "refund_legacy"]) * (1 + dr_current) ** 0.5)
-        drop.loc[i, "aal_new"] = (drop.loc[i - 1, "aal_new"] * (1 + dr_new)
-            + (drop.loc[i, "nc_new"] - drop.loc[i, "ben_payment_new"] - drop.loc[i, "refund_new"]) * (1 + dr_new) ** 0.5)
-        drop.loc[i, "total_aal"] = drop.loc[i, "aal_legacy"] + drop.loc[i, "aal_new"]
-        funding["drop"] = drop
+            drop.loc[i, "aal_legacy"] = (drop.loc[i - 1, "aal_legacy"] * (1 + dr_current)
+                + (drop.loc[i, "nc_legacy"] - drop.loc[i, "ben_payment_legacy"] - drop.loc[i, "refund_legacy"]) * (1 + dr_current) ** 0.5)
+            drop.loc[i, "aal_new"] = (drop.loc[i - 1, "aal_new"] * (1 + dr_new)
+                + (drop.loc[i, "nc_new"] - drop.loc[i, "ben_payment_new"] - drop.loc[i, "refund_new"]) * (1 + dr_new) ** 0.5)
+            drop.loc[i, "total_aal"] = drop.loc[i, "aal_legacy"] + drop.loc[i, "aal_new"]
+            funding["drop"] = drop
 
-        for pc in ["total_payroll", "payroll_db_legacy", "payroll_db_new"]:
-            frs.loc[i, pc] += drop.loc[i, pc]
-        for bc in ["ben_payment_legacy", "refund_legacy", "ben_payment_new", "refund_new",
-                    "total_ben_payment", "total_refund"]:
-            frs.loc[i, bc] += drop.loc[i, bc]
-        frs.loc[i, "nc_legacy"] += drop.loc[i, "nc_legacy"]
-        frs.loc[i, "nc_new"] += drop.loc[i, "nc_new"]
-        frs_pdb2 = frs.loc[i, "payroll_db_legacy"] + frs.loc[i, "payroll_db_new"]
-        frs.loc[i, "total_nc_rate"] = (frs.loc[i, "nc_legacy"] + frs.loc[i, "nc_new"]) / frs_pdb2 if frs_pdb2 > 0 else 0
-        frs.loc[i, "nc_rate_db_legacy"] = frs.loc[i, "nc_legacy"] / frs.loc[i, "payroll_db_legacy"] if frs.loc[i, "payroll_db_legacy"] > 0 else 0
-        frs.loc[i, "nc_rate_db_new"] = frs.loc[i, "nc_new"] / frs.loc[i, "payroll_db_new"] if frs.loc[i, "payroll_db_new"] > 0 else 0
-        frs.loc[i, "aal_legacy"] += drop.loc[i, "aal_legacy"]
-        frs.loc[i, "aal_new"] += drop.loc[i, "aal_new"]
-        frs.loc[i, "total_aal"] += drop.loc[i, "total_aal"]
+            for pc in ["total_payroll", "payroll_db_legacy", "payroll_db_new"]:
+                frs.loc[i, pc] += drop.loc[i, pc]
+            for bc in ["ben_payment_legacy", "refund_legacy", "ben_payment_new", "refund_new",
+                        "total_ben_payment", "total_refund"]:
+                frs.loc[i, bc] += drop.loc[i, bc]
+            frs.loc[i, "nc_legacy"] += drop.loc[i, "nc_legacy"]
+            frs.loc[i, "nc_new"] += drop.loc[i, "nc_new"]
+            frs_pdb2 = frs.loc[i, "payroll_db_legacy"] + frs.loc[i, "payroll_db_new"]
+            frs.loc[i, "total_nc_rate"] = (frs.loc[i, "nc_legacy"] + frs.loc[i, "nc_new"]) / frs_pdb2 if frs_pdb2 > 0 else 0
+            frs.loc[i, "nc_rate_db_legacy"] = frs.loc[i, "nc_legacy"] / frs.loc[i, "payroll_db_legacy"] if frs.loc[i, "payroll_db_legacy"] > 0 else 0
+            frs.loc[i, "nc_rate_db_new"] = frs.loc[i, "nc_new"] / frs.loc[i, "payroll_db_new"] if frs.loc[i, "payroll_db_new"] > 0 else 0
+            frs.loc[i, "aal_legacy"] += drop.loc[i, "aal_legacy"]
+            frs.loc[i, "aal_new"] += drop.loc[i, "aal_new"]
+            frs.loc[i, "total_aal"] += drop.loc[i, "total_aal"]
 
         # --- Contributions, MVA, AVA ---
-        for cn in class_names_no_frs:
+        for cn in all_classes:
             f = funding[cn]
             amo = amo_tables[cn]
 
@@ -469,7 +473,7 @@ def compute_funding(
         frs.loc[i, "ava_base_new"] = frs.loc[i - 1, "ava_new"] + frs.loc[i, "net_cf_new"] / 2
 
         # --- Allocate AVA earnings to classes ---
-        for cn in class_names_no_frs:
+        for cn in all_classes:
             f = funding[cn]
             if frs.loc[i, "ava_base_legacy"] != 0:
                 f.loc[i, "alloc_inv_earnings_ava_legacy"] = frs.loc[i, "alloc_inv_earnings_ava_legacy"] * f.loc[i, "ava_base_legacy"] / frs.loc[i, "ava_base_legacy"]
@@ -480,31 +484,39 @@ def compute_funding(
             f.loc[i, "unadj_ava_new"] = f.loc[i - 1, "ava_new"] + f.loc[i, "net_cf_new"] + f.loc[i, "alloc_inv_earnings_ava_new"]
             funding[cn] = f
 
-        # --- DROP reallocation ---
-        drop = funding["drop"]
-        if frs.loc[i, "aal_legacy"] != 0:
-            drop.loc[i, "net_reallocation_legacy"] = drop.loc[i, "unadj_ava_legacy"] - drop.loc[i, "aal_legacy"] * frs.loc[i, "ava_legacy"] / frs.loc[i, "aal_legacy"]
-        drop.loc[i, "ava_legacy"] = drop.loc[i, "unadj_ava_legacy"] - drop.loc[i, "net_reallocation_legacy"]
-        if frs.loc[i, "aal_new"] != 0:
-            drop.loc[i, "net_reallocation_new"] = drop.loc[i, "unadj_ava_new"] - drop.loc[i, "aal_new"] * frs.loc[i, "ava_new"] / frs.loc[i, "aal_new"]
-        drop.loc[i, "ava_new"] = drop.loc[i, "unadj_ava_new"] - drop.loc[i, "net_reallocation_new"]
-        funding["drop"] = drop
+        # --- DROP reallocation (only for plans with has_drop=true) ---
+        if has_drop:
+            drop = funding["drop"]
+            if frs.loc[i, "aal_legacy"] != 0:
+                drop.loc[i, "net_reallocation_legacy"] = drop.loc[i, "unadj_ava_legacy"] - drop.loc[i, "aal_legacy"] * frs.loc[i, "ava_legacy"] / frs.loc[i, "aal_legacy"]
+            drop.loc[i, "ava_legacy"] = drop.loc[i, "unadj_ava_legacy"] - drop.loc[i, "net_reallocation_legacy"]
+            if frs.loc[i, "aal_new"] != 0:
+                drop.loc[i, "net_reallocation_new"] = drop.loc[i, "unadj_ava_new"] - drop.loc[i, "aal_new"] * frs.loc[i, "ava_new"] / frs.loc[i, "aal_new"]
+            drop.loc[i, "ava_new"] = drop.loc[i, "unadj_ava_new"] - drop.loc[i, "net_reallocation_new"]
+            funding["drop"] = drop
 
-        for cn in class_names_7:
-            f = funding[cn]
-            frs_ex_drop_leg = frs.loc[i, "aal_legacy"] - drop.loc[i, "aal_legacy"]
-            prop_leg = f.loc[i, "aal_legacy"] / frs_ex_drop_leg if frs_ex_drop_leg != 0 else 0
-            f.loc[i, "net_reallocation_legacy"] = prop_leg * drop.loc[i, "net_reallocation_legacy"]
-            f.loc[i, "ava_legacy"] = f.loc[i, "unadj_ava_legacy"] + f.loc[i, "net_reallocation_legacy"]
+            for cn in class_names:
+                f = funding[cn]
+                frs_ex_drop_leg = frs.loc[i, "aal_legacy"] - drop.loc[i, "aal_legacy"]
+                prop_leg = f.loc[i, "aal_legacy"] / frs_ex_drop_leg if frs_ex_drop_leg != 0 else 0
+                f.loc[i, "net_reallocation_legacy"] = prop_leg * drop.loc[i, "net_reallocation_legacy"]
+                f.loc[i, "ava_legacy"] = f.loc[i, "unadj_ava_legacy"] + f.loc[i, "net_reallocation_legacy"]
 
-            frs_ex_drop_new = frs.loc[i, "aal_new"] - drop.loc[i, "aal_new"]
-            prop_new = f.loc[i, "aal_new"] / frs_ex_drop_new if frs_ex_drop_new != 0 else 0
-            f.loc[i, "net_reallocation_new"] = prop_new * drop.loc[i, "net_reallocation_new"]
-            f.loc[i, "ava_new"] = f.loc[i, "unadj_ava_new"] + f.loc[i, "net_reallocation_new"]
-            funding[cn] = f
+                frs_ex_drop_new = frs.loc[i, "aal_new"] - drop.loc[i, "aal_new"]
+                prop_new = f.loc[i, "aal_new"] / frs_ex_drop_new if frs_ex_drop_new != 0 else 0
+                f.loc[i, "net_reallocation_new"] = prop_new * drop.loc[i, "net_reallocation_new"]
+                f.loc[i, "ava_new"] = f.loc[i, "unadj_ava_new"] + f.loc[i, "net_reallocation_new"]
+                funding[cn] = f
+        else:
+            # No DROP: unadjusted AVA is final AVA
+            for cn in class_names:
+                f = funding[cn]
+                f.loc[i, "ava_legacy"] = f.loc[i, "unadj_ava_legacy"]
+                f.loc[i, "ava_new"] = f.loc[i, "unadj_ava_new"]
+                funding[cn] = f
 
         # --- UAL, funded ratios ---
-        for cn in class_names_no_frs:
+        for cn in all_classes:
             f = funding[cn]
             f.loc[i, "total_ava"] = f.loc[i, "ava_legacy"] + f.loc[i, "ava_new"]
             frs.loc[i, "total_ava"] += f.loc[i, "total_ava"]
@@ -536,7 +548,7 @@ def compute_funding(
         frs.loc[i, "total_er_cont_rate"] = frs.loc[i, "total_er_cont"] / frs.loc[i, "total_payroll"] if frs.loc[i, "total_payroll"] > 0 else 0
 
         # --- Amortization layers ---
-        for cn in class_names_no_frs:
+        for cn in all_classes:
             f = funding[cn]
             amo = amo_tables[cn]
             mc = amo["max_col"]
@@ -559,7 +571,7 @@ def compute_funding(
                 else:
                     fp[i, j] = 0
 
-        funding["frs"] = frs
+        funding[agg_name] = frs
 
     return funding
 

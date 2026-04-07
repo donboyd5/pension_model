@@ -59,6 +59,7 @@ class TestSalaryHeadcountTable:
     def test_salary_headcount_matches_r(self, class_name, salary_growth):
         """Verify Python salary_headcount_table matches R for each class."""
         from pension_model.core.benefit_tables import build_salary_headcount_table
+        from pension_model.plan_config import load_frs_config
 
         sal, hc = self._load_raw(class_name)
         adj_ratio = self._get_adjustment_ratio(class_name)
@@ -70,6 +71,7 @@ class TestSalaryHeadcountTable:
             class_name=class_name,
             adjustment_ratio=adj_ratio,
             start_year=2022,
+            constants=load_frs_config(),
         )
 
         r = self._load_r_result(class_name)
@@ -143,7 +145,7 @@ class TestSeparationRateTable:
         else:
             adj_ratio = constants.class_data[sep_class].total_active_member / hc.iloc[:, 1:].sum().sum()
 
-        sh = build_salary_headcount_table(sal, hc, sg, sep_class, adj_ratio, 2022)
+        sh = build_salary_headcount_table(sal, hc, sg, sep_class, adj_ratio, 2022, constants=constants)
         ep = build_entrant_profile(sh)
 
         dt = FRS_BASELINES / "decrement_tables"
@@ -194,7 +196,7 @@ class TestAnnFactorTable:
         sal = pd.read_csv(FRS_BASELINES / "regular_salary.csv")
         hc = pd.read_csv(FRS_BASELINES / "regular_headcount.csv")
         adj = constants.class_data["regular"].total_active_member / hc.iloc[:, 1:].sum().sum()
-        sh = build_salary_headcount_table(sal, hc, sg, "regular", adj, 2022)
+        sh = build_salary_headcount_table(sal, hc, sg, "regular", adj, 2022, constants=constants)
         ep = build_entrant_profile(sh)
         sbt = build_salary_benefit_table(sh, ep, sg, "regular", constants)
         # Filter to single entry_year for speed
@@ -268,6 +270,7 @@ class TestSalaryBenefitTable:
         sh = build_salary_headcount_table(
             sal, hc, salary_growth, class_name,
             constants.class_data[class_name].total_active_member, 2022,
+            constants=constants,
         )
         ep = build_entrant_profile(sh)
 
