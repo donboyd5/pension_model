@@ -111,21 +111,21 @@ def build_plan_summary(plan_name, liability, funding, constants):
         f = funding
 
     year = _col(f, "year", "fy")
-    payroll = _col(f, "total_payroll", "payroll")
+    payroll = _col(f, "total_payroll")
     benefits = _col_sum(f, ("ben_payment_legacy",), ("ben_payment_new",))
     if benefits is None:
         benefits = _col(f, "total_ben_payment")
-    aal = _col(f, "total_aal", "AAL")
-    ava = _col(f, "total_ava", "AVA")
-    mva = _col(f, "total_mva", "MVA")
-    ual_ava = _col(f, "total_ual_ava", "UAL_AVA")
-    ual_mva = _col(f, "total_ual_mva", "UAL_MVA")
-    er_cont = _col(f, "total_er_cont", "er_cont")
+    aal = _col(f, "total_aal")
+    ava = _col(f, "total_ava")
+    mva = _col(f, "total_mva")
+    ual_ava = _col(f, "total_ual_ava")
+    ual_mva = _col(f, "total_ual_mva")
+    er_cont = _col(f, "total_er_cont")
     ee_cont = _col_sum(f, ("ee_nc_cont_legacy",), ("ee_nc_cont_new",))
     if ee_cont is None:
         ee_cont = _col(f, "total_ee_nc_cont")
-    fr_ava = _col(f, "fr_ava", "FR_AVA")
-    fr_mva = _col(f, "fr_mva", "FR_MVA")
+    fr_ava = _col(f, "fr_ava")
+    fr_mva = _col(f, "fr_mva")
     invest_income = _col_sum(
         f,
         ("exp_inv_earnings_ava_legacy", "exp_inv_income_legacy"),

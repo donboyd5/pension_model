@@ -224,14 +224,14 @@ def _build_python_truth_table_txtrs(liability, funding, _constants) -> pd.DataFr
     # Prefer "year" over "fy": the Python TRS funding_df populates "year" in
     # all rows but only writes "fy" to row 0 (an initial-row artifact). R's
     # funding_fresh.csv uses "fy" exclusively, so the R builder takes that path.
-    year = col(f, "year", "fy")
-    aal = col(f, "AAL", "total_aal")
-    mva = col(f, "MVA", "total_mva")
-    ava = col(f, "AVA", "total_ava")
-    payroll = col(f, "payroll", "total_payroll")
-    fr_mva = col(f, "FR_MVA", "fr_mva")
-    fr_ava = col(f, "FR_AVA", "fr_ava")
-    er_cont = col(f, "er_cont", "total_er_cont")
+    year = col(f, "year")
+    aal = col(f, "total_aal")
+    mva = col(f, "total_mva")
+    ava = col(f, "total_ava")
+    payroll = col(f, "total_payroll")
+    fr_mva = col(f, "fr_mva")
+    fr_ava = col(f, "fr_ava")
+    er_cont = col(f, "total_er_cont")
 
     # Benefits and ee contributions may be split by legacy/new
     ben_leg = col(f, "ben_payment_legacy")
@@ -244,8 +244,8 @@ def _build_python_truth_table_txtrs(liability, funding, _constants) -> pd.DataFr
     ee_cont = (ee_leg + ee_new) if ee_leg is not None and ee_new is not None \
               else col(f, "total_ee_nc_cont")
 
-    inv_leg = col(f, "exp_inv_income_legacy", "exp_inv_earnings_ava_legacy")
-    inv_new = col(f, "exp_inv_income_new", "exp_inv_earnings_ava_new")
+    inv_leg = col(f, "exp_inv_income_legacy")
+    inv_new = col(f, "exp_inv_income_new")
     invest_income = None
     if inv_leg is not None and inv_new is not None:
         invest_income = inv_leg + inv_new
