@@ -669,6 +669,21 @@ def _ava_gain_loss_smoothing(
     }
 
 
+def _lookup_rate_schedule(schedule: list, year: int) -> float:
+    """Look up a rate from a year-based schedule.
+
+    Schedule is a list of {"from_year": Y, "rate": R} sorted ascending.
+    Returns the rate for the latest entry where from_year <= year.
+    """
+    rate = schedule[0]["rate"]
+    for entry in schedule:
+        if year >= entry["from_year"]:
+            rate = entry["rate"]
+        else:
+            break
+    return rate
+
+
 def compute_funding_trs(
     liability_result: pd.DataFrame,
     funding_inputs: dict,
@@ -726,6 +741,17 @@ def compute_funding_trs(
     public_edu_payroll_pct = funding_raw.get("public_edu_payroll_percent", 0.588)
     extra_er_stat_cont = funding_raw.get("extra_er_stat_cont", 0.0)
     amo_period_current = funding_raw.get("amo_period_current", 30)
+
+    # Statutory rate schedules (time-varying contribution rates)
+    stat_rates = funding_raw.get("statutory_rates", {})
+    ee_schedule = stat_rates.get("ee_rate_schedule",
+                                 [{"from_year": 0, "rate": constants.benefit.db_ee_cont_rate}])
+    er_base_schedule = stat_rates.get("er_base_rate_schedule",
+                                      [{"from_year": 0, "rate": constants.benefit.db_ee_cont_rate}])
+    surcharge_cfg = stat_rates.get("surcharge", {})
+    surcharge_ramp_rate = surcharge_cfg.get("ramp_rate", 0.0)
+    surcharge_ramp_end = surcharge_cfg.get("ramp_end_year", 0)
+    extra_er_start_year = stat_rates.get("extra_er_start_year", 9999)
 
     # nc_cal from model inputs (additional calibration beyond cal_factor)
     nc_cal = funding_raw.get("nc_cal", 1.0)
@@ -897,33 +923,24 @@ def compute_funding_trs(
         f.loc[i, "nc_rate_new"] = (f.loc[i, "nc_new"] / payroll_new_total
                                     if payroll_new_total > 0 else 0)
 
-        # Employee contribution rates (time-varying for TRS)
-        if year < 2024:
-            f.loc[i, "ee_nc_rate_legacy"] = 0.08
-            f.loc[i, "ee_nc_rate_new"] = 0.08
-        else:
-            f.loc[i, "ee_nc_rate_legacy"] = 0.0825
-            f.loc[i, "ee_nc_rate_new"] = 0.0825
+        # Employee contribution rates (from config schedule)
+        ee_rate = _lookup_rate_schedule(ee_schedule, year)
+        f.loc[i, "ee_nc_rate_legacy"] = ee_rate
+        f.loc[i, "ee_nc_rate_new"] = ee_rate
 
         # Employer NC rates
-        f.loc[i, "er_nc_rate_legacy"] = f.loc[i, "nc_rate_legacy"] - f.loc[i, "ee_nc_rate_legacy"]
-        f.loc[i, "er_nc_rate_new"] = f.loc[i, "nc_rate_new"] - f.loc[i, "ee_nc_rate_new"]
+        f.loc[i, "er_nc_rate_legacy"] = f.loc[i, "nc_rate_legacy"] - ee_rate
+        f.loc[i, "er_nc_rate_new"] = f.loc[i, "nc_rate_new"] - ee_rate
 
-        # Statutory employer rates
-        if year < 2024:
-            f.loc[i, "er_stat_base_rate"] = 0.08
-        else:
-            f.loc[i, "er_stat_base_rate"] = 0.0825
+        # Statutory employer rates (from config schedule)
+        f.loc[i, "er_stat_base_rate"] = _lookup_rate_schedule(er_base_schedule, year)
 
-        if year <= 2025:
-            f.loc[i, "public_edu_surcharge_rate"] = f.loc[i - 1, "public_edu_surcharge_rate"] + 0.001
+        if year <= surcharge_ramp_end:
+            f.loc[i, "public_edu_surcharge_rate"] = f.loc[i - 1, "public_edu_surcharge_rate"] + surcharge_ramp_rate
         else:
             f.loc[i, "public_edu_surcharge_rate"] = f.loc[i - 1, "public_edu_surcharge_rate"]
 
-        if year < 2025:
-            f.loc[i, "er_stat_extra_rate"] = 0
-        else:
-            f.loc[i, "er_stat_extra_rate"] = extra_er_stat_cont
+        f.loc[i, "er_stat_extra_rate"] = extra_er_stat_cont if year >= extra_er_start_year else 0
 
         f.loc[i, "er_stat_eff_rate"] = (f.loc[i, "er_stat_base_rate"]
                                           + f.loc[i, "public_edu_surcharge_rate"] * public_edu_payroll_pct
