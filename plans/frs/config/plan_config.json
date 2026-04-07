@@ -113,7 +113,8 @@
           "default": 62
         }
       },
-      "cola_key": "tier_1_active"
+      "cola_key": "tier_1_active",
+      "prorate_cola": true
     },
     {
       "name": "tier_2",

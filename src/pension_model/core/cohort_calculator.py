@@ -99,7 +99,6 @@ def compute_cohort_annuity_factors(
       'db_benefit_factor': array[max_yos+1] — yos * ben_mult * reduce_factor * cal_factor
     """
     econ = constants.economic
-    ben = constants.benefit
     r = constants.ranges
 
     n_yos = max_yos + 1
@@ -149,17 +148,9 @@ def compute_cohort_annuity_factors(
         dist_year = term_year + (dist_age - term_age)
         n_future = max_age - dist_age + 1
 
-        # COLA rate for this cohort
-        if "tier_1" in tier:
-            if ben.cola_tier_1_active_constant:
-                cola = ben.cola_tier_1_active
-            else:
-                yos_b4_2011 = min(max(2011 - entry_year, 0), yos)
-                cola = ben.cola_tier_1_active * yos_b4_2011 / yos if yos > 0 else 0
-        elif "tier_2" in tier:
-            cola = ben.cola_tier_2_active
-        else:
-            cola = ben.cola_tier_3_active
+        # COLA rate for this cohort (config-driven)
+        from pension_model.plan_config import resolve_cola_scalar
+        cola = resolve_cola_scalar(constants, tier, entry_year, yos)
 
         # Build survival × discount × cola vector from dist_age to max_age
         future_ages = np.arange(dist_age, max_age + 1)
