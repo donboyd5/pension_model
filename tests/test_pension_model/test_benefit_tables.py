@@ -177,7 +177,7 @@ _EXCEL_IMP = Path(__file__).parent.parent.parent / "R_model" / "R_model_frs" / "
 _EXCEL_AVAILABLE = _EXCEL_MORT.exists() and _EXCEL_IMP.exists()
 
 
-@pytest.mark.skipif(not _EXCEL_AVAILABLE, reason="FRS Excel mortality inputs not available")
+@pytest.mark.skipif(not _EXCEL_AVAILABLE, reason="R_model/R_model_frs Excel mortality files not available")
 class TestAnnFactorTable:
     """Test build_ann_factor_table against R's extracted cum_mort_dr and ann_factor."""
 

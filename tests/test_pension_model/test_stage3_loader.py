@@ -72,7 +72,7 @@ def test_stage3_mortality_matches_excel(class_name, frs_config, raw_dir):
     mp2018 = raw_dir / "mortality-improvement-scale-mp-2018-rates.xlsx"
 
     if not pub2010.exists() or not mort_dir.exists():
-        pytest.skip("FRS Excel inputs or stage 3 mortality CSVs not available")
+        pytest.skip("R_model Excel inputs or stage 3 mortality CSVs not available")
 
     cm_csv = _build_mortality_from_csv(frs_config, mort_dir, class_name)
     cm_xlsx = build_compact_mortality_from_excel(
@@ -109,7 +109,7 @@ def test_stage3_mortality_uses_safety_table(class_name, frs_config):
 
     mort_dir = Path(__file__).parent.parent.parent / "data" / "frs" / "mortality"
     if not mort_dir.exists():
-        pytest.skip("Stage 3 FRS mortality CSVs not available")
+        pytest.skip("Stage 3 mortality CSVs not available")
 
     cm_via_loader = _build_mortality_from_csv(frs_config, mort_dir, class_name)
     cm_safety = build_compact_mortality_from_csv(
@@ -151,7 +151,7 @@ def test_adj_ratio_handles_long_format(class_name, frs_config):
 
     demo_dir = Path(__file__).parent.parent.parent / "data" / "frs" / "demographics"
     if not demo_dir.exists():
-        pytest.skip("Stage 3 FRS demographics not available")
+        pytest.skip("Stage 3 demographics not available")
 
     hc_long = pd.read_csv(demo_dir / f"{class_name}_headcount.csv")
     assert "count" in hc_long.columns, "stage 3 headcount must have count column"
