@@ -487,6 +487,39 @@ def extract_normal_retirement_params(
     return nra, nra_yos, yos_threshold
 
 
+def resolve_cola_scalar(
+    config, tier_name: str, entry_year: int, yos: int,
+) -> float:
+    """Scalar COLA lookup — mirrors resolve_cola_vec for the per-yos loop.
+
+    Uses cola_key from tier definition, prorate_cola flag, and
+    proration_cutoff_year from config (not hardcoded tier names or years).
+    """
+    # Strip retirement-status suffix
+    tier_base = tier_name
+    for suffix in ("_norm", "_early", "_vested", "_non_vested", "_reduced"):
+        if tier_base.endswith(suffix):
+            tier_base = tier_base[:-len(suffix)]
+            break
+
+    td = _resolve_tier_def(tier_base, config.tier_defs)
+    cola_key = td.get("cola_key", "tier_1_active")
+    raw_cola = config.cola.get(cola_key, 0.0)
+    cola_cutoff = config.cola_proration_cutoff_year
+
+    should_prorate = (
+        td.get("prorate_cola", False)
+        and not config.cola.get(cola_key + "_constant", False)
+        and cola_cutoff is not None
+        and raw_cola > 0
+    )
+
+    if should_prorate and yos > 0:
+        yos_b4 = min(max(cola_cutoff - entry_year, 0), yos)
+        return raw_cola * yos_b4 / yos
+    return raw_cola
+
+
 def _entry_year_in_tier(entry_year: int, tier_def: dict, new_year: int) -> bool:
     """Check if entry_year falls within this tier's range."""
     # Handle grandfathered assignment separately
@@ -1045,8 +1078,8 @@ def resolve_cola_vec(config: PlanConfig,
         raw_cola = config.cola.get(cola_key, 0.0)
 
         should_prorate = (
-            cola_key == "tier_1_active"
-            and not config.cola.get("tier_1_active_constant", False)
+            td.get("prorate_cola", False)
+            and not config.cola.get(cola_key + "_constant", False)
             and cola_cutoff is not None
             and raw_cola > 0
         )
