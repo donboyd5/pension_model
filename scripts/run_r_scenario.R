@@ -83,7 +83,7 @@ truth <- data.frame(
   benefits_fy = f$total_ben_payment,
   aal_boy = f$total_aal,
   er_cont_fy = f$total_er_cont,
-  ee_cont_fy = f$total_ee_nc_cont,
+  ee_cont_fy = f$ee_nc_cont_legacy + f$ee_nc_cont_new,
   mva_boy = f$total_mva,
   invest_income_fy = f$exp_inv_earnings_ava_legacy + f$exp_inv_earnings_ava_new,
   ava_boy = f$total_ava,
