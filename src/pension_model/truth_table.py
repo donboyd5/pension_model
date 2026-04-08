@@ -97,7 +97,8 @@ def build_r_truth_table_frs(baseline_dir: Path) -> pd.DataFrame:
         "benefits_fy": f["total_ben_payment"].values,
         "aal_boy": f["total_aal"].values,
         "er_cont_fy": f["total_er_cont"].values,
-        "ee_cont_fy": f["total_ee_nc_cont"].values,
+        "ee_cont_fy": (f["ee_nc_cont_legacy"].values
+                       + f["ee_nc_cont_new"].values),
         "mva_boy": f["total_mva"].values,
         "invest_income_fy": (f["exp_inv_earnings_ava_legacy"].values
                              + f["exp_inv_earnings_ava_new"].values),
@@ -197,7 +198,8 @@ def _build_python_truth_table_frs(liability, funding, constants) -> pd.DataFrame
         "benefits_fy": f["total_ben_payment"].values,
         "aal_boy": f["total_aal"].values,
         "er_cont_fy": f["total_er_cont"].values,
-        "ee_cont_fy": f["total_ee_nc_cont"].values,
+        "ee_cont_fy": (f["ee_nc_cont_legacy"].values
+                       + f["ee_nc_cont_new"].values),
         "mva_boy": f["total_mva"].values,
         "invest_income_fy": (f["exp_inv_earnings_ava_legacy"].values
                              + f["exp_inv_earnings_ava_new"].values),
