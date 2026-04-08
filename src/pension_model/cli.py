@@ -176,7 +176,7 @@ def print_parameters(constants):
     print(f"    Funding policy:         {fn.funding_policy}")
     print(f"    Amortization:           {fn.amo_method}, {fn.amo_period_new}-year period")
     print(f"    Asset smoothing:        {_fmt_smoothing(fn)}")
-    print(f"    Projection horizon:     {rn.model_period} years ({rn.start_year}-{rn.start_year + rn.model_period})")
+    print(f"    Projection horizon:     {rn.model_period} years from {rn.start_year} valuation (through {rn.start_year + rn.model_period})")
     print(f"    Plan config:            {constants.plan_name}")
 
 
@@ -186,7 +186,9 @@ def print_summary_table(summary):
     y_last = summary.iloc[-1]
 
     print(f"\n  Summary (all groups combined):")
-    print(f"  {'':30s} {str(int(y1['year'])):>16s}  {str(int(y_last['year'])):>16s}")
+    col1 = f"Valuation ({int(y1['year'])})"
+    col2 = f"Final ({int(y_last['year'])})"
+    print(f"  {'':30s} {col1:>16s}  {col2:>16s}")
     print(f"  {'Assets (AVA)':30s} {_fmt_dollars(y1['ava']):>16s}  {_fmt_dollars(y_last['ava']):>16s}")
     print(f"  {'Assets (MVA)':30s} {_fmt_dollars(y1['mva']):>16s}  {_fmt_dollars(y_last['mva']):>16s}")
     print(f"  {'Liabilities (AAL)':30s} {_fmt_dollars(y1['aal']):>16s}  {_fmt_dollars(y_last['aal']):>16s}")
