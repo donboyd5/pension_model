@@ -1,7 +1,7 @@
 """
 Streaming workforce projection.
 
-Replicates R's Florida FRS workforce model.R.
+Streaming workforce projection engine (generic, config-driven).
 
 R's flow each year:
   1. active2term = active * separation_rate  (all exits go to term first)

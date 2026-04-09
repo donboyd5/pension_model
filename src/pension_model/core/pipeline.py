@@ -49,17 +49,23 @@ def compute_adjustment_ratio(class_name: str, headcount: pd.DataFrame,
                              constants) -> float:
     """Compute headcount adjustment ratio matching R model.
 
-    For grouped classes (eco/eso/judges in FRS) the denominator is the sum
-    across the group, read from the plan's stage 3 demographics directory.
+    For grouped classes (where ``headcount_group`` lists peer classes in
+    ``acfr_data``), the denominator is the combined raw headcount across
+    the group.  The target comes from ``total_active_member`` in the
+    class's ``acfr_data`` entry (which should be set to the group total
+    for every member of the group).
     """
-    if class_name in ("eco", "eso", "judges"):
+    acfr = constants.acfr_data.get(class_name, {})
+    target = constants.class_data[class_name].total_active_member
+    hc_group = acfr.get("headcount_group")
+    if hc_group and len(hc_group) > 1:
         demo_dir = constants.resolve_data_dir() / "demographics"
         combined_raw = sum(
             _headcount_total(pd.read_csv(demo_dir / f"{c}_headcount.csv"))
-            for c in ("eco", "eso", "judges")
+            for c in hc_group
         )
-        return 2075 / combined_raw  # eco_eso_judges_total_active_member_
-    return constants.class_data[class_name].total_active_member / _headcount_total(headcount)
+        return target / combined_raw
+    return target / _headcount_total(headcount)
 
 
 
@@ -146,7 +152,7 @@ def build_plan_benefit_tables(
             cn, adj_ratio, constants.ranges.start_year, constants=constants,
         )
 
-        # Entrant profile: from explicit input (TRS Excel sheet) or derived
+        # Entrant profile: from explicit input file or derived from data
         if "_entrant_profile" in inputs:
             ep = inputs["_entrant_profile"].copy()
         else:
@@ -204,8 +210,8 @@ def build_plan_benefit_tables(
     )
 
     # build_benefit_val_table takes a scalar expected_icr. Multi-class CB
-    # is not currently supported (TRS has only one class "all"); when the
-    # plan has exactly one CB class, pass its ICR. For FRS (no CB), None.
+    # is not currently supported; when the plan has exactly one CB class,
+    # pass its ICR. For plans without CB, None.
     if expected_icr_by_class:
         scalar_icr = next(iter(expected_icr_by_class.values()))
     else:
@@ -648,8 +654,9 @@ def compute_current_term_vested_liability(
     """
     Compute current term vested AAL (R liability model lines 238-248 / 286-310).
 
-    FRS: Amortizes pvfb_term_current as a growing payment stream.
-    TRS: Uses bell curve (normal distribution) weighting of payments.
+    Method is config-driven via ``funding.term_vested_method``:
+      - "growing_annuity": amortizes pvfb_term_current as a growing payment stream
+      - "bell_curve": uses normal distribution weighting of payments
     """
     r = constants.ranges
     econ = constants.economic
@@ -692,7 +699,7 @@ def compute_current_term_vested_liability(
             if i < len(full_aal):
                 aal_term_current[i] = full_aal[i]
     else:
-        # FRS method: growing annuity
+        # Growing annuity method
         retire_ben_term = _get_pmt(dr, payroll_growth, amo_period, pvfb_term_current, t=1)
 
         amo_years = list(range(r.start_year + 1, r.start_year + 1 + amo_period))

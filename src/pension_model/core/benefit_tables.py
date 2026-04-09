@@ -310,7 +310,7 @@ def build_salary_benefit_table(
     # For future cohorts: salary from entrant profile, escalated by payroll growth.
     # max_hist_year defaults to the latest entry year in salary_headcount data,
     # but can be overridden to start_year when entrant profile salaries are already
-    # at start_year level (e.g., TRS where entrant profile is read from Excel).
+    # at start_year level (when entrant_salary_at_start_year is set in config).
     max_hist_year = salary_headcount["entry_year"].max()
     if getattr(constants, "entrant_salary_at_start_year", False):
         max_hist_year = max(max_hist_year, constants.ranges.start_year)
@@ -356,7 +356,7 @@ def build_salary_benefit_table(
         contrib_shifted = df.groupby(grp_keys)["_contrib"].shift(1, fill_value=0)
         df["db_ee_balance"] = contrib_shifted.groupby([df[c] for c in grp_keys]).cumsum()
     else:
-        # Use _cum_fv with interest (e.g., TRS db_ee_interest_rate=0.02)
+        # Use _cum_fv with interest (when db_ee_interest_rate > 0)
         balances = []
         for _, group in df.groupby(grp_keys):
             group = group.sort_values("yos")

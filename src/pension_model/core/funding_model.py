@@ -1,7 +1,7 @@
 """
 Funding model.
 
-Replicates R's Florida FRS funding model.R.
+Config-driven funding projection engine.
 Year-by-year projection of:
   - Payroll, benefit payments, normal cost
   - AAL roll-forward with liability gain/loss
@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 
-from pension_model.plan_config import PlanConfig, load_frs_config
+from pension_model.plan_config import PlanConfig
 from pension_model.core.pipeline import _get_pmt
 import math
 
@@ -29,7 +29,7 @@ def load_funding_inputs(funding_dir: Path) -> dict:
     Files:
       - ``init_funding.csv``  (required)
       - ``return_scenarios.csv`` (required)
-      - ``amort_layers.csv`` (optional — FRS only)
+      - ``amort_layers.csv`` (optional — plans with layered amortization)
 
     Also accepts the legacy ``baseline_outputs/`` layout where the files
     are named ``init_funding_data.csv`` and ``current_amort_layers.csv``.
@@ -39,7 +39,7 @@ def load_funding_inputs(funding_dir: Path) -> dict:
     if not init_path.exists():
         init_path = funding_dir / "init_funding_data.csv"
     init_funding = pd.read_csv(init_path)
-    # Normalize column names (TRS Excel had ' AAL' with leading space)
+    # Normalize column names (strip leading/trailing whitespace)
     init_funding.columns = [c.strip() for c in init_funding.columns]
 
     result = {
@@ -47,7 +47,7 @@ def load_funding_inputs(funding_dir: Path) -> dict:
         "return_scenarios": pd.read_csv(funding_dir / "return_scenarios.csv"),
     }
 
-    # Amort layers (FRS only)
+    # Amort layers (plans with layered amortization)
     amort_path = funding_dir / "amort_layers.csv"
     if not amort_path.exists():
         amort_path = funding_dir / "current_amort_layers.csv"
@@ -125,7 +125,7 @@ def build_amort_period_tables(
 def compute_funding(
     liability_results: dict,
     funding_inputs: dict,
-    constants=None,
+    constants,
 ) -> dict:
     """
     Run the full funding model for all classes.
@@ -133,13 +133,11 @@ def compute_funding(
     Args:
         liability_results: Dict mapping class_name -> liability pipeline output DataFrame.
         funding_inputs: Output of load_funding_inputs().
-        constants: Model constants.
+        constants: Plan configuration (required).
 
     Returns:
         Dict mapping class_name -> funding DataFrame (also "drop" and aggregate).
     """
-    if constants is None:
-        constants = load_frs_config()
 
     econ = constants.economic
     fund_params = constants.funding
@@ -455,7 +453,7 @@ def compute_funding(
 
             funding[cn] = f
 
-        # --- AVA smoothing at FRS level ---
+        # --- AVA smoothing at plan aggregate level ---
         frs.loc[i, "exp_inv_earnings_ava_legacy"] = frs.loc[i - 1, "ava_legacy"] * dr_current + frs.loc[i, "net_cf_legacy"] * dr_current / 2
         frs.loc[i, "exp_ava_legacy"] = frs.loc[i - 1, "ava_legacy"] + frs.loc[i, "net_cf_legacy"] + frs.loc[i, "exp_inv_earnings_ava_legacy"]
         frs.loc[i, "ava_legacy"] = max(min(
@@ -577,16 +575,15 @@ def compute_funding(
 
 
 # ---------------------------------------------------------------------------
-# TRS funding model
+# Gain/loss deferral funding model (statutory-rate plans)
 # ---------------------------------------------------------------------------
 
 def _ava_gain_loss_smoothing(
     ava_prev, net_cf, mva, dr,
     defer_y1_prev, defer_y2_prev, defer_y3_prev, defer_y4_prev,
 ):
-    """AVA gain/loss deferral smoothing (TRS method).
+    """AVA gain/loss deferral smoothing (4-year phased recognition).
 
-    Replicates R's TxTRS_funding_model.R lines 326-364.
     Returns dict with all intermediate and final values.
     """
     exp_inv_income = ava_prev * dr + net_cf * dr / 2
@@ -690,17 +687,15 @@ def compute_funding_trs(
     constants: PlanConfig,
 ) -> pd.DataFrame:
     """
-    Run the TRS funding model.
-
-    Replicates R's TxTRS_funding_model.R.
+    Run the statutory-rate funding model (gain/loss deferral smoothing).
 
     Args:
-        liability_result: Output of run_plan_pipeline for class "all".
-        funding_inputs: Output of load_txtrs_funding_data().
-        constants: TRS PlanConfig.
+        liability_result: Output of run_plan_pipeline for the single class.
+        funding_inputs: Output of load_funding_inputs().
+        constants: PlanConfig.
 
     Returns:
-        DataFrame with 96 columns matching R's funding_fresh.csv.
+        DataFrame with funding projection columns.
     """
     econ = constants.economic
     fund = constants.funding
@@ -723,7 +718,7 @@ def compute_funding_trs(
     start_year = r_cfg.start_year
     n_years = model_period + 1
 
-    # Return scenario column selection (same logic as FRS)
+    # Return scenario column selection
     return_scen_col = constants.raw.get("economic", {}).get("return_scen", "assumption")
 
     # --- Load initial row ---

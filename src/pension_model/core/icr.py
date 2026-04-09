@@ -6,8 +6,7 @@ Provides:
   - compute_actual_icr_series: Year-indexed actual ICR from return scenario
   - smooth_return: Floor + upside participation formula
 
-Matches R's expected_icr_rcpp() and actual_icr_table construction
-from TxTRS_R_BModel revised.R and utility_functions.R.
+Matches R's expected_icr_rcpp() and actual_icr_table construction.
 """
 
 import numpy as np

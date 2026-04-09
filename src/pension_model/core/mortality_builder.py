@@ -12,10 +12,8 @@ Supports two input formats:
 The result is a compact (age, year) → rate lookup for employee and retiree
 mortality, with class-specific base table selection.
 
-Class → base table mapping (FRS):
-  regular: average of General and Teacher
-  special, admin: Safety
-  eco, eso, judges, senior_management: General
+Class → base table mapping is config-driven via ``base_table_map``
+(per-class mapping) or ``mortality.base_table`` (plan-wide default).
 """
 
 import numpy as np
@@ -214,7 +212,7 @@ def build_compact_mortality_from_excel(
     Returns:
         CompactMortality with employee and retiree rates by (age, year)
     """
-    # Read base mortality tables — use config map if available, else hardcoded FRS map
+    # Read base mortality tables — use config map if available, else fallback map
     from pension_model.plan_config import PlanConfig
     if isinstance(constants, PlanConfig) and constants.base_table_map:
         base_type = constants.get_base_table_type(class_name)
@@ -373,9 +371,9 @@ def build_compact_mortality_from_csv(
         table_name: Which table to use from base_rates.csv (e.g. 'general', 'teacher_below_median')
         min_age, max_age, min_year, max_year, base_year: Range parameters
         constants: Optional PlanConfig
-        male_mp_forward_shift: Shift male MP table forward by N years (TRS uses 2)
+        male_mp_forward_shift: Shift male MP table forward by N years (config-driven)
     """
-    # For FRS "regular" class: average of general and teacher
+    # For "regular" base_type: average of general and teacher tables
     from pension_model.plan_config import PlanConfig
     if isinstance(constants, PlanConfig) and constants.base_table_map:
         base_type = constants.get_base_table_type(class_name)
@@ -396,7 +394,7 @@ def build_compact_mortality_from_csv(
     male_mp = _read_mp_csv(improvement_path, "male", min_age)
     female_mp = _read_mp_csv(improvement_path, "female", min_age)
 
-    # Apply male MP forward shift if configured (TRS: 2 years)
+    # Apply male MP forward shift if configured
     if male_mp_forward_shift > 0:
         year_cols = [c for c in male_mp.columns if c != "age"]
         new_names = {c: str(int(c) - male_mp_forward_shift) for c in year_cols}

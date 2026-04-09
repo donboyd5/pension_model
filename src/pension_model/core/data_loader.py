@@ -122,16 +122,16 @@ def _build_mortality_from_csv(
     base_path = mort_dir / "base_rates.csv"
     imp_path = mort_dir / "improvement_scale.csv"
 
-    # Determine table name from config: per-class map takes precedence (FRS uses
-    # this: regular=regular, special/admin=safety, etc.). Otherwise fall back to
-    # the plan-wide mortality.base_table setting (TRS-style single-table plans).
+    # Determine table name from config: per-class map takes precedence
+    # (for multi-class plans with different base tables). Otherwise fall back
+    # to the plan-wide mortality.base_table setting (single-table plans).
     base_table_map = constants.raw.get("base_table_map", {})
     if class_name in base_table_map:
         table_name = base_table_map[class_name]
     else:
         mort_cfg = constants.raw.get("mortality", {})
         base_table_label = mort_cfg.get("base_table", "general")
-        # Map verbose config labels to CSV table names (TRS uses these)
+        # Map verbose config labels to CSV table names
         table_name_map = {
             "pub_2010_teacher_below_median": "teacher_below_median",
             "pub_2010_teacher": "teacher",
@@ -166,13 +166,13 @@ def _load_decrements(
 
     Reads {class_name}_termination_rates.csv and
     {class_name}_retirement_rates.csv in the standard lookup_type format,
-    falling back to unprefixed filenames for single-class plans (e.g., TRS).
+    falling back to unprefixed filenames for single-class plans.
 
-    For plans with years_from_nr termination rates (e.g., TRS), builds the
-    full separation rate table directly.
+    For plans with years_from_nr termination rates, builds the full
+    separation rate table directly.
 
-    For plans with yos-only termination rates (e.g., FRS), converts back to
-    the term_rate_avg + retirement rate table format.
+    For plans with yos-only termination rates, converts back to the
+    term_rate_avg + retirement rate table format.
     """
     term_path = decr_dir / f"{class_name}_termination_rates.csv"
     if not term_path.exists():
@@ -190,19 +190,19 @@ def _load_decrements(
     has_years_from_nr = "years_from_nr" in term_df["lookup_type"].values
 
     if has_years_from_nr:
-        # TRS-style: build separation rate table from stage 3 data
-        _build_trs_style_decrements(inputs, constants, term_df, ret_df, decr_dir, class_name)
+        # Years-from-normal-retirement lookup: build separation rate table
+        _build_years_from_nr_decrements(inputs, constants, term_df, ret_df, decr_dir, class_name)
     else:
-        # FRS-style: convert to legacy format for existing builder
-        _build_frs_style_decrements(inputs, term_df, ret_df)
+        # YOS-only lookup: convert to wide format for existing builder
+        _build_yos_only_decrements(inputs, term_df, ret_df)
 
 
-def _build_frs_style_decrements(
+def _build_yos_only_decrements(
     inputs: dict,
     term_df: pd.DataFrame,
     ret_df: pd.DataFrame,
 ):
-    """Convert stage 3 format back to FRS legacy decrement format.
+    """Convert stage 3 YOS-only termination rates to wide decrement format.
 
     The existing build_separation_rate_table() expects:
       - term_rate_avg: yos × age_group wide format
@@ -252,7 +252,7 @@ def _build_frs_style_decrements(
             inputs[input_key] = subset
 
 
-def _build_trs_style_decrements(
+def _build_years_from_nr_decrements(
     inputs: dict,
     constants: PlanConfig,
     term_df: pd.DataFrame,
@@ -260,7 +260,7 @@ def _build_trs_style_decrements(
     decr_dir: Path,
     class_name: str,
 ):
-    """Build TRS-style separation rate table from stage 3 data.
+    """Build separation rate table using years-from-normal-retirement lookup.
 
     Uses the existing build_txtrs_separation_rate_table logic but reads
     from CSV instead of Excel.
@@ -271,7 +271,7 @@ def _build_trs_style_decrements(
     yos_rates = term_df[term_df["lookup_type"] == "yos"].copy()
     nr_rates = term_df[term_df["lookup_type"] == "years_from_nr"].copy()
 
-    # Build before10 and after10 tables for TRS-style separation rate logic
+    # Build before10 and after10 tables for years-from-NR separation rate logic
     before10 = yos_rates[["lookup_value", "term_rate"]].copy()
     before10 = before10.rename(columns={"lookup_value": "yos"})
 
@@ -410,7 +410,7 @@ def load_plan_inputs(constants: PlanConfig) -> dict:
         inputs = load_plan_data(cn, constants)
         raw_inputs_by_class[cn] = inputs
 
-    # Attach reduction tables (TRS early-retire factor lookup) to config.
+    # Attach reduction tables (early-retire factor lookup) to config.
     # These are plan-wide, not per-class; take from the first class that
     # provides them.
     for cn in classes:
