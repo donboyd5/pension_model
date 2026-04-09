@@ -9,7 +9,7 @@ Production pipeline for pension modeling:
 
 from .pipeline import run_plan_pipeline, build_plan_benefit_tables
 from .data_loader import load_plan_inputs
-from .funding_model import compute_funding, load_funding_inputs
+from .funding_model import compute_funding, load_funding_inputs, run_funding_model
 
 __all__ = [
     "run_plan_pipeline",
@@ -17,4 +17,5 @@ __all__ = [
     "load_plan_inputs",
     "compute_funding",
     "load_funding_inputs",
+    "run_funding_model",
 ]

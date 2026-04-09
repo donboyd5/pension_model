@@ -276,7 +276,7 @@ def _execute_pipeline(constants):
     """
     from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import (
-        load_funding_inputs, compute_funding, compute_funding_trs,
+        load_funding_inputs, run_funding_model,
     )
 
     print("  Building benefit tables, workforce, and liabilities (this may take a while)...")
@@ -294,12 +294,7 @@ def _execute_pipeline(constants):
     funding_dir = constants.resolve_data_dir() / "funding"
     funding_inputs = load_funding_inputs(funding_dir)
 
-    funding_model = constants.funding_model
-    if funding_model == "trs":
-        funding = compute_funding_trs(
-            liability[list(constants.classes)[0]], funding_inputs, constants)
-    else:
-        funding = compute_funding(liability, funding_inputs, constants)
+    funding = run_funding_model(liability, funding_inputs, constants)
 
     return liability, funding, liability_stacked
 

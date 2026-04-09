@@ -1100,3 +1100,38 @@ def compute_funding_trs(
                 pay_new[i, j] = 0
 
     return f
+
+
+# ---------------------------------------------------------------------------
+# Unified entry point — dispatches based on config, returns uniform type
+# ---------------------------------------------------------------------------
+
+def run_funding_model(
+    liability_results: dict,
+    funding_inputs: dict,
+    constants,
+) -> dict:
+    """Run the funding model for any plan.
+
+    Dispatches to the appropriate implementation based on
+    ``constants.funding_model`` (from config ``funding.model``).
+
+    Args:
+        liability_results: Dict mapping class_name -> liability DataFrame.
+        funding_inputs: Output of load_funding_inputs().
+        constants: PlanConfig.
+
+    Returns:
+        Dict mapping class_name -> funding DataFrame.  For multi-class plans
+        this also contains an aggregate key (plan_name) and optionally "drop".
+        For single-class plans the dict has one entry keyed by the class name
+        plus a plan_name aggregate key (same DataFrame).
+    """
+    model = constants.funding_model
+    if model == "trs":
+        first_class = list(constants.classes)[0]
+        df = compute_funding_trs(
+            liability_results[first_class], funding_inputs, constants)
+        return {first_class: df, constants.plan_name: df}
+    else:
+        return compute_funding(liability_results, funding_inputs, constants)

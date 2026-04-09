@@ -90,15 +90,14 @@ def test_frs_mva_balance(frs_truth_table):
 def txtrs_truth_table():
     """Run TRS pipeline and build truth table."""
     from pension_model.core.pipeline import run_plan_pipeline
-    from pension_model.core.funding_model import load_funding_inputs, compute_funding_trs
+    from pension_model.core.funding_model import load_funding_inputs, run_funding_model
     from pension_model.plan_config import load_txtrs_config
 
     constants = load_txtrs_config()
     liability = run_plan_pipeline(constants)
     funding_dir = constants.resolve_data_dir() / "funding"
     funding_inputs = load_funding_inputs(funding_dir)
-    first_class = list(constants.classes)[0]
-    funding = compute_funding_trs(liability[first_class], funding_inputs, constants)
+    funding = run_funding_model(liability, funding_inputs, constants)
     return build_python_truth_table("txtrs", liability, funding, constants)
 
 
