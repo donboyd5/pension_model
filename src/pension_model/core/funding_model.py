@@ -1128,7 +1128,7 @@ def run_funding_model(
         plus a plan_name aggregate key (same DataFrame).
     """
     model = constants.funding_model
-    if model == "trs":
+    if model == "single_class":
         first_class = list(constants.classes)[0]
         df = compute_funding_trs(
             liability_results[first_class], funding_inputs, constants)

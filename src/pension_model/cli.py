@@ -92,7 +92,7 @@ def build_plan_summary(plan_name, liability, funding, constants):
     """Build a plan-wide summary DataFrame with standardized columns.
 
     Works for any plan — extracts the same metrics regardless of whether
-    funding is a dict-of-DataFrames (FRS) or a single DataFrame (TRS).
+    funding is a dict-of-DataFrames (from run_funding_model).
     This is the primary analysis output; it persists even after truth
     tables are retired.
     """
@@ -104,7 +104,7 @@ def build_plan_summary(plan_name, liability, funding, constants):
         col = liability[cn]["total_n_active"].values
         n_active = col if n_active is None else n_active + col
 
-    # Get aggregate funding — FRS uses a plan-level key, TRS is a single df
+    # Get aggregate funding — plan-level key or first class key
     if isinstance(funding, dict):
         f = funding.get(plan_name, funding.get(classes[0]))
     else:
@@ -270,9 +270,8 @@ def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
 def _execute_pipeline(constants):
     """Run liability + funding pipeline for any plan.
 
-    Returns (liability_dict, funding_obj, liability_stacked).
-    The funding object shape varies by plan (dict for FRS, DataFrame for TRS)
-    but build_plan_summary() normalizes them into a common format.
+    Returns (liability_dict, funding_dict, liability_stacked).
+    Funding is always a dict (from run_funding_model).
     """
     from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import (

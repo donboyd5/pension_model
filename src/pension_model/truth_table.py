@@ -7,9 +7,9 @@ differ; it tells you quickly WHETHER anything differs materially from the R
 baseline.
 
 Two views of the same data live side by side in an Excel workbook:
-- `frs_R`, `txtrs_R`: frozen values extracted from the R model's baseline
-  CSVs, written once by scripts/build_r_truth_tables.py and never re-generated
-- `frs_Py`, `txtrs_Py`: overwritten by each Python pipeline run (via the CLI),
+- `{plan}_R`: frozen values extracted from the R model's baseline CSVs,
+  written once by scripts/build_r_truth_tables.py and never re-generated
+- `{plan}_Py`: overwritten by each Python pipeline run (via the CLI),
   so flipping between tabs gives a direct visual diff
 
 Column layout — organized so the MVA balance identity is visible:
@@ -19,12 +19,12 @@ Column layout — organized so the MVA balance identity is visible:
 
   INFLOWS (into DB fund)
     er_db_cont           — employer DB contributions (normal cost + amortization;
-                           includes DROP employer contributions for FRS)
+                           includes DROP contributions for plans with DROP)
     ee_cont              — employee contributions
     invest_income        — actual investment income earned on MVA
 
   OUTFLOWS (from DB fund)
-    benefits             — benefit payments (includes DROP benefit payments for FRS)
+    benefits             — benefit payments (includes DROP payments for plans with DROP)
     refunds              — refund payments to terminated members
     admin_exp            — administrative expenses
 
@@ -47,7 +47,7 @@ Column layout — organized so the MVA balance identity is visible:
 
 Note: DC employer contributions (er_dc_cont) are not in the MVA balance because
 DC money is paid directly to member accounts and never flows through the DB fund.
-For FRS, DROP flows are included in the aggregate er_db_cont and benefits columns.
+For plans with DROP, those flows are included in the aggregate er_db_cont and benefits.
 
 MVA balance identity (holds to float precision for all rows except the last):
     mva_eoy = mva_boy + er_db_cont + ee_cont + invest_income

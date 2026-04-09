@@ -65,7 +65,7 @@ class PlanConfig:
     cola: dict
 
     # Funding
-    funding_model: str   # "frs" or "trs" — selects which compute_funding to run
+    funding_model: str   # "multi_class" or "single_class" — selects funding implementation
     funding_policy: str
     amo_method: str
     amo_period_new: int
@@ -103,7 +103,7 @@ class PlanConfig:
     # Calibration (per-class nc_cal and pvfb_term_current)
     calibration: Dict[str, dict] = field(default_factory=dict)
 
-    # Cash balance parameters (optional, TRS-style plans)
+    # Cash balance parameters (optional, plans with CB benefit type)
     cash_balance: Optional[dict] = None
 
     # Precomputed: class→group mapping for fast lookup
@@ -143,8 +143,8 @@ class PlanConfig:
         """Whether entrant profile salaries are expressed at start_year level.
 
         When True, max_hist_year is raised to start_year so future cohorts
-        use the entrant profile salary directly (TRS pattern). When False,
-        max_hist_year comes from the salary_headcount data (FRS pattern).
+        use the entrant profile salary directly. When False,
+        max_hist_year comes from the salary_headcount data.
         """
         return self.raw.get("modeling", {}).get("entrant_salary_at_start_year", False)
 
@@ -156,22 +156,22 @@ class PlanConfig:
     @property
     def term_vested_method(self) -> str:
         """Method for projecting term vested benefit payments.
-        'growing_annuity' (FRS) or 'bell_curve' (TRS)."""
+        'growing_annuity' or 'bell_curve'."""
         return self.raw.get("modeling", {}).get("term_vested_method", "growing_annuity")
 
     @property
     def male_mp_forward_shift(self) -> int:
-        """Years to shift male mortality improvement scale forward (TRS=2, FRS=0)."""
+        """Years to shift male mortality improvement scale forward (0 = no shift)."""
         return self.raw.get("modeling", {}).get("male_mp_forward_shift", 0)
 
     @property
     def cola_proration_cutoff_year(self) -> Optional[int]:
-        """Year boundary for COLA proration (FRS=2011, TRS=null)."""
+        """Year boundary for COLA proration (null if not applicable)."""
         return self.cola.get("proration_cutoff_year")
 
     @property
     def plan_design_cutoff_year(self) -> Optional[int]:
-        """Year boundary for plan design ratio split (FRS=2018, TRS=null)."""
+        """Year boundary for plan design ratio split (null if not applicable)."""
         return self.raw.get("plan_design", {}).get("cutoff_year")
 
     @property
@@ -308,15 +308,11 @@ class PlanConfig:
         'before' = pre-new_year legacy, 'after' = post-2018/pre-new_year,
         'new' = post-new_year new hires.
 
-        For FRS: {"db": (0.75, 0.25, 0.25), "dc": (0.25, 0.75, 0.75)}
-        For TRS: {"db": (1.0, 1.0, 1.0), "cb": (0.0, 0.0, 0.0)}
+        Example: {"db": (0.75, 0.25, 0.25), "dc": (0.25, 0.75, 0.75)}
 
         Design-ratio grouping can differ from tier-eligibility grouping.
-        If `design_ratio_group_map` is present in config, it overrides the
-        default class_group lookup for this class. FRS uses this so that
-        "admin" (tier-eligibility group = special_group) gets regular-group
-        design ratios, matching R's `if (class_name == "special")` check in
-        the liability model.
+        If ``design_ratio_group_map`` is present in config, it overrides the
+        default class_group lookup for this class.
         """
         override_map = self.raw.get("design_ratio_group_map", {})
         group = override_map.get(class_name, self.class_group(class_name))
@@ -351,7 +347,7 @@ class PlanConfig:
         return self._class_to_group.get(class_name, "default")
 
     def is_special(self, class_name: str) -> bool:
-        """Whether a class is in the special group (FRS concept)."""
+        """Whether a class is in the special group."""
         return self.class_group(class_name) == "special_group"
 
     def get_fas_years(self, tier_name: str) -> int:
@@ -592,7 +588,7 @@ def _entry_year_in_tier(entry_year: int, tier_def: dict, new_year: int) -> bool:
 
 def _is_grandfathered(entry_year: int, entry_age: int,
                       params: dict) -> bool:
-    """TRS-style grandfathering: check conditions as of cutoff_year."""
+    """Conditional grandfathering: check conditions as of cutoff_year."""
     cutoff = params["cutoff_year"]
     if entry_year > cutoff:
         return False
@@ -778,7 +774,7 @@ def get_reduce_factor(config: PlanConfig, class_name: str, tier: str,
 
     reduction = rd.get("early_retire_reduction", {})
 
-    # Simple NRA-based reduction (FRS style)
+    # Simple NRA-based reduction (rate_per_year × years before NRA)
     if "nra" in reduction:
         nra_map = reduction["nra"]
         rate = reduction["rate_per_year"]
@@ -788,7 +784,7 @@ def get_reduce_factor(config: PlanConfig, class_name: str, tier: str,
             nra = nra_map.get("default", 65)
         return 1.0 - rate * (nra - dist_age)
 
-    # Rule-based reduction (TRS style)
+    # Rule-based reduction (condition → formula lookup)
     if "rules" in reduction:
         reduce_tables = getattr(config, "_reduce_tables", None)
         for rule in reduction["rules"]:
@@ -862,7 +858,7 @@ def _lookup_reduce_table(table, table_key: str, dist_age: int, yos: int) -> floa
 
 
 def _default_reduce_factor(dist_age: int) -> float:
-    """Default Reduced Others factors (TRS) when table not available."""
+    """Default early retirement reduction factors when table not available."""
     factors = {55: 0.43, 56: 0.46, 57: 0.50, 58: 0.55, 59: 0.59,
                60: 0.64, 61: 0.70, 62: 0.76, 63: 0.84, 64: 0.91, 65: 1.00}
     return factors.get(dist_age, 1.0 if dist_age >= 65 else float("nan"))
@@ -1295,7 +1291,7 @@ def resolve_reduce_factor_vec(config: PlanConfig,
         sub_yos = yos[idx_arr]
         sub_ey = entry_year[idx_arr]
 
-        # FRS-style NRA-based reduction
+        # NRA-based reduction (rate_per_year × years before NRA)
         if "nra" in reduction:
             nra_map = reduction["nra"]
             rate = reduction["rate_per_year"]
@@ -1307,7 +1303,7 @@ def resolve_reduce_factor_vec(config: PlanConfig,
             result[idx_arr] = vals
             continue
 
-        # TRS-style rule-based reduction
+        # Rule-based reduction (condition → formula lookup)
         if "rules" in reduction:
             sub_vals = np.full(len(idx_arr), np.nan, dtype=np.float64)
             assigned = np.zeros(len(idx_arr), dtype=bool)
@@ -1374,7 +1370,7 @@ def _reduce_condition_vec(cond: dict, dist_age: np.ndarray, yos: np.ndarray,
 def get_plan_design_ratios(config: PlanConfig, class_name: str) -> Tuple[float, float, float]:
     """Return (before_2018_db, after_2018_db, new_db) plan design ratios.
 
-    For FRS these differ by class group. For TRS-style plans, typically 1.0/1.0/1.0.
+    Ratios may differ by class group; single-class plans typically use 1.0/1.0/1.0.
     """
     group = config.class_group(class_name)
     pd_defs = config.plan_design_defs
@@ -1552,7 +1548,7 @@ def discover_plans(plans_dir: Optional[Path] = None) -> dict[str, Path]:
 
 
 def load_frs_config(calibration_path: Optional[Path] = None) -> PlanConfig:
-    """Convenience: load the FRS plan config with default paths."""
+    """Convenience: load the FRS plan config with default paths (debug/tests only)."""
     base = Path(__file__).parents[2] / "plans" / "frs" / "config"
     config_path = base / "plan_config.json"
     if calibration_path is None:
@@ -1563,7 +1559,7 @@ def load_frs_config(calibration_path: Optional[Path] = None) -> PlanConfig:
 
 
 def load_txtrs_config(calibration_path: Optional[Path] = None) -> PlanConfig:
-    """Convenience: load the Texas TRS plan config."""
+    """Convenience: load the TRS plan config with default paths (debug/tests only)."""
     base = Path(__file__).parents[2] / "plans" / "txtrs" / "config"
     config_path = base / "plan_config.json"
     cal_path = calibration_path or (base / "calibration.json")
