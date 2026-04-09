@@ -1,7 +1,6 @@
 {
   "plan_name": "txtrs",
   "plan_description": "Texas Teacher Retirement System",
-  "truth_table_format": "txtrs",
 
   "data": {
     "data_dir": "plans/txtrs/data"

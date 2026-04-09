@@ -230,73 +230,23 @@ def build_python_truth_table(
 ) -> pd.DataFrame:
     """Build a Python-side truth table from live pipeline output.
 
+    Generic across all plans — no plan-specific dispatch.
+
     Args:
-        plan_name: "frs" or "txtrs".
+        plan_name: plan identifier (used in the "plan" column).
         liability: dict of class_name -> liability DataFrame (per-class).
-        funding: the funding object — for FRS this is a dict with a "frs"
-            key aggregated across all classes; for TRS it's a single
-            DataFrame for the "all" class.
+        funding: the funding object — either a dict keyed by plan_name
+            (multi-class plans) or a single DataFrame (single-class plans).
         constants: PlanConfig for the plan.
-
-    Metrics the Python pipeline does not (yet) compute are returned as NA.
     """
-    fmt = constants.raw.get("truth_table_format", plan_name)
-    if fmt == "frs":
-        return _build_python_truth_table_frs(liability, funding, constants)
-    elif fmt == "txtrs":
-        return _build_python_truth_table_txtrs(liability, funding, constants)
+    # --- Resolve funding DataFrame ---
+    if isinstance(funding, dict):
+        f = funding.get(plan_name, funding.get(list(constants.classes)[0]))
     else:
-        raise ValueError(f"unknown truth_table_format: {fmt!r}")
-
-
-def _build_python_truth_table_frs(liability, funding, constants) -> pd.DataFrame:
-    """FRS-style: funding is a dict containing plan aggregate."""
-    f = funding[constants.plan_name]
-
-    # Sum total_n_active across all classes
-    classes = list(constants.classes)
-    n_active = None
-    for cn in classes:
-        col = liability[cn]["total_n_active"].values
-        n_active = col if n_active is None else n_active + col
-
-    net_cf = f["net_cf_legacy"].values + f["net_cf_new"].values
-    mva = f["total_mva"].values
-    invest_income = _actual_invest_income(mva, net_cf)
-    ee = f["ee_nc_cont_legacy"].values + f["ee_nc_cont_new"].values
-    er_db = f["total_er_db_cont"].values
-    benefits = f["total_ben_payment"].values
-    refunds = f["total_refund"].values
-    admin = f["admin_exp_legacy"].values + f["admin_exp_new"].values
-
-    df = pd.DataFrame({
-        "plan": "frs",
-        "year": f["year"].astype(int).values,
-        "mva_boy": mva,
-        "er_db_cont": er_db,
-        "ee_cont": ee,
-        "invest_income": invest_income,
-        "benefits": benefits,
-        "refunds": refunds,
-        "admin_exp": admin,
-        "mva_eoy": mva + net_cf + invest_income,
-        "aal_boy": f["total_aal"].values,
-        "ava_boy": f["total_ava"].values,
-        "fr_mva_boy": f["fr_mva"].values,
-        "fr_ava_boy": f["fr_ava"].values,
-        "n_active_boy": n_active,
-        "payroll": f["total_payroll"].values,
-        "er_cont_total": f["total_er_cont"].values,
-    })
-    return df[TRUTH_TABLE_COLUMNS]
-
-
-def _build_python_truth_table_txtrs(liability, funding, _constants) -> pd.DataFrame:
-    """TRS: funding is a single DataFrame; liability['all'] is the per-class frame."""
-    f = funding
-    liab = liability["all"]
+        f = funding
 
     def col(df, *options):
+        """Return first matching column as an array, or None."""
         for o in options:
             if o in df.columns:
                 return df[o].values
@@ -307,10 +257,25 @@ def _build_python_truth_table_txtrs(liability, funding, _constants) -> pd.DataFr
             return a + b
         return a if a is not None else b
 
+    # --- Sum active headcount across all classes ---
+    n_active = None
+    for cn in constants.classes:
+        vals = liability[cn]["total_n_active"].values
+        n_active = vals if n_active is None else n_active + vals
+
+    # --- Extract funding columns ---
     year = col(f, "year")
+    n = len(year) if year is not None else len(f)
+    z = np.zeros(n)
+
+    def _or_z(x):
+        return x if x is not None else z
+
     mva = col(f, "total_mva")
-    er_db = col(f, "total_er_cont")  # TRS has no DC
     ee = _sum(col(f, "ee_nc_cont_legacy"), col(f, "ee_nc_cont_new"))
+    # er_db_cont: prefer total_er_db_cont (multi-class plans with DC),
+    # fall back to total_er_cont (single-class plans without DC)
+    er_db = col(f, "total_er_db_cont", "total_er_cont")
     benefits = _sum(col(f, "ben_payment_legacy"), col(f, "ben_payment_new"))
     if benefits is None:
         benefits = col(f, "total_ben_payment")
@@ -319,16 +284,13 @@ def _build_python_truth_table_txtrs(liability, funding, _constants) -> pd.DataFr
         refunds = col(f, "total_refund")
     admin = _sum(col(f, "admin_exp_legacy"), col(f, "admin_exp_new"))
     net_cf = _sum(col(f, "net_cf_legacy"), col(f, "net_cf_new"))
-
-    invest_income = _actual_invest_income(mva, net_cf) if mva is not None and net_cf is not None else None
-
-    n = len(year) if year is not None else len(liab)
-    z = np.zeros(n)
-
-    _or_z = lambda x: x if x is not None else z
+    invest_income = (
+        _actual_invest_income(mva, net_cf)
+        if mva is not None and net_cf is not None else None
+    )
 
     df = pd.DataFrame({
-        "plan": "txtrs",
+        "plan": plan_name,
         "year": pd.Series(year).astype(int).values,
         "mva_boy": mva,
         "er_db_cont": _or_z(er_db),
@@ -342,9 +304,9 @@ def _build_python_truth_table_txtrs(liability, funding, _constants) -> pd.DataFr
         "ava_boy": col(f, "total_ava"),
         "fr_mva_boy": col(f, "fr_mva"),
         "fr_ava_boy": col(f, "fr_ava"),
-        "n_active_boy": col(liab, "total_n_active"),
+        "n_active_boy": n_active,
         "payroll": col(f, "total_payroll"),
-        "er_cont_total": _or_z(er_db),  # same as er_db for TRS
+        "er_cont_total": col(f, "total_er_cont"),
     })
     return df[TRUTH_TABLE_COLUMNS]
 
