@@ -138,6 +138,20 @@ def _aal_rollforward(aal_prev, nc, ben, refund, liab_gl, dr):
     )
 
 
+def _mva_rollforward(mva_prev, net_cf, roa):
+    """Roll the market value of assets forward one year.
+
+    Identical formula used by both funding paths::
+
+        mva_t = mva_{t-1} * (1 + roa) + net_cf * (1 + roa) ** 0.5
+
+    Mid-year cashflow is brought forward at half a year of investment
+    return. Pass scalar ``roa`` so the operations match the original
+    inline expression bit-for-bit (bit-identity risk #1).
+    """
+    return mva_prev * (1 + roa) + net_cf * (1 + roa) ** 0.5
+
+
 def _lookup_rate_schedule(schedule: list, year: int) -> float:
     """Look up a rate from a year-based schedule.
 

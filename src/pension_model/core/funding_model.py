@@ -25,6 +25,7 @@ from pension_model.core._funding_helpers import (
     _ava_gain_loss_smoothing,
     _get_init_row,
     _lookup_rate_schedule,
+    _mva_rollforward,
 )
 import math
 
@@ -448,8 +449,10 @@ def compute_funding(
             frs.loc[i, "net_cf_legacy"] += f.loc[i, "net_cf_legacy"]
             frs.loc[i, "net_cf_new"] += f.loc[i, "net_cf_new"]
 
-            f.loc[i, "mva_legacy"] = f.loc[i - 1, "mva_legacy"] * (1 + roa) + f.loc[i, "net_cf_legacy"] * (1 + roa) ** 0.5
-            f.loc[i, "mva_new"] = f.loc[i - 1, "mva_new"] * (1 + roa) + f.loc[i, "net_cf_new"] * (1 + roa) ** 0.5
+            f.loc[i, "mva_legacy"] = _mva_rollforward(
+                f.loc[i - 1, "mva_legacy"], f.loc[i, "net_cf_legacy"], roa)
+            f.loc[i, "mva_new"] = _mva_rollforward(
+                f.loc[i - 1, "mva_new"], f.loc[i, "net_cf_new"], roa)
             f.loc[i, "total_mva"] = f.loc[i, "mva_legacy"] + f.loc[i, "mva_new"]
             frs.loc[i, "mva_legacy"] += f.loc[i, "mva_legacy"]
             frs.loc[i, "mva_new"] += f.loc[i, "mva_new"]
@@ -909,10 +912,10 @@ def compute_funding_trs(
         f.loc[i, "net_cf_new"] = cf_new + f.loc[i, "solv_cont_new"]
 
         # MVA projection
-        f.loc[i, "mva_legacy"] = (f.loc[i - 1, "mva_legacy"] * (1 + roa)
-                                   + f.loc[i, "net_cf_legacy"] * (1 + roa) ** 0.5)
-        f.loc[i, "mva_new"] = (f.loc[i - 1, "mva_new"] * (1 + roa)
-                                + f.loc[i, "net_cf_new"] * (1 + roa) ** 0.5)
+        f.loc[i, "mva_legacy"] = _mva_rollforward(
+            f.loc[i - 1, "mva_legacy"], f.loc[i, "net_cf_legacy"], roa)
+        f.loc[i, "mva_new"] = _mva_rollforward(
+            f.loc[i - 1, "mva_new"], f.loc[i, "net_cf_new"], roa)
         f.loc[i, "total_mva"] = f.loc[i, "mva_legacy"] + f.loc[i, "mva_new"]
 
         # AVA gain/loss deferral smoothing — legacy
