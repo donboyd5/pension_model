@@ -293,6 +293,19 @@ def _ava_corridor_smoothing(ava_prev, net_cf, mva, dr):
     }
 
 
+def _accumulate_to_aggregate(target, source, i, cols):
+    """Add ``source.loc[i, col]`` to ``target.loc[i, col]`` for each col.
+
+    Used to roll per-class (or DROP) values up into a plan-aggregate
+    DataFrame inside the funding loop. Pure scalar additions in the
+    listed column order — no vector ``f.loc[i, cols] = values`` bulk
+    write, because that can dtype-promote and produce different bytes
+    (bit-identity risk #9 in the plan).
+    """
+    for col in cols:
+        target.loc[i, col] += source.loc[i, col]
+
+
 def _lookup_rate_schedule(schedule: list, year: int) -> float:
     """Look up a rate from a year-based schedule.
 

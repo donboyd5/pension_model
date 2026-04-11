@@ -22,6 +22,7 @@ from pension_model.plan_config import PlanConfig
 from pension_model.core.pipeline import _get_pmt
 from pension_model.core._funding_helpers import (
     _aal_rollforward,
+    _accumulate_to_aggregate,
     _ava_corridor_smoothing,
     _ava_gain_loss_smoothing,
     _get_init_row,
@@ -273,8 +274,10 @@ def compute_funding(
             f.loc[i, "payroll_dc_legacy"] = f.loc[i, "total_payroll"] * f.loc[i, "payroll_dc_legacy_ratio"]
             f.loc[i, "payroll_dc_new"] = f.loc[i, "total_payroll"] * f.loc[i, "payroll_dc_new_ratio"]
 
-            for pc in ["total_payroll", "payroll_db_legacy", "payroll_db_new", "payroll_dc_legacy", "payroll_dc_new"]:
-                frs.loc[i, pc] += f.loc[i, pc]
+            _accumulate_to_aggregate(frs, f, i, [
+                "total_payroll", "payroll_db_legacy", "payroll_db_new",
+                "payroll_dc_legacy", "payroll_dc_new",
+            ])
 
             f.loc[i, "ben_payment_legacy"] = (liab["retire_ben_db_legacy_est"].iloc[i]
                 + liab["retire_ben_current_est"].iloc[i] + liab["retire_ben_term_est"].iloc[i])
@@ -284,16 +287,17 @@ def compute_funding(
             f.loc[i, "total_ben_payment"] = f.loc[i, "ben_payment_legacy"] + f.loc[i, "ben_payment_new"]
             f.loc[i, "total_refund"] = f.loc[i, "refund_legacy"] + f.loc[i, "refund_new"]
 
-            for bc in ["ben_payment_legacy", "refund_legacy", "ben_payment_new", "refund_new",
-                        "total_ben_payment", "total_refund"]:
-                frs.loc[i, bc] += f.loc[i, bc]
+            _accumulate_to_aggregate(frs, f, i, [
+                "ben_payment_legacy", "refund_legacy",
+                "ben_payment_new", "refund_new",
+                "total_ben_payment", "total_refund",
+            ])
 
             f.loc[i, "nc_legacy"] = f.loc[i, "nc_rate_db_legacy"] * f.loc[i, "payroll_db_legacy"]
             f.loc[i, "nc_new"] = f.loc[i, "nc_rate_db_new"] * f.loc[i, "payroll_db_new"]
             pdb = f.loc[i, "payroll_db_legacy"] + f.loc[i, "payroll_db_new"]
             f.loc[i, "total_nc_rate"] = (f.loc[i, "nc_legacy"] + f.loc[i, "nc_new"]) / pdb if pdb > 0 else 0
-            frs.loc[i, "nc_legacy"] += f.loc[i, "nc_legacy"]
-            frs.loc[i, "nc_new"] += f.loc[i, "nc_new"]
+            _accumulate_to_aggregate(frs, f, i, ["nc_legacy", "nc_new"])
 
             # Under baseline (experience = assumptions), gain/loss = 0
             f.loc[i, "liability_gain_loss_legacy"] = liab["liability_gain_loss_legacy_est"].iloc[i] if "liability_gain_loss_legacy_est" in liab.columns else 0
@@ -317,9 +321,9 @@ def compute_funding(
             )
             f.loc[i, "total_aal"] = f.loc[i, "aal_legacy"] + f.loc[i, "aal_new"]
 
-            frs.loc[i, "aal_legacy"] += f.loc[i, "aal_legacy"]
-            frs.loc[i, "aal_new"] += f.loc[i, "aal_new"]
-            frs.loc[i, "total_aal"] += f.loc[i, "total_aal"]
+            _accumulate_to_aggregate(frs, f, i, [
+                "aal_legacy", "aal_new", "total_aal",
+            ])
 
             funding[cn] = f
 
@@ -358,20 +362,22 @@ def compute_funding(
             drop.loc[i, "total_aal"] = drop.loc[i, "aal_legacy"] + drop.loc[i, "aal_new"]
             funding["drop"] = drop
 
-            for pc in ["total_payroll", "payroll_db_legacy", "payroll_db_new"]:
-                frs.loc[i, pc] += drop.loc[i, pc]
-            for bc in ["ben_payment_legacy", "refund_legacy", "ben_payment_new", "refund_new",
-                        "total_ben_payment", "total_refund"]:
-                frs.loc[i, bc] += drop.loc[i, bc]
-            frs.loc[i, "nc_legacy"] += drop.loc[i, "nc_legacy"]
-            frs.loc[i, "nc_new"] += drop.loc[i, "nc_new"]
+            _accumulate_to_aggregate(frs, drop, i, [
+                "total_payroll", "payroll_db_legacy", "payroll_db_new",
+            ])
+            _accumulate_to_aggregate(frs, drop, i, [
+                "ben_payment_legacy", "refund_legacy",
+                "ben_payment_new", "refund_new",
+                "total_ben_payment", "total_refund",
+            ])
+            _accumulate_to_aggregate(frs, drop, i, ["nc_legacy", "nc_new"])
             frs_pdb2 = frs.loc[i, "payroll_db_legacy"] + frs.loc[i, "payroll_db_new"]
             frs.loc[i, "total_nc_rate"] = (frs.loc[i, "nc_legacy"] + frs.loc[i, "nc_new"]) / frs_pdb2 if frs_pdb2 > 0 else 0
             frs.loc[i, "nc_rate_db_legacy"] = frs.loc[i, "nc_legacy"] / frs.loc[i, "payroll_db_legacy"] if frs.loc[i, "payroll_db_legacy"] > 0 else 0
             frs.loc[i, "nc_rate_db_new"] = frs.loc[i, "nc_new"] / frs.loc[i, "payroll_db_new"] if frs.loc[i, "payroll_db_new"] > 0 else 0
-            frs.loc[i, "aal_legacy"] += drop.loc[i, "aal_legacy"]
-            frs.loc[i, "aal_new"] += drop.loc[i, "aal_new"]
-            frs.loc[i, "total_aal"] += drop.loc[i, "total_aal"]
+            _accumulate_to_aggregate(frs, drop, i, [
+                "aal_legacy", "aal_new", "total_aal",
+            ])
 
         # --- Contributions, MVA, AVA ---
         for cn in all_classes:
@@ -398,13 +404,15 @@ def compute_funding(
             f.loc[i, "admin_exp_rate"] = f.loc[i - 1, "admin_exp_rate"]
             f.loc[i, "ee_nc_cont_legacy"] = db_ee_cont_rate * f.loc[i, "payroll_db_legacy"]
             f.loc[i, "ee_nc_cont_new"] = db_ee_cont_rate * f.loc[i, "payroll_db_new"]
-            frs.loc[i, "ee_nc_cont_legacy"] += f.loc[i, "ee_nc_cont_legacy"]
-            frs.loc[i, "ee_nc_cont_new"] += f.loc[i, "ee_nc_cont_new"]
+            _accumulate_to_aggregate(frs, f, i, [
+                "ee_nc_cont_legacy", "ee_nc_cont_new",
+            ])
 
             f.loc[i, "admin_exp_legacy"] = f.loc[i, "admin_exp_rate"] * f.loc[i, "payroll_db_legacy"]
             f.loc[i, "admin_exp_new"] = f.loc[i, "admin_exp_rate"] * f.loc[i, "payroll_db_new"]
-            frs.loc[i, "admin_exp_legacy"] += f.loc[i, "admin_exp_legacy"]
-            frs.loc[i, "admin_exp_new"] += f.loc[i, "admin_exp_new"]
+            _accumulate_to_aggregate(frs, f, i, [
+                "admin_exp_legacy", "admin_exp_new",
+            ])
 
             f.loc[i, "er_nc_cont_legacy"] = f.loc[i, "er_nc_rate_legacy"] * f.loc[i, "payroll_db_legacy"] + f.loc[i, "admin_exp_legacy"]
             f.loc[i, "er_nc_cont_new"] = f.loc[i, "er_nc_rate_new"] * f.loc[i, "payroll_db_new"] + f.loc[i, "admin_exp_new"]
@@ -412,18 +420,18 @@ def compute_funding(
             f.loc[i, "er_amo_cont_new"] = f.loc[i, "amo_rate_new"] * f.loc[i, "payroll_db_new"]
             f.loc[i, "total_er_db_cont"] = (f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
                                              + f.loc[i, "er_amo_cont_legacy"] + f.loc[i, "er_amo_cont_new"])
-            frs.loc[i, "er_nc_cont_legacy"] += f.loc[i, "er_nc_cont_legacy"]
-            frs.loc[i, "er_nc_cont_new"] += f.loc[i, "er_nc_cont_new"]
-            frs.loc[i, "er_amo_cont_legacy"] += f.loc[i, "er_amo_cont_legacy"]
-            frs.loc[i, "er_amo_cont_new"] += f.loc[i, "er_amo_cont_new"]
-            frs.loc[i, "total_er_db_cont"] += f.loc[i, "total_er_db_cont"]
+            _accumulate_to_aggregate(frs, f, i, [
+                "er_nc_cont_legacy", "er_nc_cont_new",
+                "er_amo_cont_legacy", "er_amo_cont_new",
+                "total_er_db_cont",
+            ])
 
             f.loc[i, "er_dc_cont_legacy"] = f.loc[i, "er_dc_rate_legacy"] * f.loc[i, "payroll_dc_legacy"]
             f.loc[i, "er_dc_cont_new"] = f.loc[i, "er_dc_rate_new"] * f.loc[i, "payroll_dc_new"]
             f.loc[i, "total_er_dc_cont"] = f.loc[i, "er_dc_cont_legacy"] + f.loc[i, "er_dc_cont_new"]
-            frs.loc[i, "er_dc_cont_legacy"] += f.loc[i, "er_dc_cont_legacy"]
-            frs.loc[i, "er_dc_cont_new"] += f.loc[i, "er_dc_cont_new"]
-            frs.loc[i, "total_er_dc_cont"] += f.loc[i, "total_er_dc_cont"]
+            _accumulate_to_aggregate(frs, f, i, [
+                "er_dc_cont_legacy", "er_dc_cont_new", "total_er_dc_cont",
+            ])
 
             year = start_year + i
             roa_row = ret_scen[ret_scen["year"] == year]
@@ -449,17 +457,16 @@ def compute_funding(
 
             f.loc[i, "net_cf_legacy"] = cf_leg + f.loc[i, "solv_cont_legacy"]
             f.loc[i, "net_cf_new"] = cf_new + f.loc[i, "solv_cont_new"]
-            frs.loc[i, "net_cf_legacy"] += f.loc[i, "net_cf_legacy"]
-            frs.loc[i, "net_cf_new"] += f.loc[i, "net_cf_new"]
+            _accumulate_to_aggregate(frs, f, i, ["net_cf_legacy", "net_cf_new"])
 
             f.loc[i, "mva_legacy"] = _mva_rollforward(
                 f.loc[i - 1, "mva_legacy"], f.loc[i, "net_cf_legacy"], roa)
             f.loc[i, "mva_new"] = _mva_rollforward(
                 f.loc[i - 1, "mva_new"], f.loc[i, "net_cf_new"], roa)
             f.loc[i, "total_mva"] = f.loc[i, "mva_legacy"] + f.loc[i, "mva_new"]
-            frs.loc[i, "mva_legacy"] += f.loc[i, "mva_legacy"]
-            frs.loc[i, "mva_new"] += f.loc[i, "mva_new"]
-            frs.loc[i, "total_mva"] += f.loc[i, "total_mva"]
+            _accumulate_to_aggregate(frs, f, i, [
+                "mva_legacy", "mva_new", "total_mva",
+            ])
 
             f.loc[i, "ava_base_legacy"] = f.loc[i - 1, "ava_legacy"] + f.loc[i, "net_cf_legacy"] / 2
             f.loc[i, "ava_base_new"] = f.loc[i - 1, "ava_new"] + f.loc[i, "net_cf_new"] / 2
@@ -538,27 +545,27 @@ def compute_funding(
         for cn in all_classes:
             f = funding[cn]
             f.loc[i, "total_ava"] = f.loc[i, "ava_legacy"] + f.loc[i, "ava_new"]
-            frs.loc[i, "total_ava"] += f.loc[i, "total_ava"]
+            _accumulate_to_aggregate(frs, f, i, ["total_ava"])
 
             f.loc[i, "ual_ava_legacy"] = f.loc[i, "aal_legacy"] - f.loc[i, "ava_legacy"]
             f.loc[i, "ual_ava_new"] = f.loc[i, "aal_new"] - f.loc[i, "ava_new"]
             f.loc[i, "total_ual_ava"] = f.loc[i, "ual_ava_legacy"] + f.loc[i, "ual_ava_new"]
-            frs.loc[i, "ual_ava_legacy"] += f.loc[i, "ual_ava_legacy"]
-            frs.loc[i, "ual_ava_new"] += f.loc[i, "ual_ava_new"]
-            frs.loc[i, "total_ual_ava"] += f.loc[i, "total_ual_ava"]
+            _accumulate_to_aggregate(frs, f, i, [
+                "ual_ava_legacy", "ual_ava_new", "total_ual_ava",
+            ])
 
             f.loc[i, "ual_mva_legacy"] = f.loc[i, "aal_legacy"] - f.loc[i, "mva_legacy"]
             f.loc[i, "ual_mva_new"] = f.loc[i, "aal_new"] - f.loc[i, "mva_new"]
             f.loc[i, "total_ual_mva"] = f.loc[i, "ual_mva_legacy"] + f.loc[i, "ual_mva_new"]
-            frs.loc[i, "ual_mva_legacy"] += f.loc[i, "ual_mva_legacy"]
-            frs.loc[i, "ual_mva_new"] += f.loc[i, "ual_mva_new"]
-            frs.loc[i, "total_ual_mva"] += f.loc[i, "total_ual_mva"]
+            _accumulate_to_aggregate(frs, f, i, [
+                "ual_mva_legacy", "ual_mva_new", "total_ual_mva",
+            ])
 
             f.loc[i, "fr_mva"] = f.loc[i, "total_mva"] / f.loc[i, "total_aal"] if f.loc[i, "total_aal"] != 0 else 0
             f.loc[i, "fr_ava"] = f.loc[i, "total_ava"] / f.loc[i, "total_aal"] if f.loc[i, "total_aal"] != 0 else 0
 
             f.loc[i, "total_er_cont"] = f.loc[i, "total_er_db_cont"] + f.loc[i, "total_er_dc_cont"] + f.loc[i, "total_solv_cont"]
-            frs.loc[i, "total_er_cont"] += f.loc[i, "total_er_cont"]
+            _accumulate_to_aggregate(frs, f, i, ["total_er_cont"])
             f.loc[i, "total_er_cont_rate"] = f.loc[i, "total_er_cont"] / f.loc[i, "total_payroll"] if f.loc[i, "total_payroll"] > 0 else 0
             funding[cn] = f
 
