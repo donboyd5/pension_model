@@ -32,6 +32,10 @@ from pension_model.core._funding_helpers import (
     _roll_amort_layer,
     _solvency_cont,
 )
+from pension_model.core._funding_strategies import (
+    CorridorSmoothing,
+    GainLossSmoothing,
+)
 import math
 
 
@@ -158,6 +162,9 @@ def compute_funding(
     funding_lag = fund_params.funding_lag
     db_ee_cont_rate = constants.benefit.db_ee_cont_rate
     inflation = econ.inflation
+
+    # AVA smoothing strategy: corridor at the plan-aggregate level.
+    ava_strategy = CorridorSmoothing()
 
     model_period = r.model_period
     start_year = r.start_year
@@ -474,11 +481,12 @@ def compute_funding(
             funding[cn] = f
 
         # --- AVA smoothing at plan aggregate level ---
-        ava_leg = _ava_corridor_smoothing(
+        ava_leg = ava_strategy.smooth(
             ava_prev=frs.loc[i - 1, "ava_legacy"],
             net_cf=frs.loc[i, "net_cf_legacy"],
             mva=frs.loc[i, "mva_legacy"],
             dr=dr_current,
+            state={},
         )
         frs.loc[i, "exp_inv_earnings_ava_legacy"] = ava_leg["exp_inv_earnings_ava"]
         frs.loc[i, "exp_ava_legacy"] = ava_leg["exp_ava"]
@@ -486,11 +494,12 @@ def compute_funding(
         frs.loc[i, "alloc_inv_earnings_ava_legacy"] = ava_leg["alloc_inv_earnings_ava"]
         frs.loc[i, "ava_base_legacy"] = ava_leg["ava_base"]
 
-        ava_new = _ava_corridor_smoothing(
+        ava_new = ava_strategy.smooth(
             ava_prev=frs.loc[i - 1, "ava_new"],
             net_cf=frs.loc[i, "net_cf_new"],
             mva=frs.loc[i, "mva_new"],
             dr=dr_new,
+            state={},
         )
         frs.loc[i, "exp_inv_earnings_ava_new"] = ava_new["exp_inv_earnings_ava"]
         frs.loc[i, "exp_ava_new"] = ava_new["exp_ava"]
@@ -498,17 +507,8 @@ def compute_funding(
         frs.loc[i, "alloc_inv_earnings_ava_new"] = ava_new["alloc_inv_earnings_ava"]
         frs.loc[i, "ava_base_new"] = ava_new["ava_base"]
 
-        # --- Allocate AVA earnings to classes ---
-        for cn in all_classes:
-            f = funding[cn]
-            if frs.loc[i, "ava_base_legacy"] != 0:
-                f.loc[i, "alloc_inv_earnings_ava_legacy"] = frs.loc[i, "alloc_inv_earnings_ava_legacy"] * f.loc[i, "ava_base_legacy"] / frs.loc[i, "ava_base_legacy"]
-            f.loc[i, "unadj_ava_legacy"] = f.loc[i - 1, "ava_legacy"] + f.loc[i, "net_cf_legacy"] + f.loc[i, "alloc_inv_earnings_ava_legacy"]
-
-            if frs.loc[i, "ava_base_new"] != 0:
-                f.loc[i, "alloc_inv_earnings_ava_new"] = frs.loc[i, "alloc_inv_earnings_ava_new"] * f.loc[i, "ava_base_new"] / frs.loc[i, "ava_base_new"]
-            f.loc[i, "unadj_ava_new"] = f.loc[i - 1, "ava_new"] + f.loc[i, "net_cf_new"] + f.loc[i, "alloc_inv_earnings_ava_new"]
-            funding[cn] = f
+        # --- Allocate AVA earnings to classes (no-op for class-level smoothing) ---
+        ava_strategy.allocate_to_classes(frs, funding, all_classes, i)
 
         # --- DROP reallocation (only for plans with has_drop=true) ---
         if has_drop:
@@ -772,6 +772,9 @@ def compute_funding_trs(
             dr_current, amo_pay_growth, int(amo_per_current_diag[0, 0]),
             debt_current[0, 0], t=0.5)
 
+    # AVA smoothing strategy: 4-year gain/loss deferral cascade, per class.
+    ava_strategy = GainLossSmoothing()
+
     # --- Main year loop ---
     for i in range(1, n_years):
         year = start_year + i
@@ -928,13 +931,19 @@ def compute_funding_trs(
         f.loc[i, "total_mva"] = f.loc[i, "mva_legacy"] + f.loc[i, "mva_new"]
 
         # AVA gain/loss deferral smoothing — legacy
-        ava_leg = _ava_gain_loss_smoothing(
-            f.loc[i - 1, "ava_legacy"], f.loc[i, "net_cf_legacy"], f.loc[i, "mva_legacy"],
-            dr_current,
-            f.loc[i - 1, "defer_y1_legacy"], f.loc[i - 1, "defer_y2_legacy"],
-            f.loc[i - 1, "defer_y3_legacy"], f.loc[i - 1, "defer_y4_legacy"])
+        ava_leg = ava_strategy.smooth(
+            ava_prev=f.loc[i - 1, "ava_legacy"],
+            net_cf=f.loc[i, "net_cf_legacy"],
+            mva=f.loc[i, "mva_legacy"],
+            dr=dr_current,
+            state={
+                "defer_y1_prev": f.loc[i - 1, "defer_y1_legacy"],
+                "defer_y2_prev": f.loc[i - 1, "defer_y2_legacy"],
+                "defer_y3_prev": f.loc[i - 1, "defer_y3_legacy"],
+                "defer_y4_prev": f.loc[i - 1, "defer_y4_legacy"],
+            },
+        )
         for k, v in ava_leg.items():
-            col = f"{'exp_inv_income' if k == 'exp_inv_income' else k}_legacy" if k != "ava" else "ava_legacy"
             if k == "exp_inv_income":
                 f.loc[i, "exp_inv_income_legacy"] = v
             elif k == "exp_ava":
@@ -945,11 +954,18 @@ def compute_funding_trs(
                 f.loc[i, f"{k}_legacy"] = v
 
         # AVA gain/loss deferral smoothing — new
-        ava_new = _ava_gain_loss_smoothing(
-            f.loc[i - 1, "ava_new"], f.loc[i, "net_cf_new"], f.loc[i, "mva_new"],
-            dr_new,
-            f.loc[i - 1, "defer_y1_new"], f.loc[i - 1, "defer_y2_new"],
-            f.loc[i - 1, "defer_y3_new"], f.loc[i - 1, "defer_y4_new"])
+        ava_new = ava_strategy.smooth(
+            ava_prev=f.loc[i - 1, "ava_new"],
+            net_cf=f.loc[i, "net_cf_new"],
+            mva=f.loc[i, "mva_new"],
+            dr=dr_new,
+            state={
+                "defer_y1_prev": f.loc[i - 1, "defer_y1_new"],
+                "defer_y2_prev": f.loc[i - 1, "defer_y2_new"],
+                "defer_y3_prev": f.loc[i - 1, "defer_y3_new"],
+                "defer_y4_prev": f.loc[i - 1, "defer_y4_new"],
+            },
+        )
         for k, v in ava_new.items():
             if k == "exp_inv_income":
                 f.loc[i, "exp_inv_income_new"] = v
