@@ -33,8 +33,10 @@ from pension_model.core._funding_helpers import (
     _solvency_cont,
 )
 from pension_model.core._funding_strategies import (
+    ActuarialContributions,
     CorridorSmoothing,
     GainLossSmoothing,
+    StatutoryContributions,
 )
 import math
 
@@ -165,6 +167,9 @@ def compute_funding(
 
     # AVA smoothing strategy: corridor at the plan-aggregate level.
     ava_strategy = CorridorSmoothing()
+
+    # Contribution strategy: calibrated NC rates + amort-table-driven amort.
+    cont_strategy = ActuarialContributions(db_ee_cont_rate=db_ee_cont_rate)
 
     model_period = r.model_period
     start_year = r.start_year
@@ -391,14 +396,7 @@ def compute_funding(
             f = funding[cn]
             amo = amo_tables[cn]
 
-            f.loc[i, "nc_rate_legacy"] = f.loc[i, "nc_legacy"] / f.loc[i, "payroll_db_legacy"] if f.loc[i, "payroll_db_legacy"] > 0 else 0
-            f.loc[i, "nc_rate_new"] = f.loc[i, "nc_new"] / f.loc[i, "payroll_db_new"] if f.loc[i, "payroll_db_new"] > 0 else 0
-            f.loc[i, "ee_nc_rate_legacy"] = db_ee_cont_rate
-            f.loc[i, "ee_nc_rate_new"] = db_ee_cont_rate
-            f.loc[i, "er_nc_rate_legacy"] = f.loc[i, "nc_rate_legacy"] - db_ee_cont_rate
-            f.loc[i, "er_nc_rate_new"] = f.loc[i, "nc_rate_new"] - db_ee_cont_rate
-            f.loc[i, "amo_rate_legacy"] = amo["cur_pay"][i - 1].sum() / f.loc[i, "payroll_db_legacy"] if f.loc[i, "payroll_db_legacy"] > 0 else 0
-            f.loc[i, "amo_rate_new"] = amo["fut_pay"][i - 1].sum() / f.loc[i, "payroll_db_new"] if f.loc[i, "payroll_db_new"] > 0 else 0
+            cont_strategy.compute_rates(f, i, start_year + i, amo)
 
             if cn == "drop":
                 f.loc[i, "er_dc_rate_legacy"] = 0
@@ -775,6 +773,19 @@ def compute_funding_trs(
     # AVA smoothing strategy: 4-year gain/loss deferral cascade, per class.
     ava_strategy = GainLossSmoothing()
 
+    # Contribution strategy: statutory rate cascade with optional residual
+    # amortization rate (when funding_policy == "statutory").
+    cont_strategy = StatutoryContributions(
+        funding_policy=funding_policy,
+        public_edu_payroll_pct=public_edu_payroll_pct,
+        extra_er_stat_cont=extra_er_stat_cont,
+        extra_er_start_year=extra_er_start_year,
+        surcharge_ramp_end=surcharge_ramp_end,
+        surcharge_ramp_rate=surcharge_ramp_rate,
+        er_base_schedule=er_base_schedule,
+        ee_schedule=ee_schedule,
+    )
+
     # --- Main year loop ---
     for i in range(1, n_years):
         year = start_year + i
@@ -834,44 +845,11 @@ def compute_funding_trs(
         )
         f.loc[i, "total_aal"] = f.loc[i, "aal_legacy"] + f.loc[i, "aal_new"]
 
-        # NC rates
-        f.loc[i, "nc_rate_legacy"] = (f.loc[i, "nc_legacy"] / f.loc[i, "payroll_db_legacy"]
-                                       if f.loc[i, "payroll_db_legacy"] > 0 else 0)
-        f.loc[i, "nc_rate_new"] = (f.loc[i, "nc_new"] / payroll_new_total
-                                    if payroll_new_total > 0 else 0)
-
-        # Employee contribution rates (from config schedule)
-        ee_rate = _lookup_rate_schedule(ee_schedule, year)
-        f.loc[i, "ee_nc_rate_legacy"] = ee_rate
-        f.loc[i, "ee_nc_rate_new"] = ee_rate
-
-        # Employer NC rates
-        f.loc[i, "er_nc_rate_legacy"] = f.loc[i, "nc_rate_legacy"] - ee_rate
-        f.loc[i, "er_nc_rate_new"] = f.loc[i, "nc_rate_new"] - ee_rate
-
-        # Statutory employer rates (from config schedule)
-        f.loc[i, "er_stat_base_rate"] = _lookup_rate_schedule(er_base_schedule, year)
-
-        if year <= surcharge_ramp_end:
-            f.loc[i, "public_edu_surcharge_rate"] = f.loc[i - 1, "public_edu_surcharge_rate"] + surcharge_ramp_rate
-        else:
-            f.loc[i, "public_edu_surcharge_rate"] = f.loc[i - 1, "public_edu_surcharge_rate"]
-
-        f.loc[i, "er_stat_extra_rate"] = extra_er_stat_cont if year >= extra_er_start_year else 0
-
-        f.loc[i, "er_stat_eff_rate"] = (f.loc[i, "er_stat_base_rate"]
-                                          + f.loc[i, "public_edu_surcharge_rate"] * public_edu_payroll_pct
-                                          + f.loc[i, "er_stat_extra_rate"])
-
-        # Amortization rates
-        if funding_policy == "statutory":
-            f.loc[i, "amo_rate_legacy"] = f.loc[i, "er_stat_eff_rate"] - f.loc[i, "er_nc_rate_legacy"]
-            f.loc[i, "amo_rate_new"] = f.loc[i, "er_stat_eff_rate"] - f.loc[i, "er_nc_rate_new"]
-        else:
-            f.loc[i, "amo_rate_legacy"] = (pay_current[i - 1].sum() / f.loc[i, "total_payroll"]
-                                            if f.loc[i, "total_payroll"] > 0 else 0)
-            f.loc[i, "amo_rate_new"] = (pay_new[i - 1].sum() / payroll_new_total
-                                         if payroll_new_total > 0 else 0)
+        # NC, EE, ER NC, statutory cascade, and amort rates
+        cont_strategy.compute_rates(
+            f, i, year,
+            amo_state={"cur_pay": pay_current, "fut_pay": pay_new},
+        )
 
         # Admin expense rate
         f.loc[i, "admin_exp_rate"] = f.loc[i - 1, "admin_exp_rate"]
