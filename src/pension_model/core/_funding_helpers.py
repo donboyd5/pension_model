@@ -218,6 +218,41 @@ def _roll_amort_layer(debt, pay, per, i, max_col, ual, dr, amo_pay_growth):
             pay[i, j] = 0
 
 
+def _populate_calibrated_nc_rates(f, liab, nc_cal, n_years):
+    """Write the lag-1 calibrated normal cost rates onto the funding frame.
+
+    For both funding paths::
+
+        f.loc[1:, "nc_rate_db_legacy"] = liab.nc_rate_db_legacy_est * nc_cal  (lagged 1 yr)
+        f.loc[1:, "nc_rate_db_new"]    = liab.nc_rate_db_new_est    * nc_cal  (lagged 1 yr)
+
+    For cash-balance plans (TRS-style), also writes::
+
+        f.loc[1:, "nc_rate_cb_new"]    = liab.nc_rate_cb_new_est            (lagged 1 yr)
+
+    The CB write is gated on ``"payroll_cb_new_est" in liab.columns``,
+    which is the cash-balance marker (FRS-style data does not have it).
+
+    ``nc_cal`` MUST be passed in by the caller — do not look it up here.
+    FRS reads it from ``constants.class_data[cn].nc_cal``; TRS reads from
+    ``constants.class_data["all"].nc_cal`` with a ``funding_raw.nc_cal``
+    legacy fallback. Pushing the lookup into this helper would break
+    TRS's fallback chain (bit-identity risk #2 in the plan).
+    """
+    nc_legacy = liab["nc_rate_db_legacy_est"].values * nc_cal
+    nc_new_db = liab.get(
+        "nc_rate_db_new_est", pd.Series(np.zeros(n_years))
+    ).values * nc_cal
+    f.loc[1:, "nc_rate_db_legacy"] = nc_legacy[:-1]
+    f.loc[1:, "nc_rate_db_new"] = nc_new_db[:-1]
+
+    if "payroll_cb_new_est" in liab.columns:
+        nc_new_cb = liab.get(
+            "nc_rate_cb_new_est", pd.Series(np.zeros(n_years))
+        ).values
+        f.loc[1:, "nc_rate_cb_new"] = nc_new_cb[:-1]
+
+
 def _lookup_rate_schedule(schedule: list, year: int) -> float:
     """Look up a rate from a year-based schedule.
 

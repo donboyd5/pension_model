@@ -26,6 +26,7 @@ from pension_model.core._funding_helpers import (
     _get_init_row,
     _lookup_rate_schedule,
     _mva_rollforward,
+    _populate_calibrated_nc_rates,
     _roll_amort_layer,
     _solvency_cont,
 )
@@ -219,11 +220,7 @@ def compute_funding(
         # NC rate calibration: R multiplies liability NC rates by nc_cal
         # nc_cal = val_norm_cost / model_norm_cost (additional adjustment beyond cal_factor=0.9)
         nc_cal = constants.class_data[cn].nc_cal
-        nc_legacy = liab["nc_rate_db_legacy_est"].values * nc_cal
-        nc_new = liab.get("nc_rate_db_new_est", pd.Series(np.zeros(n_years))).values * nc_cal
-        # Lag by 1 year (R uses lag to align with funding mechanism)
-        f.loc[1:, "nc_rate_db_legacy"] = nc_legacy[:-1]
-        f.loc[1:, "nc_rate_db_new"] = nc_new[:-1]
+        _populate_calibrated_nc_rates(f, liab, nc_cal, n_years)
 
         f.loc[0, "aal_legacy"] = liab["aal_legacy_est"].iloc[0]
         f.loc[0, "total_aal"] = liab["total_aal_est"].iloc[0]
@@ -699,12 +696,7 @@ def compute_funding_trs(
         f.loc[1:, "payroll_cb_new_ratio"] = cb_ratios[:-1]
 
     # NC rate calibration (with nc_cal and lag)
-    nc_leg = liab["nc_rate_db_legacy_est"].values * nc_cal
-    nc_new_db = liab.get("nc_rate_db_new_est", pd.Series(np.zeros(n_years))).values * nc_cal
-    nc_new_cb = liab.get("nc_rate_cb_new_est", pd.Series(np.zeros(n_years))).values
-    f.loc[1:, "nc_rate_db_legacy"] = nc_leg[:-1]
-    f.loc[1:, "nc_rate_db_new"] = nc_new_db[:-1]
-    f.loc[1:, "nc_rate_cb_new"] = nc_new_cb[:-1]
+    _populate_calibrated_nc_rates(f, liab, nc_cal, n_years)
 
     # AAL initialization
     if "aal_legacy_est" in liab.columns:
