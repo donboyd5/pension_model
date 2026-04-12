@@ -3,9 +3,8 @@ Funding model — public entry point.
 
 This module is the public API for the funding projection engine. The
 heavy compute lives in :mod:`pension_model.core._funding_core`; this
-file holds the input loaders, the amortization-table builder, the
-backward-compatible ``compute_funding`` / ``compute_funding_trs``
-shims, and the config-driven ``run_funding_model`` dispatcher.
+file holds the input loaders, the amortization-table builder, and the
+config-driven ``run_funding_model`` dispatcher.
 
 Year-by-year, the funding model projects:
   * Payroll, benefit payments, normal cost
@@ -19,9 +18,10 @@ Year-by-year, the funding model projects:
 Requires: liability pipeline output + initial funding data + amort layers.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 from pension_model.core._funding_core import (
     _compute_funding_corridor,
@@ -117,50 +117,6 @@ def build_amort_period_tables(
 
     init_balances = class_layers["amo_balance"].dropna().values
     return current, future, init_balances, max_col
-
-
-# ---------------------------------------------------------------------------
-# Backward-compatible shims around the core compute functions.
-#
-# These are kept so external callers (tests, scripts, the package's
-# __init__.py re-exports) that still import compute_funding directly
-# don't break. New code should call run_funding_model instead — it
-# selects the right path from config and returns a uniform shape.
-# ---------------------------------------------------------------------------
-
-
-def compute_funding(
-    liability_results: dict,
-    funding_inputs: dict,
-    constants,
-) -> dict:
-    """Backward-compatible alias for the corridor funding path.
-
-    Equivalent to ``_compute_funding_corridor`` in
-    :mod:`pension_model.core._funding_core`. Multi-class plans with
-    plan-aggregate AVA corridor smoothing.
-
-    New code should prefer :func:`run_funding_model`, which dispatches
-    on config and returns the same dict shape.
-    """
-    return _compute_funding_corridor(liability_results, funding_inputs, constants)
-
-
-def compute_funding_trs(
-    liability_result: pd.DataFrame,
-    funding_inputs: dict,
-    constants,
-) -> pd.DataFrame:
-    """Backward-compatible alias for the gain/loss funding path.
-
-    Equivalent to ``_compute_funding_gainloss`` in
-    :mod:`pension_model.core._funding_core`. Single-class plans with
-    per-class AVA gain/loss deferral smoothing.
-
-    New code should prefer :func:`run_funding_model`, which dispatches
-    on config and returns a uniform dict shape.
-    """
-    return _compute_funding_gainloss(liability_result, funding_inputs, constants)
 
 
 # ---------------------------------------------------------------------------
