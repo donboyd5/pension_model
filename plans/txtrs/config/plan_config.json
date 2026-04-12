@@ -62,22 +62,38 @@
       "method": "gain_loss",
       "recognition_period": 4
     },
-    "public_edu_payroll_percent": 0.588,
-    "extra_er_stat_cont": 0.0,
     "statutory_rates": {
       "ee_rate_schedule": [
         {"from_year": 0, "rate": 0.08},
         {"from_year": 2024, "rate": 0.0825}
       ],
-      "er_base_rate_schedule": [
-        {"from_year": 0, "rate": 0.08},
-        {"from_year": 2024, "rate": 0.0825}
-      ],
-      "surcharge": {
-        "ramp_rate": 0.001,
-        "ramp_end_year": 2025
-      },
-      "extra_er_start_year": 2025
+      "er_rate_components": [
+        {
+          "name": "er_stat_base_rate",
+          "payroll_share": 1.0,
+          "schedule": [
+            {"from_year": 0, "rate": 0.08},
+            {"from_year": 2024, "rate": 0.0825}
+          ]
+        },
+        {
+          "name": "public_edu_surcharge_rate",
+          "payroll_share": 0.588,
+          "initial_rate": 0.0,
+          "ramp": {
+            "rate_per_year": 0.001,
+            "end_year": 2025
+          }
+        },
+        {
+          "name": "er_stat_extra_rate",
+          "payroll_share": 1.0,
+          "schedule": [
+            {"from_year": 0, "rate": 0.0},
+            {"from_year": 2025, "rate": 0.0}
+          ]
+        }
+      ]
     }
   },
 

@@ -47,8 +47,31 @@ from pension_model.core._funding_strategies import (
     ActuarialContributions,
     CorridorSmoothing,
     GainLossSmoothing,
+    RateComponent,
     StatutoryContributions,
 )
+
+
+def _resolve_er_rate_components(funding_raw: dict) -> list:
+    """Build the list of statutory employer rate components from config.
+
+    Reads ``funding.statutory_rates.er_rate_components`` (a list of
+    component dicts) and returns the corresponding list of
+    ``RateComponent`` objects. Each dict is passed to
+    ``RateComponent.from_config``.
+
+    A plan that uses the statutory contribution strategy must declare
+    its components explicitly — there are no hardcoded defaults.
+    """
+    stat_rates = funding_raw.get("statutory_rates", {})
+    components = stat_rates.get("er_rate_components")
+    if components is None:
+        raise ValueError(
+            "funding.statutory_rates.er_rate_components is required when "
+            "using the statutory contribution strategy. See "
+            "plans/txtrs/config/plan_config.json for an example schema."
+        )
+    return [RateComponent.from_config(c) for c in components]
 
 
 def _compute_funding_corridor(
@@ -569,20 +592,15 @@ def _compute_funding_gainloss(
     raw = constants.raw if hasattr(constants, "raw") else {}
     funding_raw = raw.get("funding", {})
 
-    public_edu_payroll_pct = funding_raw.get("public_edu_payroll_percent", 0.588)
-    extra_er_stat_cont = funding_raw.get("extra_er_stat_cont", 0.0)
     amo_period_current = funding_raw.get("amo_period_current", 30)
 
-    # Statutory rate schedules (time-varying contribution rates)
+    # Statutory rate components: either a config-driven list of
+    # RateComponent entries (new schema), or synthesized from the old
+    # flat fields (legacy schema; TRS uses this until Step 1.4b).
     stat_rates = funding_raw.get("statutory_rates", {})
     ee_schedule = stat_rates.get("ee_rate_schedule",
                                  [{"from_year": 0, "rate": constants.benefit.db_ee_cont_rate}])
-    er_base_schedule = stat_rates.get("er_base_rate_schedule",
-                                      [{"from_year": 0, "rate": constants.benefit.db_ee_cont_rate}])
-    surcharge_cfg = stat_rates.get("surcharge", {})
-    surcharge_ramp_rate = surcharge_cfg.get("ramp_rate", 0.0)
-    surcharge_ramp_end = surcharge_cfg.get("ramp_end_year", 0)
-    extra_er_start_year = stat_rates.get("extra_er_start_year", 9999)
+    er_rate_components = _resolve_er_rate_components(funding_raw)
 
     # nc_cal: authoritative source is calibration.json (class_data), with
     # funding_raw as legacy fallback
@@ -697,13 +715,8 @@ def _compute_funding_gainloss(
     # amortization rate (when funding_policy == "statutory").
     cont_strategy = StatutoryContributions(
         funding_policy=funding_policy,
-        public_edu_payroll_pct=public_edu_payroll_pct,
-        extra_er_stat_cont=extra_er_stat_cont,
-        extra_er_start_year=extra_er_start_year,
-        surcharge_ramp_end=surcharge_ramp_end,
-        surcharge_ramp_rate=surcharge_ramp_rate,
-        er_base_schedule=er_base_schedule,
         ee_schedule=ee_schedule,
+        components=er_rate_components,
     )
 
     # --- Main year loop ---

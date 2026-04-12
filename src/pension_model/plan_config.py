@@ -851,10 +851,7 @@ def get_reduce_factor(config: PlanConfig, class_name: str, tier: str,
     if "nra" in reduction:
         nra_map = reduction["nra"]
         rate = reduction["rate_per_year"]
-        if class_name == "special" and "special" in nra_map:
-            nra = nra_map["special"]
-        else:
-            nra = nra_map.get("default", 65)
+        nra = nra_map.get(class_name, nra_map.get("default", 65))
         return 1.0 - rate * (nra - dist_age)
 
     # Rule-based reduction (condition → formula lookup)
@@ -1368,10 +1365,7 @@ def resolve_reduce_factor_vec(config: PlanConfig,
         if "nra" in reduction:
             nra_map = reduction["nra"]
             rate = reduction["rate_per_year"]
-            if cn == "special" and "special" in nra_map:
-                nra = nra_map["special"]
-            else:
-                nra = nra_map.get("default", 65)
+            nra = nra_map.get(cn, nra_map.get("default", 65))
             vals = 1.0 - rate * (nra - sub_age)
             result[idx_arr] = vals
             continue
@@ -1619,20 +1613,54 @@ def discover_plans(plans_dir: Optional[Path] = None) -> dict[str, Path]:
     return plans
 
 
-def load_frs_config(calibration_path: Optional[Path] = None) -> PlanConfig:
-    """Convenience: load the FRS plan config with default paths (debug/tests only)."""
-    base = Path(__file__).parents[2] / "plans" / "frs" / "config"
-    config_path = base / "plan_config.json"
+def load_plan_config_by_name(
+    plan_name: str,
+    calibration_path: Optional[Path] = None,
+) -> PlanConfig:
+    """Load a plan config by plan name (debug/tests/scripts).
+
+    Looks the plan up via ``discover_plans()`` — the same auto-discovery
+    mechanism the CLI uses — so there is no per-plan convenience loader
+    to maintain. A new plan works with no Python changes.
+
+    Args:
+        plan_name: The plan directory name under ``plans/`` (e.g. "frs",
+            "txtrs"). Must match the directory name, not the
+            ``plan_name`` field inside the config file.
+        calibration_path: Optional explicit path to a ``calibration.json``.
+            If not given, uses ``plans/<plan_name>/config/calibration.json``
+            if it exists, otherwise ``None``.
+
+    Raises:
+        ValueError: if ``plan_name`` is not among the discovered plans.
+    """
+    plans = discover_plans()
+    if plan_name not in plans:
+        raise ValueError(
+            f"Unknown plan {plan_name!r}. Available: {sorted(plans)}"
+        )
+    config_path = plans[plan_name]
     if calibration_path is None:
-        cal_path = base / "calibration.json"
+        cal_path = config_path.parent / "calibration.json"
+        cal_path = cal_path if cal_path.exists() else None
     else:
         cal_path = calibration_path
     return load_plan_config(config_path, cal_path)
 
 
+def load_frs_config(calibration_path: Optional[Path] = None) -> PlanConfig:
+    """Convenience: load the FRS plan config (debug/tests only).
+
+    Thin wrapper around :func:`load_plan_config_by_name`. Kept for
+    backward compatibility with existing test files.
+    """
+    return load_plan_config_by_name("frs", calibration_path)
+
+
 def load_txtrs_config(calibration_path: Optional[Path] = None) -> PlanConfig:
-    """Convenience: load the TRS plan config with default paths (debug/tests only)."""
-    base = Path(__file__).parents[2] / "plans" / "txtrs" / "config"
-    config_path = base / "plan_config.json"
-    cal_path = calibration_path or (base / "calibration.json")
-    return load_plan_config(config_path, cal_path if cal_path.exists() else None)
+    """Convenience: load the TRS plan config (debug/tests only).
+
+    Thin wrapper around :func:`load_plan_config_by_name`. Kept for
+    backward compatibility with existing test files.
+    """
+    return load_plan_config_by_name("txtrs", calibration_path)

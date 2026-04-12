@@ -32,23 +32,40 @@ class plans get gain/loss + statutory, multi-class plans get corridor
 plan can mix and match (e.g. corridor + statutory) by changing config,
 not code.
 
-This module is *protocol scaffolding only*: the smoothing strategies
-delegate verbatim to the existing helpers in ``_funding_helpers.py``;
-the contribution strategy classes carry signatures and docstrings but
-their method bodies are filled in by Step 10 of the unification
-refactor (``Wire strategies into call sites``). Importing this module
-introduces no numerical change to either funding path.
+All four concrete strategies — ``CorridorSmoothing``, ``GainLossSmoothing``,
+``ActuarialContributions``, ``StatutoryContributions`` — are wired into the
+active funding compute path in ``_funding_core.py``. The Protocol-based
+design means a new strategy can be dropped in (e.g. a three-year corridor,
+or a different statutory rate structure) by writing a class that satisfies
+the Protocol and selecting it in plan config.
+
+Statutory employer contributions are specified as a **list of rate components**
+(see ``RateComponent``), each with its own rate schedule / ramp and its own
+payroll share. The effective employer rate is the payroll-share-weighted sum
+across components:
+
+    effective_rate(year) = sum(component_rate(year) * component.payroll_share)
+
+This generalizes over any multi-employer cost-sharing structure where
+different employer types contribute at different statutory rates over
+different fractions of total plan payroll — e.g. Texas's public-ed
+surcharge, California school vs non-school rates, or a hazardous-duty
+surcharge on a subset of payroll. Nothing in this module knows or cares
+about any particular plan's component names; they're labels chosen by the
+config author and used only for the output DataFrame's column names.
 """
 
 from __future__ import annotations
 
-from typing import ClassVar, Literal, Protocol, runtime_checkable
+from dataclasses import dataclass, field
+from typing import ClassVar, Literal, Optional, Protocol, runtime_checkable
 
 import pandas as pd
 
 from pension_model.core._funding_helpers import (
     _ava_corridor_smoothing,
     _ava_gain_loss_smoothing,
+    _lookup_rate_schedule,
 )
 
 
@@ -354,51 +371,126 @@ class ActuarialContributions:
         )
 
 
+@dataclass
+class RateComponent:
+    """One term in a statutory employer-rate cascade.
+
+    Each component contributes ``rate(year) * payroll_share`` to the
+    effective employer rate. A plan's statutory structure is described
+    by a list of these components; the Python code is agnostic to how
+    many there are and what they represent.
+
+    Rate specification — exactly one of:
+      * ``schedule``: a list of ``{from_year, rate}`` step-function
+        entries, used via :func:`_lookup_rate_schedule`.
+      * ``initial_rate`` + ``ramp``: the rate starts at ``initial_rate``
+        (read from a per-class column ``f.loc[i - 1, "er_stat_rate_<name>"]``
+        for i >= 1), adds ``ramp["rate_per_year"]`` each year up to and
+        including ``ramp["end_year"]``, and then stays flat. ``start_year``
+        (optional) makes the rate zero until that year is reached.
+
+    ``payroll_share`` scales the term. For example, if only 58.8% of
+    plan payroll is subject to a surcharge, set ``payroll_share = 0.588``;
+    for rates that apply to all payroll, set ``payroll_share = 1.0``.
+
+    ``name`` is the output column name on the funding frame for this
+    component's rate (e.g. "er_stat_base_rate" or "peec_surcharge_rate").
+    It's chosen by the config author, carries no model meaning, and is
+    only used as a pd.DataFrame column label.
+    """
+
+    name: str
+    payroll_share: float = 1.0
+    schedule: Optional[list] = None
+    initial_rate: Optional[float] = None
+    ramp: Optional[dict] = None
+    start_year: Optional[int] = None
+
+    @classmethod
+    def from_config(cls, cfg: dict) -> "RateComponent":
+        return cls(
+            name=cfg["name"],
+            payroll_share=float(cfg.get("payroll_share", 1.0)),
+            schedule=cfg.get("schedule"),
+            initial_rate=cfg.get("initial_rate"),
+            ramp=cfg.get("ramp"),
+            start_year=cfg.get("start_year"),
+        )
+
+
+def _evaluate_rate_component(
+    component: RateComponent,
+    f: pd.DataFrame,
+    i: int,
+    year: int,
+) -> float:
+    """Compute the component's rate for year ``year`` (i.e. row ``i``).
+
+    Schedule form: delegates to ``_lookup_rate_schedule``.
+
+    Ramp form: reads the previous year's value of this component from
+    its output column (``component.name``) and increments by
+    ``ramp["rate_per_year"]`` while ``year <= ramp["end_year"]``,
+    otherwise holds flat. ``start_year``, if provided, makes the rate
+    zero until that year is reached.
+
+    """
+    if component.start_year is not None and year < component.start_year:
+        return 0.0
+
+    if component.schedule is not None:
+        return _lookup_rate_schedule(component.schedule, year)
+
+    if component.ramp is not None:
+        col = component.name
+        prev = f.loc[i - 1, col] if i >= 1 and col in f.columns else component.initial_rate
+        if prev is None:
+            prev = 0.0
+        ramp_rate = float(component.ramp.get("rate_per_year", 0.0))
+        end_year = component.ramp.get("end_year")
+        if end_year is not None and year <= end_year:
+            return float(prev) + ramp_rate
+        return float(prev)
+
+    # No schedule, no ramp: constant at initial_rate (default 0.0).
+    return float(component.initial_rate if component.initial_rate is not None else 0.0)
+
+
 class StatutoryContributions:
     """Employer contributions driven by a statutory rate cascade.
 
-    The employer effective rate is::
+    The employer effective rate is a payroll-share-weighted sum over a
+    list of rate components, with the sum order matching the config's
+    component order::
 
-        er_stat_eff_rate = (
-            er_stat_base_rate(year)
-            + public_edu_surcharge_rate(year) * public_edu_payroll_pct
-            + er_stat_extra_rate(year)
-        )
+        er_stat_eff_rate = sum(component.rate(year) * component.payroll_share
+                               for component in components)
 
     Term order is *load-bearing* (bit-identity risk #6): floating-point
-    addition is non-associative; the original TRS code adds the
-    surcharge term before the extra term, and this implementation must
-    preserve that order.
+    addition is non-associative. Components are iterated in config order
+    and the accumulator is built up left-to-right via a Python sum.
 
     Under ``funding_policy == "statutory"`` the amortization rate is
     the residual ``er_stat_eff_rate - er_nc_rate_*``; under any other
-    funding policy the amortization rate falls back to the prior
-    year's amort-table payments divided by payroll, like the actuarial
-    path. The TRS-side fallback uses ``total_payroll`` (not
-    ``payroll_db_legacy``) as the legacy denominator under non-
-    statutory policies; that asymmetry is preserved by reading
-    ``f.loc[i, "total_payroll"]`` in the non-statutory branch.
+    funding policy the amortization rate falls back to the prior year's
+    amort-table payments divided by payroll, like the actuarial path.
+    The legacy denominator under non-statutory policy is
+    ``total_payroll`` (preserved from the pre-refactor TRS code).
     """
 
     def __init__(
         self,
         funding_policy: str,
-        public_edu_payroll_pct: float,
-        extra_er_stat_cont: float,
-        extra_er_start_year: int,
-        surcharge_ramp_end: int,
-        surcharge_ramp_rate: float,
-        er_base_schedule: list,
         ee_schedule: list,
+        components: list,
     ) -> None:
         self.funding_policy = funding_policy
-        self.public_edu_payroll_pct = public_edu_payroll_pct
-        self.extra_er_stat_cont = extra_er_stat_cont
-        self.extra_er_start_year = extra_er_start_year
-        self.surcharge_ramp_end = surcharge_ramp_end
-        self.surcharge_ramp_rate = surcharge_ramp_rate
-        self.er_base_schedule = er_base_schedule
         self.ee_schedule = ee_schedule
+        # Accept either a list of RateComponent or a list of raw dicts.
+        self.components: list[RateComponent] = [
+            c if isinstance(c, RateComponent) else RateComponent.from_config(c)
+            for c in components
+        ]
 
     def compute_rates(
         self,
@@ -407,8 +499,6 @@ class StatutoryContributions:
         year: int,
         amo_state: dict,
     ) -> None:
-        from pension_model.core._funding_helpers import _lookup_rate_schedule
-
         payroll_db_legacy = f.loc[i, "payroll_db_legacy"]
         payroll_new_denom = _payroll_new_denom(f, i)
 
@@ -431,31 +521,16 @@ class StatutoryContributions:
         f.loc[i, "er_nc_rate_legacy"] = f.loc[i, "nc_rate_legacy"] - ee_rate
         f.loc[i, "er_nc_rate_new"] = f.loc[i, "nc_rate_new"] - ee_rate
 
-        # Statutory rate cascade
-        f.loc[i, "er_stat_base_rate"] = _lookup_rate_schedule(
-            self.er_base_schedule, year)
-
-        if year <= self.surcharge_ramp_end:
-            f.loc[i, "public_edu_surcharge_rate"] = (
-                f.loc[i - 1, "public_edu_surcharge_rate"]
-                + self.surcharge_ramp_rate
-            )
-        else:
-            f.loc[i, "public_edu_surcharge_rate"] = (
-                f.loc[i - 1, "public_edu_surcharge_rate"]
-            )
-
-        f.loc[i, "er_stat_extra_rate"] = (
-            self.extra_er_stat_cont
-            if year >= self.extra_er_start_year else 0
-        )
-
-        # NOTE: term order is bit-identity load-bearing — see docstring
-        f.loc[i, "er_stat_eff_rate"] = (
-            f.loc[i, "er_stat_base_rate"]
-            + f.loc[i, "public_edu_surcharge_rate"] * self.public_edu_payroll_pct
-            + f.loc[i, "er_stat_extra_rate"]
-        )
+        # Per-component statutory rates. Write each component's rate to
+        # the column named by the component (e.g. "er_stat_base_rate"),
+        # then accumulate the effective rate in config order. Addition
+        # order is bit-identity load-bearing — see class docstring.
+        eff_rate = 0.0
+        for comp in self.components:
+            rate = _evaluate_rate_component(comp, f, i, year)
+            f.loc[i, comp.name] = rate
+            eff_rate = eff_rate + rate * comp.payroll_share
+        f.loc[i, "er_stat_eff_rate"] = eff_rate
 
         # Amort rate: statutory residual or actuarial table fallback
         if self.funding_policy == "statutory":
