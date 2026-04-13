@@ -23,10 +23,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from pension_model.core._funding_core import (
-    _compute_funding_corridor,
-    _compute_funding_gainloss,
-)
+from pension_model.core._funding_core import _compute_funding
 
 
 def load_funding_inputs(funding_dir: Path) -> dict:
@@ -129,67 +126,15 @@ def run_funding_model(
     funding_inputs: dict,
     constants,
 ) -> dict:
-    """Run the funding model for any plan, picking the path from config.
+    """Run the funding model for any plan.
 
-    Selects the AVA smoothing method from
-    ``constants.funding.ava_smoothing["method"]`` (set in plan_config.json):
-
-      * ``"corridor"``  → 5-year corridor at the plan-aggregate level.
-        Calls :func:`_compute_funding_corridor`. Returns the dict it
-        produces directly: per-class frames, an aggregate frame keyed
-        by ``constants.plan_name``, and an optional ``"drop"`` frame.
-      * ``"gain_loss"`` → 4-year gain/loss deferral cascade per class.
-        Calls :func:`_compute_funding_gainloss` for the single class
-        and wraps the result into a uniform two-key dict
-        ``{class_name: df, plan_name: agg}`` where ``agg`` is a
-        distinct copy of the class frame (no DataFrame aliasing).
-
-    Args:
-        liability_results: Dict mapping class_name -> liability DataFrame.
-        funding_inputs: Output of :func:`load_funding_inputs`.
-        constants: :class:`PlanConfig`.
+    Thin pass-through to :func:`_compute_funding`. AVA smoothing
+    method, contribution policy, and capability flags are dispatched
+    inside via the resolved :class:`FundingContext`.
 
     Returns:
         Dict mapping class_name -> funding DataFrame, plus an
         aggregate frame keyed by ``constants.plan_name`` and an
         optional ``"drop"`` frame for plans with ``has_drop=true``.
-
-    Raises:
-        ValueError: if ``funding.ava_smoothing.method`` is not one of
-            the supported values, or if a single-class plan is paired
-            with corridor smoothing (which currently has no
-            implementation), or if a multi-class plan is paired with
-            gain/loss smoothing (likewise).
     """
-    method = (constants.funding.ava_smoothing or {}).get("method")
-    class_names = list(constants.classes)
-
-    if method == "corridor":
-        if len(class_names) < 1:
-            raise ValueError(
-                "Corridor smoothing requires at least one class in plan config."
-            )
-        return _compute_funding_corridor(
-            liability_results, funding_inputs, constants)
-
-    if method == "gain_loss":
-        if len(class_names) != 1:
-            # Multi-class gain/loss is not an algorithmic barrier — gain/loss
-            # smoothing operates per class, so N>1 classes is conceptually
-            # fine. The constraint is a temporary implementation limit:
-            # _compute_funding_gainloss currently iterates neither classes
-            # nor builds a real aggregate frame. Phase 2's body merge lifts
-            # this limit (see plan Step 2.I).
-            raise NotImplementedError(
-                f"Multi-class gain/loss smoothing is pending the Phase 2 "
-                f"unified compute refactor (see plans/swirling-jingling-"
-                f"popcorn.md, Step 2.I). Plan {constants.plan_name!r} has "
-                f"{len(class_names)} classes."
-            )
-        return _compute_funding_gainloss(
-            liability_results, funding_inputs, constants)
-
-    raise ValueError(
-        f"Unknown funding.ava_smoothing.method: {method!r}. "
-        f"Supported values: 'corridor', 'gain_loss'."
-    )
+    return _compute_funding(liability_results, funding_inputs, constants)

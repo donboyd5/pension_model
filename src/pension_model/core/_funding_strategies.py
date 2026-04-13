@@ -145,6 +145,9 @@ class CorridorSmoothing:
     # (actual realized returns for the most recent historical years) and only
     # overrides years >= start_year + 2 with projection defaults.
     ret_scen_gates_projection: ClassVar[bool] = True
+    # Corridor does not emit the gainloss-only output columns.
+    emits_liability_gain_loss_sum: ClassVar[bool] = False
+    emits_real_cost_metrics: ClassVar[bool] = False
 
     def smooth(
         self,
@@ -223,6 +226,12 @@ class GainLossSmoothing:
     # including historical rows. Bit-identity risk: do not change without
     # regenerating baselines.
     ret_scen_gates_projection: ClassVar[bool] = False
+    # Gainloss emits two extra output-column packages:
+    #   * ``liability_gain_loss`` (sum of legacy + new liability GL).
+    #   * Real-cost metrics (``total_er_cont_real``, ``cum_er_cont_real``,
+    #     ``total_ual_mva_real``, ``all_in_cost_real``).
+    emits_liability_gain_loss_sum: ClassVar[bool] = True
+    emits_real_cost_metrics: ClassVar[bool] = True
 
     def smooth(
         self,
