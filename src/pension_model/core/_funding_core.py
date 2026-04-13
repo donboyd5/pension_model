@@ -39,8 +39,8 @@ import pandas as pd
 from pension_model.core.pipeline import _get_pmt
 from pension_model.core._funding_helpers import (
     _aal_rollforward,
-    _accumulate_to_aggregate,
     _get_init_row,
+    _maybe_accumulate,
     _mva_rollforward,
     _populate_calibrated_nc_rates,
     _roll_amort_layer,
@@ -94,6 +94,7 @@ class FundingContext:
     has_drop: bool
     drop_ref_class: Optional[str]
     all_classes: list  # class_names + ["drop"] if has_drop
+    is_multi_class: bool  # len(class_names) > 1; gates aggregate accumulation
 
     # Plan capabilities — derived from config or schema; each field
     # earns its place via at least one phase-helper consumer.
@@ -151,6 +152,7 @@ def _resolve_funding_context(
     has_drop = funding_raw.get("has_drop", False)
     drop_ref_class = funding_raw.get("drop_reference_class", class_names[0]) if class_names else None
     all_classes = class_names + (["drop"] if has_drop else [])
+    is_multi_class = len(class_names) > 1
 
     # Plan capabilities
     has_cb = "cb" in constants.benefit_types
@@ -208,6 +210,7 @@ def _resolve_funding_context(
         has_drop=has_drop,
         drop_ref_class=drop_ref_class,
         all_classes=all_classes,
+        is_multi_class=is_multi_class,
         has_cb=has_cb,
         has_dc=has_dc,
         funding_policy=fund.funding_policy,
@@ -617,20 +620,20 @@ def _phase_drop_projection(
     drop.loc[i, "total_aal"] = drop.loc[i, "aal_legacy"] + drop.loc[i, "aal_new"]
     funding["drop"] = drop
 
-    _accumulate_to_aggregate(agg, drop, i, [
+    _maybe_accumulate(ctx, agg, drop, i, [
         "total_payroll", "payroll_db_legacy", "payroll_db_new",
     ])
-    _accumulate_to_aggregate(agg, drop, i, [
+    _maybe_accumulate(ctx, agg, drop, i, [
         "ben_payment_legacy", "refund_legacy",
         "ben_payment_new", "refund_new",
         "total_ben_payment", "total_refund",
     ])
-    _accumulate_to_aggregate(agg, drop, i, ["nc_legacy", "nc_new"])
+    _maybe_accumulate(ctx, agg, drop, i, ["nc_legacy", "nc_new"])
 
     _nc_rate_agg(agg, i, ctx)
     agg.loc[i, "nc_rate_db_legacy"] = agg.loc[i, "nc_legacy"] / agg.loc[i, "payroll_db_legacy"] if agg.loc[i, "payroll_db_legacy"] > 0 else 0
     agg.loc[i, "nc_rate_db_new"] = agg.loc[i, "nc_new"] / agg.loc[i, "payroll_db_new"] if agg.loc[i, "payroll_db_new"] > 0 else 0
-    _accumulate_to_aggregate(agg, drop, i, [
+    _maybe_accumulate(ctx, agg, drop, i, [
         "aal_legacy", "aal_new", "total_aal",
     ])
 
@@ -1059,7 +1062,7 @@ def _compute_funding_corridor(
 
             _phase_payroll(f, i, ctx)
 
-            _accumulate_to_aggregate(agg, f, i, [
+            _maybe_accumulate(ctx, agg, f, i, [
                 "total_payroll", "payroll_db_legacy", "payroll_db_new",
                 "payroll_dc_legacy", "payroll_dc_new",
             ])
@@ -1068,18 +1071,18 @@ def _compute_funding_corridor(
             f.loc[i, "total_ben_payment"] = f.loc[i, "ben_payment_legacy"] + f.loc[i, "ben_payment_new"]
             f.loc[i, "total_refund"] = f.loc[i, "refund_legacy"] + f.loc[i, "refund_new"]
 
-            _accumulate_to_aggregate(agg, f, i, [
+            _maybe_accumulate(ctx, agg, f, i, [
                 "ben_payment_legacy", "refund_legacy",
                 "ben_payment_new", "refund_new",
                 "total_ben_payment", "total_refund",
             ])
 
             _phase_normal_cost(f, i, ctx)
-            _accumulate_to_aggregate(agg, f, i, ["nc_legacy", "nc_new"])
+            _maybe_accumulate(ctx, agg, f, i, ["nc_legacy", "nc_new"])
 
             _phase_liability_gl_and_aal(f, liab, i, dr_current, dr_new)
 
-            _accumulate_to_aggregate(agg, f, i, [
+            _maybe_accumulate(ctx, agg, f, i, [
                 "aal_legacy", "aal_new", "total_aal",
             ])
 
@@ -1107,22 +1110,22 @@ def _compute_funding_corridor(
                 f.loc[i, "er_dc_rate_new"] = dc_rate
 
             _phase_contributions(f, i, ctx)
-            _accumulate_to_aggregate(agg, f, i, [
+            _maybe_accumulate(ctx, agg, f, i, [
                 "ee_nc_cont_legacy", "ee_nc_cont_new",
             ])
-            _accumulate_to_aggregate(agg, f, i, [
+            _maybe_accumulate(ctx, agg, f, i, [
                 "admin_exp_legacy", "admin_exp_new",
             ])
             f.loc[i, "total_er_db_cont"] = (f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
                                              + f.loc[i, "er_amo_cont_legacy"] + f.loc[i, "er_amo_cont_new"])
-            _accumulate_to_aggregate(agg, f, i, [
+            _maybe_accumulate(ctx, agg, f, i, [
                 "er_nc_cont_legacy", "er_nc_cont_new",
                 "er_amo_cont_legacy", "er_amo_cont_new",
                 "total_er_db_cont",
             ])
 
             _phase_dc_contributions(f, i)
-            _accumulate_to_aggregate(agg, f, i, [
+            _maybe_accumulate(ctx, agg, f, i, [
                 "er_dc_cont_legacy", "er_dc_cont_new", "total_er_dc_cont",
             ])
 
@@ -1133,10 +1136,10 @@ def _compute_funding_corridor(
             agg.loc[i, "roa"] = roa
 
             _phase_cash_flow_and_solvency(f, i, roa)
-            _accumulate_to_aggregate(agg, f, i, ["net_cf_legacy", "net_cf_new"])
+            _maybe_accumulate(ctx, agg, f, i, ["net_cf_legacy", "net_cf_new"])
 
             _phase_mva(f, i, roa)
-            _accumulate_to_aggregate(agg, f, i, [
+            _maybe_accumulate(ctx, agg, f, i, [
                 "mva_legacy", "mva_new", "total_mva",
             ])
 
@@ -1158,16 +1161,16 @@ def _compute_funding_corridor(
         for cn in all_classes:
             f = funding[cn]
             _phase_ual_and_funded_ratios(f, i)
-            _accumulate_to_aggregate(agg, f, i, ["total_ava"])
-            _accumulate_to_aggregate(agg, f, i, [
+            _maybe_accumulate(ctx, agg, f, i, ["total_ava"])
+            _maybe_accumulate(ctx, agg, f, i, [
                 "ual_ava_legacy", "ual_ava_new", "total_ual_ava",
             ])
-            _accumulate_to_aggregate(agg, f, i, [
+            _maybe_accumulate(ctx, agg, f, i, [
                 "ual_mva_legacy", "ual_mva_new", "total_ual_mva",
             ])
 
             _phase_er_cont_totals(f, i, ctx)
-            _accumulate_to_aggregate(agg, f, i, ["total_er_cont"])
+            _maybe_accumulate(ctx, agg, f, i, ["total_er_cont"])
             funding[cn] = f
 
         agg.loc[i, "fr_mva"] = agg.loc[i, "total_mva"] / agg.loc[i, "total_aal"] if agg.loc[i, "total_aal"] != 0 else 0

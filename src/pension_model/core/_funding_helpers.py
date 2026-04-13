@@ -306,6 +306,21 @@ def _accumulate_to_aggregate(target, source, i, cols):
         target.loc[i, col] += source.loc[i, col]
 
 
+def _maybe_accumulate(ctx, target, source, i, cols):
+    """Accumulate per-class values into the aggregate iff multi-class.
+
+    For single-class plans the aggregate frame is just a copy of the
+    sole class frame at the end of the compute, so per-row
+    accumulation is wasted work — and would double-count if the
+    aggregate dict key happened to alias the class frame. The compute
+    functions wrap every aggregate-accumulation call in this helper so
+    the same orchestration shape works for both single- and
+    multi-class plans (Step 2.G.2).
+    """
+    if ctx.is_multi_class:
+        _accumulate_to_aggregate(target, source, i, cols)
+
+
 def _lookup_rate_schedule(schedule: list, year: int) -> float:
     """Look up a rate from a year-based schedule.
 
