@@ -600,6 +600,29 @@ def _phase_real_cost_metrics(
     f.loc[i, "all_in_cost_real"] = f.loc[i, "cum_er_cont_real"] + f.loc[i, "total_ual_mva_real"]
 
 
+def _phase_er_cont_totals(f: pd.DataFrame, i: int, ctx: FundingContext) -> None:
+    """Write aggregate employer contribution dollars and rate.
+
+    ``total_er_cont`` is the sum of all employer outflows that hit
+    the plan in year ``i``: ER NC, ER amortization, ER DC (when the
+    plan has a DC leg), and the solvency contribution. ``total_er_cont_rate``
+    is that total divided by total payroll.
+
+    Written for every class (and the aggregate, via ``_accumulate_to_aggregate``
+    followed by a caller-side rate re-division for the aggregate).
+    """
+    total = (
+        f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
+        + f.loc[i, "er_amo_cont_legacy"] + f.loc[i, "er_amo_cont_new"]
+        + f.loc[i, "solv_cont"]
+    )
+    if ctx.has_dc:
+        total = total + f.loc[i, "total_er_dc_cont"]
+    f.loc[i, "total_er_cont"] = total
+    total_payroll = f.loc[i, "total_payroll"]
+    f.loc[i, "total_er_cont_rate"] = total / total_payroll if total_payroll > 0 else 0
+
+
 def _phase_ual_and_funded_ratios(f: pd.DataFrame, i: int) -> None:
     """Compute total AVA, UAL (on both AVA and MVA bases), and funded
     ratios for row ``i`` on one class's frame.
@@ -1004,10 +1027,8 @@ def _compute_funding_corridor(
                 "ual_mva_legacy", "ual_mva_new", "total_ual_mva",
             ])
 
-            # Plan-specific er_cont composition (FRS: db+dc+solv; see GH #43 for solv_cont naming).
-            f.loc[i, "total_er_cont"] = f.loc[i, "total_er_db_cont"] + f.loc[i, "total_er_dc_cont"] + f.loc[i, "solv_cont"]
+            _phase_er_cont_totals(f, i, ctx)
             _accumulate_to_aggregate(agg, f, i, ["total_er_cont"])
-            f.loc[i, "total_er_cont_rate"] = f.loc[i, "total_er_cont"] / f.loc[i, "total_payroll"] if f.loc[i, "total_payroll"] > 0 else 0
             funding[cn] = f
 
         agg.loc[i, "fr_mva"] = agg.loc[i, "total_mva"] / agg.loc[i, "total_aal"] if agg.loc[i, "total_aal"] != 0 else 0
@@ -1237,11 +1258,9 @@ def _compute_funding_gainloss(
         # Total AVA, UAL, funded ratios
         _phase_ual_and_funded_ratios(f, i)
 
-        # Contribution totals
-        f.loc[i, "total_er_cont"] = (f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
-                                      + f.loc[i, "er_amo_cont_legacy"] + f.loc[i, "er_amo_cont_new"]
-                                      + f.loc[i, "solv_cont"])
-        f.loc[i, "total_er_cont_rate"] = f.loc[i, "total_er_cont"] / f.loc[i, "total_payroll"] if f.loc[i, "total_payroll"] > 0 else 0
+        # Contribution totals (total_er_cont, total_er_cont_rate)
+        _phase_er_cont_totals(f, i, ctx)
+        # Gainloss-path-only total contribution rate
         f.loc[i, "tot_cont_rate"] = (
             (f.loc[i, "ee_nc_cont_legacy"] + f.loc[i, "er_nc_cont_legacy"]
              + f.loc[i, "er_amo_cont_legacy"]
