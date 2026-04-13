@@ -417,6 +417,66 @@ def _setup_amort_state(ctx: FundingContext, funding: dict, constants) -> dict:
     }
 
 
+def _calibrate_funding_frames(
+    funding: dict,
+    liability_results: dict,
+    ctx: FundingContext,
+    constants,
+) -> None:
+    """Calibrate per-class funding frames from liability pipeline output.
+
+    Writes payroll-ratio columns (with capability gates for DC and
+    CB), NC-rate columns via :func:`_populate_calibrated_nc_rates`
+    using the class-keyed ``nc_cal``, and row-0 AAL / UAL values from
+    the liability pipeline. Both AAL columns are read from ``liab``
+    rather than summed from init because the pipeline computes them
+    with full precision.
+    """
+    n_years = ctx.n_years
+    for cn in ctx.class_names:
+        f = funding[cn]
+        liab = liability_results[cn]
+
+        ratio_specs = [
+            ("payroll_db_legacy_ratio", "payroll_db_legacy_est"),
+            ("payroll_db_new_ratio", "payroll_db_new_est"),
+        ]
+        if ctx.has_dc:
+            ratio_specs += [
+                ("payroll_dc_legacy_ratio", "payroll_dc_legacy_est"),
+                ("payroll_dc_new_ratio", "payroll_dc_new_est"),
+            ]
+        if ctx.has_cb:
+            ratio_specs.append(("payroll_cb_new_ratio", "payroll_cb_new_est"))
+
+        pay_est = liab["total_payroll_est"].values
+        for ratio_col, num_col in ratio_specs:
+            if ratio_col not in f.columns:
+                f[ratio_col] = 0.0
+            num = (
+                liab[num_col].values if num_col in liab.columns
+                else np.zeros(n_years)
+            )
+            ratios = np.divide(
+                num, pay_est, out=np.zeros_like(pay_est), where=pay_est != 0,
+            )
+            f.loc[1:, ratio_col] = ratios[:-1]
+
+        if "nc_rate_db_legacy" not in f.columns:
+            f["nc_rate_db_legacy"] = 0.0
+            f["nc_rate_db_new"] = 0.0
+
+        nc_cal = constants.class_data[cn].nc_cal
+        _populate_calibrated_nc_rates(f, liab, nc_cal, n_years)
+
+        f.loc[0, "aal_legacy"] = liab["aal_legacy_est"].iloc[0]
+        f.loc[0, "total_aal"] = liab["total_aal_est"].iloc[0]
+        f.loc[0, "ual_ava_legacy"] = f.loc[0, "aal_legacy"] - f.loc[0, "ava_legacy"]
+        f.loc[0, "total_ual_ava"] = f.loc[0, "total_aal"] - f.loc[0, "total_ava"]
+
+        funding[cn] = f
+
+
 def _select_amo_state(amort_state: dict, cn: str) -> dict:
     """Return the cont-strategy-facing amo_state for one class.
 
@@ -1082,39 +1142,7 @@ def _compute_funding_corridor(
 
     funding = _setup_funding_frames(ctx)
 
-    # Calibration
-    for cn in class_names:
-        f = funding[cn]
-        liab = liability_results[cn]
-
-        for ratio_col, num_col, denom_col in [
-            ("payroll_db_legacy_ratio", "payroll_db_legacy_est", "total_payroll_est"),
-            ("payroll_db_new_ratio", "payroll_db_new_est", "total_payroll_est"),
-            ("payroll_dc_legacy_ratio", "payroll_dc_legacy_est", "total_payroll_est"),
-            ("payroll_dc_new_ratio", "payroll_dc_new_est", "total_payroll_est"),
-        ]:
-            if ratio_col not in f.columns:
-                f[ratio_col] = 0.0
-            denom = liab[denom_col].values
-            ratios = np.divide(liab[num_col].values, denom,
-                               out=np.zeros_like(denom), where=denom != 0)
-            f.loc[1:, ratio_col] = ratios[:-1]
-
-        if "nc_rate_db_legacy" not in f.columns:
-            f["nc_rate_db_legacy"] = 0.0
-            f["nc_rate_db_new"] = 0.0
-
-        # NC rate calibration: R multiplies liability NC rates by nc_cal
-        # nc_cal = val_norm_cost / model_norm_cost (additional adjustment beyond cal_factor=0.9)
-        nc_cal = constants.class_data[cn].nc_cal
-        _populate_calibrated_nc_rates(f, liab, nc_cal, n_years)
-
-        f.loc[0, "aal_legacy"] = liab["aal_legacy_est"].iloc[0]
-        f.loc[0, "total_aal"] = liab["total_aal_est"].iloc[0]
-        f.loc[0, "ual_ava_legacy"] = f.loc[0, "aal_legacy"] - f.loc[0, "ava_legacy"]
-        f.loc[0, "total_ual_ava"] = f.loc[0, "total_aal"] - f.loc[0, "total_ava"]
-
-        funding[cn] = f
+    _calibrate_funding_frames(funding, liability_results, ctx, constants)
 
     # Amortization tables
     amort_state = _setup_amort_state(ctx, funding, constants)
@@ -1299,7 +1327,6 @@ def _compute_funding_gainloss(
     ctx = _resolve_funding_context(constants, funding_inputs)
     class_names = ctx.class_names
     first_class = class_names[0]
-    liab = liability_results[first_class]
     agg_name = ctx.agg_name
 
     dr_current = ctx.dr_current
@@ -1315,69 +1342,11 @@ def _compute_funding_gainloss(
     ava_strategy = ctx.ava_strategy
     cont_strategy = ctx.cont_strategy
 
-    # --- Load initial row ---
-    init = ctx.init_funding.iloc[0]
-
     ret_scen = _prepare_return_scenarios(ctx, dr_current)
 
-    # --- Legacy funding config parameters (not yet on ctx) ---
-    raw = constants.raw if hasattr(constants, "raw") else {}
-    funding_raw = raw.get("funding", {})
-    amo_period_current = funding_raw.get("amo_period_current", 30)
-
-    # nc_cal: authoritative source is calibration.json (class_data), with
-    # funding_raw as legacy fallback
-    nc_cal = 1.0
-    if hasattr(constants, "class_data") and "all" in constants.class_data:
-        cd = constants.class_data["all"]
-        if hasattr(cd, "nc_cal") and cd.nc_cal != 1.0:
-            nc_cal = cd.nc_cal
-    if nc_cal == 1.0:
-        nc_cal = funding_raw.get("nc_cal", 1.0)
-
-    # --- Initialize funding frames (class + aggregate) ---
     funding = _setup_funding_frames(ctx)
-    f = funding[first_class]
-
-    # --- Calibration: payroll ratios and NC rates from liability pipeline ---
-    # R uses lag(ratio) — ratio from previous year applied to next year's payroll
-    pay_est = liab["total_payroll_est"].values
-    for ratio_col, num_col in [
-        ("payroll_db_legacy_ratio", "payroll_db_legacy_est"),
-        ("payroll_db_new_ratio", "payroll_db_new_est"),
-    ]:
-        if ratio_col not in f.columns:
-            f[ratio_col] = 0.0
-        num = liab[num_col].values if num_col in liab.columns else np.zeros(n_years)
-        ratios = np.divide(num, pay_est, out=np.zeros_like(pay_est), where=pay_est != 0)
-        # lag by 1
-        f.loc[1:, ratio_col] = ratios[:-1]
-
-    # CB payroll ratio
-    if "payroll_cb_new_ratio" not in f.columns:
-        f["payroll_cb_new_ratio"] = 0.0
-    if "payroll_cb_new_est" in liab.columns:
-        cb_ratios = np.divide(liab["payroll_cb_new_est"].values, pay_est,
-                              out=np.zeros_like(pay_est), where=pay_est != 0)
-        f.loc[1:, "payroll_cb_new_ratio"] = cb_ratios[:-1]
-
-    # NC rate calibration (with nc_cal and lag)
-    _populate_calibrated_nc_rates(f, liab, nc_cal, n_years)
-
-    # AAL initialization
-    if "aal_legacy_est" in liab.columns:
-        f.loc[0, "aal_legacy"] = liab["aal_legacy_est"].iloc[0]
-    elif "aal_legacy_est" in liab.columns:
-        f.loc[0, "aal_legacy"] = liab["aal_legacy_est"].iloc[0]
-    f.loc[0, "total_aal"] = f.loc[0, "aal_legacy"] + f.loc[0, "aal_new"]
-    f.loc[0, "ual_ava_legacy"] = f.loc[0, "aal_legacy"] - f.loc[0, "ava_legacy"]
-    f.loc[0, "total_ual_ava"] = f.loc[0, "total_aal"] - f.loc[0, "total_ava"]
-
-    # --- Amortization state ---
+    _calibrate_funding_frames(funding, liability_results, ctx, constants)
     amort_state = _setup_amort_state(ctx, funding, constants)
-
-    # Strategies (ava_strategy, cont_strategy) already instantiated by
-    # _resolve_funding_context above.
 
     # --- Main year loop ---
     for i in range(1, n_years):
