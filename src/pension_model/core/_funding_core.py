@@ -1154,7 +1154,7 @@ def _compute_funding(
             _phase_liability_gl_and_aal(f, liab, i, dr_current, dr_new)
             _maybe_accumulate(ctx, agg, f, i, ["aal_legacy", "aal_new", "total_aal"])
 
-            if ctx.ava_strategy.aggregation_level == "class":
+            if ctx.ava_strategy.emits_liability_gain_loss_sum:
                 f.loc[i, "liability_gain_loss"] = (
                     f.loc[i, "liability_gain_loss_legacy"]
                     + f.loc[i, "liability_gain_loss_new"]
@@ -1254,7 +1254,7 @@ def _compute_funding(
                     / f.loc[i, "total_payroll"]
                 ) if f.loc[i, "total_payroll"] > 0 else 0
 
-            if ctx.ava_strategy.aggregation_level == "class":
+            if ctx.ava_strategy.emits_real_cost_metrics:
                 _phase_real_cost_metrics(f, i, year, start_year, ctx.inflation)
 
             funding[cn] = f
