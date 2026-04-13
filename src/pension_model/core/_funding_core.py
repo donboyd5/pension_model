@@ -241,6 +241,180 @@ def _resolve_er_rate_components(funding_raw: dict) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Setup helpers
+#
+# Build the per-class + aggregate funding frames and the amort-state dict
+# before the year loop runs. Both compute functions share these helpers;
+# any schema or calibration divergence is handled by the helpers internally
+# so the call sites look the same.
+# ---------------------------------------------------------------------------
+
+
+def _setup_funding_frames(ctx: FundingContext) -> dict:
+    """Build initial funding frames for every class plus the aggregate.
+
+    Returns a dict keyed by ``ctx.all_classes + [ctx.agg_name]`` (with
+    duplicates collapsed if a single-class plan's only class happens to
+    share ``agg_name`` — it doesn't today, but the check is cheap).
+
+    Each frame is an ``n_years``-row zero-initialised ``DataFrame`` whose
+    columns match ``ctx.init_funding`` minus any ``class`` column, with
+    row 0 populated from the init row for that class and a ``year``
+    column spanning ``[start_year, start_year + n_years)``.
+
+    The helper auto-detects the init-funding schema: multi-class plans
+    ship a long-format CSV with a ``class`` column (one row per class,
+    looked up via :func:`_get_init_row`); single-class plans ship a
+    single-row CSV with no ``class`` column (``init.iloc[0]`` is used
+    directly).
+
+    For single-class gainloss plans the aggregate frame is built but
+    not populated during the year loop; the compute function overwrites
+    it with a copy of the sole class frame at return time. This keeps
+    setup unified across paths without changing year-loop behaviour.
+    """
+    init = ctx.init_funding
+    has_class_col = "class" in init.columns
+    cols = [c for c in init.columns if c != "class"]
+
+    keys = list(ctx.all_classes)
+    if ctx.agg_name not in keys:
+        keys.append(ctx.agg_name)
+
+    funding = {}
+    for cn in keys:
+        init_row = _get_init_row(init, cn) if has_class_col else init.iloc[0]
+        df = pd.DataFrame(0.0, index=range(ctx.n_years), columns=cols)
+        df["year"] = range(ctx.start_year, ctx.start_year + ctx.n_years)
+        for col in cols:
+            if col == "year":
+                continue
+            val = init_row.get(col, 0)
+            df.loc[0, col] = float(val if pd.notna(val) else 0)
+        funding[cn] = df
+    return funding
+
+
+def _setup_amort_state(ctx: FundingContext, funding: dict, constants) -> dict:
+    """Build the amortization-state structure for the year loop.
+
+    Returns one of two shapes, dispatched on whether the plan ships an
+    ``amort_layers.csv`` (corridor today) or not (gainloss today):
+
+    * ``{"mode": "per_class", "amo_tables": {class_name: {...}}}`` —
+      per-class layer tables built from the CSV via
+      ``build_amort_period_tables``. Each inner dict has ``cur_per``,
+      ``fut_per``, ``cur_debt``, ``fut_debt``, ``cur_pay``, ``fut_pay``,
+      ``max_col``.
+
+    * ``{"mode": "local", "debt_current": ndarray, "pay_current":
+      ndarray, "amo_per_current_diag": ndarray, "debt_new": ndarray,
+      "pay_new": ndarray, "amo_per_new": ndarray, "n_amo": int}`` —
+      synthesised from a scalar ``amo_period_current`` (read from
+      ``constants.raw["funding"]``) plus ``ctx.amo_period_new``.
+
+    The second shape is a data-prep workaround: a plan that ships an
+    ``amort_layers.csv`` can be handled uniformly via the per-class
+    tables, and TRS is expected to migrate to that shape in a future
+    data-prep phase (see plans/swirling-jingling-popcorn.md "Out of
+    Scope"). Until then the two shapes are retained and the year loop
+    dispatches on ``mode``.
+    """
+    # Local import to avoid a circular import via funding_model.py.
+    from pension_model.core.funding_model import build_amort_period_tables
+
+    if ctx.amort_layers is not None:
+        amo_tables = {}
+        for cn in ctx.all_classes:
+            cur_per, fut_per, init_bal, max_col = build_amort_period_tables(
+                ctx.amort_layers, cn, ctx.amo_period_new, ctx.funding_lag,
+                ctx.n_years - 1,
+            )
+
+            cur_debt = np.zeros((ctx.n_years, max_col + 1))
+            if len(init_bal) > 0:
+                cur_debt[0, :len(init_bal)] = init_bal
+            fut_debt = np.zeros((ctx.n_years, max_col + 1))
+
+            cur_pay = np.zeros((ctx.n_years, max_col))
+            dr_old = ctx.dr_old if ctx.dr_old is not None else ctx.dr_current
+            for j in range(max_col):
+                if cur_per[0, j] > 0 and abs(cur_debt[0, j]) > 1e-6:
+                    cur_pay[0, j] = _get_pmt(
+                        dr_old, ctx.amo_pay_growth, int(cur_per[0, j]),
+                        cur_debt[0, j], t=0.5,
+                    )
+            if ctx.funding_lag > 0:
+                cur_pay[0, :ctx.funding_lag] = 0
+
+            fut_pay = np.zeros((ctx.n_years, max_col))
+
+            amo_tables[cn] = {
+                "cur_per": cur_per, "fut_per": fut_per,
+                "cur_debt": cur_debt, "fut_debt": fut_debt,
+                "cur_pay": cur_pay, "fut_pay": fut_pay,
+                "max_col": max_col,
+            }
+        return {"mode": "per_class", "amo_tables": amo_tables}
+
+    # Local mode: synthesise layer arrays from scalar amo_period_current.
+    funding_raw = (constants.raw if hasattr(constants, "raw") else {}).get("funding", {})
+    amo_period_current = funding_raw.get("amo_period_current", 30)
+    amo_period_new = ctx.amo_period_new
+    n_years = ctx.n_years
+
+    amo_seq_current = list(range(amo_period_current, 0, -1))
+    amo_seq_new = list(range(amo_period_new, 0, -1))
+    n_amo = max(len(amo_seq_current), len(amo_seq_new))
+
+    # Current-hire period diagonal: row 0 existing countdown; row r, col j
+    # = max(prev diag - 1, 0).
+    amo_per_current_diag = np.zeros((n_years, n_amo))
+    amo_per_current_diag[0, :len(amo_seq_current)] = amo_seq_current
+    for row in range(1, n_years):
+        amo_per_current_diag[row, 0] = amo_seq_new[0] if len(amo_seq_new) > 0 else 0
+    for j in range(1, n_amo):
+        for row in range(j, n_years):
+            prev = amo_per_current_diag[row - 1, j - 1]
+            amo_per_current_diag[row, j] = max(prev - 1, 0) if prev > 0 else 0
+
+    amo_per_new = np.zeros((n_years, n_amo))
+    for j in range(n_amo):
+        for row in range(j + 1, n_years):
+            amo_per_new[row, j] = max(amo_period_new - (row - j - 1), 0)
+
+    debt_current = np.zeros((n_years, n_amo + 1))
+    pay_current = np.zeros((n_years, n_amo))
+    debt_new = np.zeros((n_years, n_amo + 1))
+    pay_new = np.zeros((n_years, n_amo))
+
+    # Seed first current-layer debt + payment from initial total UAL on
+    # the sole class frame. Gainloss is single-class; reading the first
+    # (and only) class frame matches the inlined code that this helper
+    # replaces.
+    first_class = ctx.class_names[0]
+    f = funding[first_class]
+    debt_current[0, 0] = f.loc[0, "total_ual_ava"]
+    if amo_per_current_diag[0, 0] > 0:
+        pay_current[0, 0] = _get_pmt(
+            ctx.dr_current, ctx.amo_pay_growth,
+            int(amo_per_current_diag[0, 0]),
+            debt_current[0, 0], t=0.5,
+        )
+
+    return {
+        "mode": "local",
+        "debt_current": debt_current,
+        "pay_current": pay_current,
+        "amo_per_current_diag": amo_per_current_diag,
+        "debt_new": debt_new,
+        "pay_new": pay_new,
+        "amo_per_new": amo_per_new,
+        "n_amo": n_amo,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Year-loop phase helpers
 #
 # Each helper executes one phase of the year loop for one class's funding
@@ -834,18 +1008,7 @@ def _compute_funding_corridor(
 
     ret_scen = _prepare_return_scenarios(ctx, dr_current)
 
-    # Initialize funding tables
-    funding = {}
-    for cn in all_classes + [agg_name]:
-        init_row = _get_init_row(init_funding, cn)
-        cols = [c for c in init_funding.columns if c != "class"]
-        df = pd.DataFrame(0.0, index=range(n_years), columns=cols)
-        df["year"] = range(start_year, start_year + n_years)
-        for col in cols:
-            if col != "year":
-                val = init_row.get(col, 0)
-                df.loc[0, col] = float(val if pd.notna(val) else 0)
-        funding[cn] = df
+    funding = _setup_funding_frames(ctx)
 
     # Calibration
     for cn in class_names:
@@ -882,32 +1045,8 @@ def _compute_funding_corridor(
         funding[cn] = f
 
     # Amortization tables
-    amo_tables = {}
-    for cn in all_classes:
-        cur_per, fut_per, init_bal, max_col = build_amort_period_tables(
-            amort_layers, cn, amo_period_new, funding_lag, n_years - 1)
-
-        cur_debt = np.zeros((n_years, max_col + 1))
-        if len(init_bal) > 0:
-            cur_debt[0, :len(init_bal)] = init_bal
-        fut_debt = np.zeros((n_years, max_col + 1))
-
-        cur_pay = np.zeros((n_years, max_col))
-        for j in range(max_col):
-            if cur_per[0, j] > 0 and abs(cur_debt[0, j]) > 1e-6:
-                cur_pay[0, j] = _get_pmt(dr_old, amo_pay_growth, int(cur_per[0, j]),
-                                         cur_debt[0, j], t=0.5)
-        if funding_lag > 0:
-            cur_pay[0, :funding_lag] = 0
-
-        fut_pay = np.zeros((n_years, max_col))
-
-        amo_tables[cn] = {
-            "cur_per": cur_per, "fut_per": fut_per,
-            "cur_debt": cur_debt, "fut_debt": fut_debt,
-            "cur_pay": cur_pay, "fut_pay": fut_pay,
-            "max_col": max_col,
-        }
+    amort_state = _setup_amort_state(ctx, funding, constants)
+    amo_tables = amort_state["amo_tables"]
 
     # ========== Main year loop ==========
     for i in range(1, n_years):
@@ -1117,16 +1256,9 @@ def _compute_funding_gainloss(
     if nc_cal == 1.0:
         nc_cal = funding_raw.get("nc_cal", 1.0)
 
-    # --- Initialize DataFrame from initial funding row ---
-    # Column names are expected to follow the standardized convention
-    # (lowercase, total_ prefix for aggregates). See plans/*/data/funding/.
-    cols = list(init.index)
-    f = pd.DataFrame(0.0, index=range(n_years), columns=cols)
-    f["year"] = range(start_year, start_year + n_years)
-    for col in cols:
-        if col != "year":
-            val = init.get(col, 0)
-            f.loc[0, col] = float(val if pd.notna(val) else 0)
+    # --- Initialize funding frames (class + aggregate) ---
+    funding = _setup_funding_frames(ctx)
+    f = funding[first_class]
 
     # --- Calibration: payroll ratios and NC rates from liability pipeline ---
     # R uses lag(ratio) — ratio from previous year applied to next year's payroll
@@ -1162,54 +1294,15 @@ def _compute_funding_gainloss(
     f.loc[0, "ual_ava_legacy"] = f.loc[0, "aal_legacy"] - f.loc[0, "ava_legacy"]
     f.loc[0, "total_ual_ava"] = f.loc[0, "total_aal"] - f.loc[0, "total_ava"]
 
-    # --- Amortization period tables ---
-    amo_seq_current = list(range(amo_period_current, 0, -1))
-    amo_seq_new = list(range(amo_period_new, 0, -1))
-    n_amo = max(len(amo_seq_current), len(amo_seq_new))
-
-    # Current-hire period table: row 0 = existing countdown, rows 1+ = new layers
-    amo_per_current = np.zeros((n_years, n_amo))
-    amo_per_current[0, :len(amo_seq_current)] = amo_seq_current
-    for row in range(1, n_years):
-        amo_per_current[row, :len(amo_seq_new)] = amo_seq_new
-    # Shift onto diagonals
-    for j in range(1, n_amo):
-        for row in range(n_years):
-            if row - j >= 0:
-                amo_per_current[row, j] = amo_per_current[row - j, j] if row == j else amo_per_current[row, j]
-    # Rebuild with proper diagonal shift (match R's lag logic)
-    amo_per_current_diag = np.zeros((n_years, n_amo))
-    amo_per_current_diag[0, :len(amo_seq_current)] = amo_seq_current
-    for row in range(1, n_years):
-        amo_per_current_diag[row, 0] = amo_seq_new[0] if len(amo_seq_new) > 0 else 0
-    for j in range(1, n_amo):
-        for row in range(j, n_years):
-            prev = amo_per_current_diag[row - 1, j - 1]
-            amo_per_current_diag[row, j] = max(prev - 1, 0) if prev > 0 else 0
-
-    amo_per_new = np.zeros((n_years, n_amo))
-    for j in range(n_amo):
-        for row in range(j + 1, n_years):
-            idx = row - j - 1
-            amo_per_new[row, j] = max(amo_seq_new[0] - idx, 0) if idx < amo_seq_new[0] else 0
-    # Simpler: diagonal from row j+1, col j, counting down
-    amo_per_new = np.zeros((n_years, n_amo))
-    for j in range(n_amo):
-        for row in range(j + 1, n_years):
-            amo_per_new[row, j] = max(amo_period_new - (row - j - 1), 0)
-
-    # Debt and payment tables
-    debt_current = np.zeros((n_years, n_amo + 1))
-    pay_current = np.zeros((n_years, n_amo))
-    debt_new = np.zeros((n_years, n_amo + 1))
-    pay_new = np.zeros((n_years, n_amo))
-
-    # Initialize first debt layer and payment
-    debt_current[0, 0] = f.loc[0, "total_ual_ava"]
-    if amo_per_current_diag[0, 0] > 0:
-        pay_current[0, 0] = _get_pmt(
-            dr_current, amo_pay_growth, int(amo_per_current_diag[0, 0]),
-            debt_current[0, 0], t=0.5)
+    # --- Amortization state ---
+    amort_state = _setup_amort_state(ctx, funding, constants)
+    debt_current = amort_state["debt_current"]
+    pay_current = amort_state["pay_current"]
+    amo_per_current_diag = amort_state["amo_per_current_diag"]
+    debt_new = amort_state["debt_new"]
+    pay_new = amort_state["pay_new"]
+    amo_per_new = amort_state["amo_per_new"]
+    n_amo = amort_state["n_amo"]
 
     # Strategies (ava_strategy, cont_strategy) already instantiated by
     # _resolve_funding_context above.
@@ -1289,4 +1382,5 @@ def _compute_funding_gainloss(
     # plan the aggregate IS the class frame mathematically; a copy
     # preserves that while ensuring the dict's two entries point at
     # different DataFrame objects (no mutation aliasing).
-    return {first_class: f, agg_name: f.copy()}
+    funding[agg_name] = f.copy()
+    return funding
