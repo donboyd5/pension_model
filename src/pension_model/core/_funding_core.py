@@ -259,6 +259,37 @@ def _phase_payroll(f: pd.DataFrame, i: int, ctx: FundingContext) -> None:
         f.loc[i, "payroll_cb_new"] = f.loc[i, "total_payroll"] * f.loc[i, "payroll_cb_new_ratio"]
 
 
+def _phase_benefits_refunds(
+    f: pd.DataFrame, liab: pd.DataFrame, i: int, ctx: FundingContext
+) -> None:
+    """Copy benefit payments and refunds from the liability pipeline.
+
+    Writes ``ben_payment_legacy`` (active + current retiree + term),
+    ``refund_legacy``, ``ben_payment_new``, and ``refund_new``. For
+    plans with a cash-balance leg, CB contributions are added to the
+    ``*_new`` columns; for DB-only plans, only the DB component is
+    read.
+
+    Plan-aggregate totals (``total_ben_payment``, ``total_refund``)
+    and aggregate accumulation remain at the call site because they're
+    corridor-only.
+    """
+    f.loc[i, "ben_payment_legacy"] = (
+        liab["retire_ben_db_legacy_est"].iloc[i]
+        + liab["retire_ben_current_est"].iloc[i]
+        + liab["retire_ben_term_est"].iloc[i]
+    )
+    f.loc[i, "refund_legacy"] = liab["refund_db_legacy_est"].iloc[i]
+
+    ben_new = liab["retire_ben_db_new_est"].iloc[i]
+    refund_new = liab["refund_db_new_est"].iloc[i]
+    if ctx.has_cb:
+        ben_new = ben_new + liab["retire_ben_cb_new_est"].iloc[i]
+        refund_new = refund_new + liab["refund_cb_new_est"].iloc[i]
+    f.loc[i, "ben_payment_new"] = ben_new
+    f.loc[i, "refund_new"] = refund_new
+
+
 def _compute_funding_corridor(
     liability_results: dict,
     funding_inputs: dict,
@@ -406,11 +437,7 @@ def _compute_funding_corridor(
                 "payroll_dc_legacy", "payroll_dc_new",
             ])
 
-            f.loc[i, "ben_payment_legacy"] = (liab["retire_ben_db_legacy_est"].iloc[i]
-                + liab["retire_ben_current_est"].iloc[i] + liab["retire_ben_term_est"].iloc[i])
-            f.loc[i, "refund_legacy"] = liab["refund_db_legacy_est"].iloc[i]
-            f.loc[i, "ben_payment_new"] = liab["retire_ben_db_new_est"].iloc[i]
-            f.loc[i, "refund_new"] = liab["refund_db_new_est"].iloc[i]
+            _phase_benefits_refunds(f, liab, i, ctx)
             f.loc[i, "total_ben_payment"] = f.loc[i, "ben_payment_legacy"] + f.loc[i, "ben_payment_new"]
             f.loc[i, "total_refund"] = f.loc[i, "refund_legacy"] + f.loc[i, "refund_new"]
 
@@ -878,17 +905,7 @@ def _compute_funding_gainloss(
         _phase_payroll(f, i, ctx)
 
         # Benefit payments from liability pipeline
-        f.loc[i, "ben_payment_legacy"] = (
-            liab["retire_ben_db_legacy_est"].iloc[i]
-            + liab["retire_ben_current_est"].iloc[i]
-            + liab["retire_ben_term_est"].iloc[i])
-        f.loc[i, "refund_legacy"] = liab["refund_db_legacy_est"].iloc[i]
-        f.loc[i, "ben_payment_new"] = (
-            liab.get("retire_ben_db_new_est", pd.Series(np.zeros(n_years))).iloc[i]
-            + liab.get("retire_ben_cb_new_est", pd.Series(np.zeros(n_years))).iloc[i])
-        f.loc[i, "refund_new"] = (
-            liab.get("refund_db_new_est", pd.Series(np.zeros(n_years))).iloc[i]
-            + liab.get("refund_cb_new_est", pd.Series(np.zeros(n_years))).iloc[i])
+        _phase_benefits_refunds(f, liab, i, ctx)
 
         # Normal cost
         f.loc[i, "nc_legacy"] = f.loc[i, "nc_rate_db_legacy"] * f.loc[i, "payroll_db_legacy"]
