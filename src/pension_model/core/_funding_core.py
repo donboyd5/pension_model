@@ -795,6 +795,57 @@ def _phase_real_cost_metrics(
     f.loc[i, "all_in_cost_real"] = f.loc[i, "cum_er_cont_real"] + f.loc[i, "total_ual_mva_real"]
 
 
+def _phase_amort_rolling(funding: dict, amort_state: dict, i: int, ctx: FundingContext) -> None:
+    """Roll amortization-layer debt/pay tables forward one year.
+
+    Dispatches on ``amort_state["mode"]``:
+
+    * ``"per_class"``: per-class layer tables (corridor today). Loops
+      ``ctx.all_classes`` and rolls each class's current and future
+      layer arrays.
+    * ``"local"``: a single pair of layer arrays at the top level of
+      ``amort_state`` (gainloss today). Reads UAL from the sole class
+      frame.
+
+    The two shapes are kept separate for now; data-prep work (TRS
+    shipping ``amort_layers.csv``) will let us collapse to the
+    per-class shape in a follow-up.
+    """
+    if amort_state["mode"] == "per_class":
+        for cn in ctx.all_classes:
+            f = funding[cn]
+            amo = amort_state["amo_tables"][cn]
+            mc = amo["max_col"]
+            _roll_amort_layer(
+                debt=amo["cur_debt"], pay=amo["cur_pay"], per=amo["cur_per"],
+                i=i, max_col=mc, ual=f.loc[i, "ual_ava_legacy"],
+                dr=ctx.dr_current, amo_pay_growth=ctx.amo_pay_growth,
+            )
+            _roll_amort_layer(
+                debt=amo["fut_debt"], pay=amo["fut_pay"], per=amo["fut_per"],
+                i=i, max_col=mc, ual=f.loc[i, "ual_ava_new"],
+                dr=ctx.dr_new, amo_pay_growth=ctx.amo_pay_growth,
+            )
+        return
+
+    f = funding[ctx.class_names[0]]
+    n_amo = amort_state["n_amo"]
+    _roll_amort_layer(
+        debt=amort_state["debt_current"],
+        pay=amort_state["pay_current"],
+        per=amort_state["amo_per_current_diag"],
+        i=i, max_col=n_amo, ual=f.loc[i, "ual_ava_legacy"],
+        dr=ctx.dr_current, amo_pay_growth=ctx.amo_pay_growth,
+    )
+    _roll_amort_layer(
+        debt=amort_state["debt_new"],
+        pay=amort_state["pay_new"],
+        per=amort_state["amo_per_new"],
+        i=i, max_col=n_amo, ual=f.loc[i, "ual_ava_new"],
+        dr=ctx.dr_new, amo_pay_growth=ctx.amo_pay_growth,
+    )
+
+
 def _phase_er_cont_totals(f: pd.DataFrame, i: int, ctx: FundingContext) -> None:
     """Write aggregate employer contribution dollars and rate.
 
@@ -1067,7 +1118,6 @@ def _compute_funding_corridor(
 
     # Amortization tables
     amort_state = _setup_amort_state(ctx, funding, constants)
-    amo_tables = amort_state["amo_tables"]
 
     # ========== Main year loop ==========
     for i in range(1, n_years):
@@ -1218,22 +1268,7 @@ def _compute_funding_corridor(
             agg.loc[i, "fr_ava"] = agg.loc[i, "total_ava"] / agg.loc[i, "total_aal"] if agg.loc[i, "total_aal"] != 0 else 0
             agg.loc[i, "total_er_cont_rate"] = agg.loc[i, "total_er_cont"] / agg.loc[i, "total_payroll"] if agg.loc[i, "total_payroll"] > 0 else 0
 
-        # --- Amortization layers ---
-        for cn in all_classes:
-            f = funding[cn]
-            amo = amo_tables[cn]
-            mc = amo["max_col"]
-
-            _roll_amort_layer(
-                debt=amo["cur_debt"], pay=amo["cur_pay"], per=amo["cur_per"],
-                i=i, max_col=mc, ual=f.loc[i, "ual_ava_legacy"],
-                dr=dr_current, amo_pay_growth=amo_pay_growth,
-            )
-            _roll_amort_layer(
-                debt=amo["fut_debt"], pay=amo["fut_pay"], per=amo["fut_per"],
-                i=i, max_col=mc, ual=f.loc[i, "ual_ava_new"],
-                dr=dr_new, amo_pay_growth=amo_pay_growth,
-            )
+        _phase_amort_rolling(funding, amort_state, i, ctx)
 
         funding[agg_name] = agg
 
@@ -1340,13 +1375,6 @@ def _compute_funding_gainloss(
 
     # --- Amortization state ---
     amort_state = _setup_amort_state(ctx, funding, constants)
-    debt_current = amort_state["debt_current"]
-    pay_current = amort_state["pay_current"]
-    amo_per_current_diag = amort_state["amo_per_current_diag"]
-    debt_new = amort_state["debt_new"]
-    pay_new = amort_state["pay_new"]
-    amo_per_new = amort_state["amo_per_new"]
-    n_amo = amort_state["n_amo"]
 
     # Strategies (ava_strategy, cont_strategy) already instantiated by
     # _resolve_funding_context above.
@@ -1506,19 +1534,7 @@ def _compute_funding_gainloss(
             agg.loc[i, "fr_ava"] = agg.loc[i, "total_ava"] / agg.loc[i, "total_aal"] if agg.loc[i, "total_aal"] != 0 else 0
             agg.loc[i, "total_er_cont_rate"] = agg.loc[i, "total_er_cont"] / agg.loc[i, "total_payroll"] if agg.loc[i, "total_payroll"] > 0 else 0
 
-        # Amortization layer updates — current hires (legacy)
-        _roll_amort_layer(
-            debt=debt_current, pay=pay_current, per=amo_per_current_diag,
-            i=i, max_col=n_amo, ual=f.loc[i, "ual_ava_legacy"],
-            dr=dr_current, amo_pay_growth=amo_pay_growth,
-        )
-
-        # Amortization layer updates — new hires
-        _roll_amort_layer(
-            debt=debt_new, pay=pay_new, per=amo_per_new,
-            i=i, max_col=n_amo, ual=f.loc[i, "ual_ava_new"],
-            dr=dr_new, amo_pay_growth=amo_pay_growth,
-        )
+        _phase_amort_rolling(funding, amort_state, i, ctx)
 
     # Build the aggregate frame as a distinct copy. For a single-class
     # plan the aggregate IS the class frame mathematically; a copy
