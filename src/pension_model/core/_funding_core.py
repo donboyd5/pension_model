@@ -311,6 +311,24 @@ def _phase_normal_cost(f: pd.DataFrame, i: int, ctx: FundingContext) -> None:
     f.loc[i, "nc_new"] = nc_new
 
 
+def _phase_mva(f: pd.DataFrame, i: int, roa: float) -> None:
+    """Roll MVA forward one year for both legs.
+
+    Reads ``net_cf_legacy`` / ``net_cf_new`` and the prior-year
+    ``mva_legacy`` / ``mva_new`` off the frame and writes the new
+    year's ``mva_legacy``, ``mva_new``, and ``total_mva``.
+
+    The caller is responsible for having written ``net_cf_*`` first
+    (i.e. contributions, solvency, and the net cash-flow combination
+    must already be done on row ``i``).
+    """
+    f.loc[i, "mva_legacy"] = _mva_rollforward(
+        f.loc[i - 1, "mva_legacy"], f.loc[i, "net_cf_legacy"], roa)
+    f.loc[i, "mva_new"] = _mva_rollforward(
+        f.loc[i - 1, "mva_new"], f.loc[i, "net_cf_new"], roa)
+    f.loc[i, "total_mva"] = f.loc[i, "mva_legacy"] + f.loc[i, "mva_new"]
+
+
 def _phase_liability_gl_and_aal(
     f: pd.DataFrame, liab: pd.DataFrame, i: int, dr_current: float, dr_new: float
 ) -> None:
@@ -642,11 +660,7 @@ def _compute_funding_corridor(
             f.loc[i, "net_cf_new"] = cf_new + f.loc[i, "solv_cont_new"]
             _accumulate_to_aggregate(agg, f, i, ["net_cf_legacy", "net_cf_new"])
 
-            f.loc[i, "mva_legacy"] = _mva_rollforward(
-                f.loc[i - 1, "mva_legacy"], f.loc[i, "net_cf_legacy"], roa)
-            f.loc[i, "mva_new"] = _mva_rollforward(
-                f.loc[i - 1, "mva_new"], f.loc[i, "net_cf_new"], roa)
-            f.loc[i, "total_mva"] = f.loc[i, "mva_legacy"] + f.loc[i, "mva_new"]
+            _phase_mva(f, i, roa)
             _accumulate_to_aggregate(agg, f, i, [
                 "mva_legacy", "mva_new", "total_mva",
             ])
@@ -1012,11 +1026,7 @@ def _compute_funding_gainloss(
         f.loc[i, "net_cf_new"] = cf_new + f.loc[i, "solv_cont_new"]
 
         # MVA projection
-        f.loc[i, "mva_legacy"] = _mva_rollforward(
-            f.loc[i - 1, "mva_legacy"], f.loc[i, "net_cf_legacy"], roa)
-        f.loc[i, "mva_new"] = _mva_rollforward(
-            f.loc[i - 1, "mva_new"], f.loc[i, "net_cf_new"], roa)
-        f.loc[i, "total_mva"] = f.loc[i, "mva_legacy"] + f.loc[i, "mva_new"]
+        _phase_mva(f, i, roa)
 
         # AVA gain/loss deferral smoothing — legacy
         ava_leg = ava_strategy.smooth(
