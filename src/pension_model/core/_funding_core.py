@@ -290,6 +290,27 @@ def _phase_benefits_refunds(
     f.loc[i, "refund_new"] = refund_new
 
 
+def _phase_normal_cost(f: pd.DataFrame, i: int, ctx: FundingContext) -> None:
+    """Compute normal-cost dollars for row ``i`` on one class's frame.
+
+    Writes ``nc_legacy`` and ``nc_new``. The new-leg NC includes a CB
+    component (``nc_rate_cb_new * payroll_cb_new``) for plans with a
+    cash-balance leg, gated on ``ctx.has_cb``.
+
+    The per-frame NC *rate* column is deliberately not written here:
+    FRS and TRS R models use different rate conventions
+    (``total_nc_rate`` with DB-only denominator vs. ``nc_rate`` with
+    total-payroll denominator) that disagree with each other and,
+    per GH #42, with the TRS AV's published definition. The rate
+    lines remain at each call site until that issue is resolved.
+    """
+    f.loc[i, "nc_legacy"] = f.loc[i, "nc_rate_db_legacy"] * f.loc[i, "payroll_db_legacy"]
+    nc_new = f.loc[i, "nc_rate_db_new"] * f.loc[i, "payroll_db_new"]
+    if ctx.has_cb:
+        nc_new = nc_new + f.loc[i, "nc_rate_cb_new"] * f.loc[i, "payroll_cb_new"]
+    f.loc[i, "nc_new"] = nc_new
+
+
 def _compute_funding_corridor(
     liability_results: dict,
     funding_inputs: dict,
@@ -447,8 +468,8 @@ def _compute_funding_corridor(
                 "total_ben_payment", "total_refund",
             ])
 
-            f.loc[i, "nc_legacy"] = f.loc[i, "nc_rate_db_legacy"] * f.loc[i, "payroll_db_legacy"]
-            f.loc[i, "nc_new"] = f.loc[i, "nc_rate_db_new"] * f.loc[i, "payroll_db_new"]
+            _phase_normal_cost(f, i, ctx)
+            # R-convention rate column (FRS: DB-only denominator). See GH #42.
             pdb = f.loc[i, "payroll_db_legacy"] + f.loc[i, "payroll_db_new"]
             f.loc[i, "total_nc_rate"] = (f.loc[i, "nc_legacy"] + f.loc[i, "nc_new"]) / pdb if pdb > 0 else 0
             _accumulate_to_aggregate(agg, f, i, ["nc_legacy", "nc_new"])
@@ -908,10 +929,9 @@ def _compute_funding_gainloss(
         _phase_benefits_refunds(f, liab, i, ctx)
 
         # Normal cost
-        f.loc[i, "nc_legacy"] = f.loc[i, "nc_rate_db_legacy"] * f.loc[i, "payroll_db_legacy"]
+        _phase_normal_cost(f, i, ctx)
         payroll_new_total = f.loc[i, "payroll_db_new"] + f.loc[i, "payroll_cb_new"]
-        f.loc[i, "nc_new"] = (f.loc[i, "nc_rate_db_new"] * f.loc[i, "payroll_db_new"]
-                               + f.loc[i, "nc_rate_cb_new"] * f.loc[i, "payroll_cb_new"])
+        # R-convention rate column (TRS: total-payroll denominator, includes DC). See GH #42.
         f.loc[i, "nc_rate"] = ((f.loc[i, "nc_legacy"] + f.loc[i, "nc_new"])
                                 / f.loc[i, "total_payroll"]) if f.loc[i, "total_payroll"] > 0 else 0
 
