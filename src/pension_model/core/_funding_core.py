@@ -417,6 +417,24 @@ def _setup_amort_state(ctx: FundingContext, funding: dict, constants) -> dict:
     }
 
 
+def _select_amo_state(amort_state: dict, cn: str) -> dict:
+    """Return the cont-strategy-facing amo_state for one class.
+
+    Bridges the two amort-state shapes built by ``_setup_amort_state``:
+    per-class plans (corridor) supply a class-keyed dict of layer
+    arrays; local-mode plans (gainloss) supply a single pair of pay
+    arrays at the top level. The contribution strategies read only
+    ``cur_pay`` and ``fut_pay``; this helper exposes that shape
+    uniformly so the phase-2 loop body is the same for both paths.
+    """
+    if amort_state["mode"] == "per_class":
+        return amort_state["amo_tables"][cn]
+    return {
+        "cur_pay": amort_state["pay_current"],
+        "fut_pay": amort_state["pay_new"],
+    }
+
+
 # ---------------------------------------------------------------------------
 # Year-loop phase helpers
 #
@@ -1095,57 +1113,62 @@ def _compute_funding_corridor(
         if has_drop:
             _phase_drop_projection(funding, agg, i, ctx)
 
-        # --- Contributions, MVA, AVA ---
-        for cn in all_classes:
+        # --- Phase 2: contributions, ROA, cash flow, MVA, AVA prep ---
+        year = start_year + i
+        for cn in ctx.all_classes:
             f = funding[cn]
-            amo = amo_tables[cn]
+            amo = _select_amo_state(amort_state, cn)
 
-            cont_strategy.compute_rates(f, i, start_year + i, amo)
+            cont_strategy.compute_rates(f, i, year, amo)
 
-            if cn == "drop":
-                f.loc[i, "er_dc_rate_legacy"] = 0
-                f.loc[i, "er_dc_rate_new"] = 0
-            else:
-                dc_rate = constants.class_data[cn].er_dc_cont_rate
-                f.loc[i, "er_dc_rate_legacy"] = dc_rate
-                f.loc[i, "er_dc_rate_new"] = dc_rate
+            if ctx.has_dc:
+                if cn == "drop":
+                    f.loc[i, "er_dc_rate_legacy"] = 0
+                    f.loc[i, "er_dc_rate_new"] = 0
+                else:
+                    dc_rate = constants.class_data[cn].er_dc_cont_rate
+                    f.loc[i, "er_dc_rate_legacy"] = dc_rate
+                    f.loc[i, "er_dc_rate_new"] = dc_rate
 
             _phase_contributions(f, i, ctx)
-            _maybe_accumulate(ctx, agg, f, i, [
-                "ee_nc_cont_legacy", "ee_nc_cont_new",
-            ])
-            _maybe_accumulate(ctx, agg, f, i, [
-                "admin_exp_legacy", "admin_exp_new",
-            ])
-            f.loc[i, "total_er_db_cont"] = (f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
-                                             + f.loc[i, "er_amo_cont_legacy"] + f.loc[i, "er_amo_cont_new"])
-            _maybe_accumulate(ctx, agg, f, i, [
-                "er_nc_cont_legacy", "er_nc_cont_new",
-                "er_amo_cont_legacy", "er_amo_cont_new",
-                "total_er_db_cont",
-            ])
+            _maybe_accumulate(ctx, agg, f, i, ["ee_nc_cont_legacy", "ee_nc_cont_new"])
+            _maybe_accumulate(ctx, agg, f, i, ["admin_exp_legacy", "admin_exp_new"])
 
-            _phase_dc_contributions(f, i)
-            _maybe_accumulate(ctx, agg, f, i, [
-                "er_dc_cont_legacy", "er_dc_cont_new", "total_er_dc_cont",
-            ])
+            if ctx.is_multi_class:
+                f.loc[i, "total_er_db_cont"] = (
+                    f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
+                    + f.loc[i, "er_amo_cont_legacy"] + f.loc[i, "er_amo_cont_new"]
+                )
+                _maybe_accumulate(ctx, agg, f, i, [
+                    "er_nc_cont_legacy", "er_nc_cont_new",
+                    "er_amo_cont_legacy", "er_amo_cont_new",
+                    "total_er_db_cont",
+                ])
 
-            year = start_year + i
+            if ctx.has_dc:
+                _phase_dc_contributions(f, i)
+                _maybe_accumulate(ctx, agg, f, i, [
+                    "er_dc_cont_legacy", "er_dc_cont_new", "total_er_dc_cont",
+                ])
+
             roa_row = ret_scen[ret_scen["year"] == year]
             roa = roa_row[return_scen_col].iloc[0] if len(roa_row) > 0 else dr_current
             f.loc[i, "roa"] = roa
-            agg.loc[i, "roa"] = roa
+            if ctx.is_multi_class:
+                agg.loc[i, "roa"] = roa
 
             _phase_cash_flow_and_solvency(f, i, roa)
             _maybe_accumulate(ctx, agg, f, i, ["net_cf_legacy", "net_cf_new"])
 
             _phase_mva(f, i, roa)
-            _maybe_accumulate(ctx, agg, f, i, [
-                "mva_legacy", "mva_new", "total_mva",
-            ])
+            _maybe_accumulate(ctx, agg, f, i, ["mva_legacy", "mva_new", "total_mva"])
 
-            f.loc[i, "ava_base_legacy"] = f.loc[i - 1, "ava_legacy"] + f.loc[i, "net_cf_legacy"] / 2
-            f.loc[i, "ava_base_new"] = f.loc[i - 1, "ava_new"] + f.loc[i, "net_cf_new"] / 2
+            if ctx.ava_strategy.aggregation_level == "plan":
+                f.loc[i, "ava_base_legacy"] = f.loc[i - 1, "ava_legacy"] + f.loc[i, "net_cf_legacy"] / 2
+                f.loc[i, "ava_base_new"] = f.loc[i - 1, "ava_new"] + f.loc[i, "net_cf_new"] / 2
+
+            if ctx.ava_strategy.aggregation_level == "class":
+                _phase_ava_gainloss_smoothing(f, i, ava_strategy, dr_current, dr_new)
 
             funding[cn] = f
 
@@ -1363,28 +1386,63 @@ def _compute_funding_gainloss(
         if ctx.has_drop:
             _phase_drop_projection(funding, agg, i, ctx)
 
-        # NC, EE, ER NC, statutory cascade, and amort rates
-        cont_strategy.compute_rates(
-            f, i, year,
-            amo_state={"cur_pay": pay_current, "fut_pay": pay_new},
-        )
+        # --- Phase 2: contributions, ROA, cash flow, MVA, AVA prep ---
+        for cn in ctx.all_classes:
+            f = funding[cn]
+            amo = _select_amo_state(amort_state, cn)
 
-        # Contribution dollars (admin rate + EE/admin/ER NC/ER amo per leg)
-        _phase_contributions(f, i, ctx)
+            cont_strategy.compute_rates(f, i, year, amo)
 
-        # Return on assets
-        roa_row = ret_scen[ret_scen["year"] == year]
-        roa = roa_row[return_scen_col].iloc[0] if len(roa_row) > 0 else dr_current
-        f.loc[i, "roa"] = roa
+            if ctx.has_dc:
+                if cn == "drop":
+                    f.loc[i, "er_dc_rate_legacy"] = 0
+                    f.loc[i, "er_dc_rate_new"] = 0
+                else:
+                    dc_rate = constants.class_data[cn].er_dc_cont_rate
+                    f.loc[i, "er_dc_rate_legacy"] = dc_rate
+                    f.loc[i, "er_dc_rate_new"] = dc_rate
 
-        # Cash flows and solvency contribution
-        _phase_cash_flow_and_solvency(f, i, roa)
+            _phase_contributions(f, i, ctx)
+            _maybe_accumulate(ctx, agg, f, i, ["ee_nc_cont_legacy", "ee_nc_cont_new"])
+            _maybe_accumulate(ctx, agg, f, i, ["admin_exp_legacy", "admin_exp_new"])
 
-        # MVA projection
-        _phase_mva(f, i, roa)
+            if ctx.is_multi_class:
+                f.loc[i, "total_er_db_cont"] = (
+                    f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
+                    + f.loc[i, "er_amo_cont_legacy"] + f.loc[i, "er_amo_cont_new"]
+                )
+                _maybe_accumulate(ctx, agg, f, i, [
+                    "er_nc_cont_legacy", "er_nc_cont_new",
+                    "er_amo_cont_legacy", "er_amo_cont_new",
+                    "total_er_db_cont",
+                ])
 
-        # AVA gain/loss deferral smoothing (both legs)
-        _phase_ava_gainloss_smoothing(f, i, ava_strategy, dr_current, dr_new)
+            if ctx.has_dc:
+                _phase_dc_contributions(f, i)
+                _maybe_accumulate(ctx, agg, f, i, [
+                    "er_dc_cont_legacy", "er_dc_cont_new", "total_er_dc_cont",
+                ])
+
+            roa_row = ret_scen[ret_scen["year"] == year]
+            roa = roa_row[return_scen_col].iloc[0] if len(roa_row) > 0 else dr_current
+            f.loc[i, "roa"] = roa
+            if ctx.is_multi_class:
+                agg.loc[i, "roa"] = roa
+
+            _phase_cash_flow_and_solvency(f, i, roa)
+            _maybe_accumulate(ctx, agg, f, i, ["net_cf_legacy", "net_cf_new"])
+
+            _phase_mva(f, i, roa)
+            _maybe_accumulate(ctx, agg, f, i, ["mva_legacy", "mva_new", "total_mva"])
+
+            if ctx.ava_strategy.aggregation_level == "plan":
+                f.loc[i, "ava_base_legacy"] = f.loc[i - 1, "ava_legacy"] + f.loc[i, "net_cf_legacy"] / 2
+                f.loc[i, "ava_base_new"] = f.loc[i - 1, "ava_new"] + f.loc[i, "net_cf_new"] / 2
+
+            if ctx.ava_strategy.aggregation_level == "class":
+                _phase_ava_gainloss_smoothing(f, i, ava_strategy, dr_current, dr_new)
+
+            funding[cn] = f
 
         # Total AVA, UAL, funded ratios
         _phase_ual_and_funded_ratios(f, i)
