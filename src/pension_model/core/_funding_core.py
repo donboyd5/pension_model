@@ -1,33 +1,20 @@
 """
-Funding model core: the two compute functions.
+Funding model core: the unified compute function.
 
-This module holds the two long-running funding compute functions —
-``_compute_funding_corridor`` (5-year corridor smoothing, multi-class
-plan-aggregate) and ``_compute_funding_gainloss`` (4-year gain/loss
-deferral, single-class) — moved out of ``funding_model.py`` so the
-public module is a thin entry point.
+Holds :func:`_compute_funding`, the single year-loop that runs the
+funding model for any plan. Path selection (AVA smoothing,
+contribution policy) is dispatched via :class:`FundingContext`
+strategies built from ``plan_config.json``; capability differences
+(DC, CB, DROP, multi-class) are handled by capability flags on the
+context. ``run_funding_model`` in ``funding_model.py`` is a thin
+pass-through.
 
-Both functions receive their AVA smoothing strategy and contribution
-strategy by direct instantiation; ``run_funding_model`` (in
-``funding_model.py``) selects which core function to call based on the
-``funding.ava_smoothing.method`` config field, not on class count.
-
-The two function bodies remain separate by design: a single merged
-year loop would have to handle ~12 schema and control-flow differences
-between the corridor and gain/loss paths via column-presence detection
-and multiple config flags, and a single misplaced operation would
-silently break R-baseline reproduction. The strategy abstractions and
-helpers in ``_funding_helpers.py`` and ``_funding_strategies.py``
-already give a future plan everything it needs to add a third path
-without changing either of these functions.
-
-Bit-identity constraints (preserved from the original implementations):
+Bit-identity constraints (preserved from the original two-function
+implementation):
   * Mid-year exponent ``(1 + dr) ** 0.5`` is computed inside helpers
     from a scalar ``dr``, never from a precomputed ``sqrt_factor``.
   * Aggregate accumulation order matches the original single-cell
     write order; do not convert to bulk ``f.loc[i, cols] = values``.
-  * The corridor function uses ``agg`` as the local variable name for
-    the plan-aggregate frame; the original code called it ``frs``.
 """
 
 from dataclasses import dataclass, field
@@ -1095,249 +1082,36 @@ def _phase_liability_gl_and_aal(
     f.loc[i, "total_aal"] = f.loc[i, "aal_legacy"] + f.loc[i, "aal_new"]
 
 
-def _compute_funding_corridor(
+
+
+def _compute_funding(
     liability_results: dict,
     funding_inputs: dict,
     constants,
 ) -> dict:
-    """Corridor-smoothing funding model (multi-class, plan-aggregate AVA).
+    """Run the funding model for any plan.
 
-    Args:
-        liability_results: Dict mapping class_name -> liability pipeline output DataFrame.
-        funding_inputs: Output of load_funding_inputs().
-        constants: Plan configuration.
+    A single compute function that handles any AVA smoothing method,
+    contribution policy, class count, and DC/CB/DROP capability. Path
+    selection is config-driven via :class:`FundingContext`:
+    ``ava_strategy`` and ``cont_strategy`` come from
+    plan_config.json; capability flags (``has_dc``, ``has_cb``,
+    ``has_drop``, ``is_multi_class``) gate the appropriate code paths
+    inside the year loop.
 
     Returns:
-        Dict mapping class_name -> funding DataFrame, plus the
-        ``constants.plan_name`` aggregate frame and an optional
-        ``"drop"`` frame for plans with ``has_drop=true``.
+        Dict mapping class_name -> funding DataFrame, plus an
+        aggregate frame keyed by ``constants.plan_name``. For
+        single-class plans the aggregate is a distinct copy of the
+        sole class frame (no DataFrame aliasing). Plans with
+        ``has_drop=true`` also get a ``"drop"`` frame.
     """
-    # Local import to avoid a circular import via funding_model.py.
-    from pension_model.core.funding_model import build_amort_period_tables
-
     ctx = _resolve_funding_context(constants, funding_inputs)
     dr_current = ctx.dr_current
     dr_new = ctx.dr_new
-    dr_old = ctx.dr_old
-    payroll_growth = ctx.payroll_growth
-    amo_pay_growth = ctx.amo_pay_growth
-    amo_period_new = ctx.amo_period_new
-    funding_lag = ctx.funding_lag
-    db_ee_cont_rate = ctx.db_ee_cont_rate
-    inflation = ctx.inflation
     start_year = ctx.start_year
     n_years = ctx.n_years
-    ava_strategy = ctx.ava_strategy
-    cont_strategy = ctx.cont_strategy
-    class_names = ctx.class_names
     agg_name = ctx.agg_name
-    has_drop = ctx.has_drop
-    drop_ref_class = ctx.drop_ref_class
-    all_classes = ctx.all_classes
-    return_scen_col = ctx.return_scen_col
-    init_funding = ctx.init_funding
-    amort_layers = ctx.amort_layers
-
-    ret_scen = _prepare_return_scenarios(ctx, dr_current)
-
-    funding = _setup_funding_frames(ctx)
-
-    _calibrate_funding_frames(funding, liability_results, ctx, constants)
-
-    # Amortization tables
-    amort_state = _setup_amort_state(ctx, funding, constants)
-
-    # ========== Main year loop ==========
-    for i in range(1, n_years):
-        agg = funding[agg_name]
-
-        # --- Membership classes ---
-        for cn in class_names:
-            f = funding[cn]
-            liab = liability_results[cn]
-
-            _phase_payroll(f, i, ctx)
-
-            _maybe_accumulate(ctx, agg, f, i, [
-                "total_payroll", "payroll_db_legacy", "payroll_db_new",
-                "payroll_dc_legacy", "payroll_dc_new",
-            ])
-
-            _phase_benefits_refunds(f, liab, i, ctx)
-            f.loc[i, "total_ben_payment"] = f.loc[i, "ben_payment_legacy"] + f.loc[i, "ben_payment_new"]
-            f.loc[i, "total_refund"] = f.loc[i, "refund_legacy"] + f.loc[i, "refund_new"]
-
-            _maybe_accumulate(ctx, agg, f, i, [
-                "ben_payment_legacy", "refund_legacy",
-                "ben_payment_new", "refund_new",
-                "total_ben_payment", "total_refund",
-            ])
-
-            _phase_normal_cost(f, i, ctx)
-            _maybe_accumulate(ctx, agg, f, i, ["nc_legacy", "nc_new"])
-
-            _phase_liability_gl_and_aal(f, liab, i, dr_current, dr_new)
-
-            _maybe_accumulate(ctx, agg, f, i, [
-                "aal_legacy", "aal_new", "total_aal",
-            ])
-
-            funding[cn] = f
-
-        if ctx.is_multi_class:
-            _nc_rate_agg(agg, i, ctx)
-
-        # --- DROP (only for plans with has_drop=true) ---
-        if has_drop:
-            _phase_drop_projection(funding, agg, i, ctx)
-
-        # --- Phase 2: contributions, ROA, cash flow, MVA, AVA prep ---
-        year = start_year + i
-        for cn in ctx.all_classes:
-            f = funding[cn]
-            amo = _select_amo_state(amort_state, cn)
-
-            cont_strategy.compute_rates(f, i, year, amo)
-
-            if ctx.has_dc:
-                if cn == "drop":
-                    f.loc[i, "er_dc_rate_legacy"] = 0
-                    f.loc[i, "er_dc_rate_new"] = 0
-                else:
-                    dc_rate = constants.class_data[cn].er_dc_cont_rate
-                    f.loc[i, "er_dc_rate_legacy"] = dc_rate
-                    f.loc[i, "er_dc_rate_new"] = dc_rate
-
-            _phase_contributions(f, i, ctx)
-            _maybe_accumulate(ctx, agg, f, i, ["ee_nc_cont_legacy", "ee_nc_cont_new"])
-            _maybe_accumulate(ctx, agg, f, i, ["admin_exp_legacy", "admin_exp_new"])
-
-            if ctx.is_multi_class:
-                f.loc[i, "total_er_db_cont"] = (
-                    f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
-                    + f.loc[i, "er_amo_cont_legacy"] + f.loc[i, "er_amo_cont_new"]
-                )
-                _maybe_accumulate(ctx, agg, f, i, [
-                    "er_nc_cont_legacy", "er_nc_cont_new",
-                    "er_amo_cont_legacy", "er_amo_cont_new",
-                    "total_er_db_cont",
-                ])
-
-            if ctx.has_dc:
-                _phase_dc_contributions(f, i)
-                _maybe_accumulate(ctx, agg, f, i, [
-                    "er_dc_cont_legacy", "er_dc_cont_new", "total_er_dc_cont",
-                ])
-
-            roa_row = ret_scen[ret_scen["year"] == year]
-            roa = roa_row[return_scen_col].iloc[0] if len(roa_row) > 0 else dr_current
-            f.loc[i, "roa"] = roa
-            if ctx.is_multi_class:
-                agg.loc[i, "roa"] = roa
-
-            _phase_cash_flow_and_solvency(f, i, roa)
-            _maybe_accumulate(ctx, agg, f, i, ["net_cf_legacy", "net_cf_new"])
-
-            _phase_mva(f, i, roa)
-            _maybe_accumulate(ctx, agg, f, i, ["mva_legacy", "mva_new", "total_mva"])
-
-            if ctx.ava_strategy.aggregation_level == "plan":
-                f.loc[i, "ava_base_legacy"] = f.loc[i - 1, "ava_legacy"] + f.loc[i, "net_cf_legacy"] / 2
-                f.loc[i, "ava_base_new"] = f.loc[i - 1, "ava_new"] + f.loc[i, "net_cf_new"] / 2
-
-            if ctx.ava_strategy.aggregation_level == "class":
-                _phase_ava_gainloss_smoothing(f, i, ava_strategy, dr_current, dr_new)
-
-            funding[cn] = f
-
-        # --- Plan-level AVA smoothing + allocation + finalization ---
-        # Skipped for class-level (gainloss) strategies — those did
-        # their smoothing inside the phase-2 loop.
-        if ctx.ava_strategy.aggregation_level == "plan":
-            _phase_ava_corridor_smoothing(agg, i, ava_strategy, dr_current, dr_new)
-            ava_strategy.allocate_to_classes(agg, funding, ctx.all_classes, i)
-            _finalize_ava_with_drop(funding, agg, i, ctx)
-
-        # --- UAL, funded ratios ---
-        # --- Phase 3: UAL / funded ratios / contribution totals ---
-        for cn in ctx.all_classes:
-            f = funding[cn]
-            _phase_ual_and_funded_ratios(f, i)
-            _maybe_accumulate(ctx, agg, f, i, ["total_ava"])
-            _maybe_accumulate(ctx, agg, f, i, [
-                "ual_ava_legacy", "ual_ava_new", "total_ual_ava",
-            ])
-            _maybe_accumulate(ctx, agg, f, i, [
-                "ual_mva_legacy", "ual_mva_new", "total_ual_mva",
-            ])
-
-            _phase_er_cont_totals(f, i, ctx)
-            _maybe_accumulate(ctx, agg, f, i, ["total_er_cont"])
-
-            # Gainloss-only output column (gated by init-schema presence).
-            if "tot_cont_rate" in f.columns:
-                f.loc[i, "tot_cont_rate"] = (
-                    (f.loc[i, "ee_nc_cont_legacy"] + f.loc[i, "er_nc_cont_legacy"]
-                     + f.loc[i, "er_amo_cont_legacy"]
-                     + f.loc[i, "ee_nc_cont_new"] + f.loc[i, "er_nc_cont_new"]
-                     + f.loc[i, "er_amo_cont_new"] + f.loc[i, "solv_cont"])
-                    / f.loc[i, "total_payroll"]
-                ) if f.loc[i, "total_payroll"] > 0 else 0
-
-            # Real-cost metrics: today only emitted by gainloss strategies.
-            # 2.G.9 will replace this with a proper capability flag.
-            if ctx.ava_strategy.aggregation_level == "class":
-                _phase_real_cost_metrics(f, i, year, start_year, ctx.inflation)
-
-            funding[cn] = f
-
-        if ctx.is_multi_class:
-            agg.loc[i, "fr_mva"] = agg.loc[i, "total_mva"] / agg.loc[i, "total_aal"] if agg.loc[i, "total_aal"] != 0 else 0
-            agg.loc[i, "fr_ava"] = agg.loc[i, "total_ava"] / agg.loc[i, "total_aal"] if agg.loc[i, "total_aal"] != 0 else 0
-            agg.loc[i, "total_er_cont_rate"] = agg.loc[i, "total_er_cont"] / agg.loc[i, "total_payroll"] if agg.loc[i, "total_payroll"] > 0 else 0
-
-        _phase_amort_rolling(funding, amort_state, i, ctx)
-
-        funding[agg_name] = agg
-
-    return funding
-
-
-def _compute_funding_gainloss(
-    liability_results: dict,
-    funding_inputs: dict,
-    constants,
-) -> dict:
-    """Gain/loss deferral funding model (statutory-rate, single-class).
-
-    Args:
-        liability_results: Dict mapping class_name -> liability pipeline
-            output DataFrame. Currently restricted to a single-class
-            dict; multi-class support is enabled by Step 2.I.
-        funding_inputs: Output of load_funding_inputs().
-        constants: PlanConfig.
-
-    Returns:
-        Dict mapping class_name -> funding DataFrame, plus an aggregate
-        frame keyed by ``constants.plan_name``. For a single-class plan
-        the aggregate is a distinct copy of the class frame (no
-        DataFrame aliasing); downstream code can mutate one without
-        affecting the other.
-    """
-    ctx = _resolve_funding_context(constants, funding_inputs)
-    class_names = ctx.class_names
-    first_class = class_names[0]
-    agg_name = ctx.agg_name
-
-    dr_current = ctx.dr_current
-    dr_new = ctx.dr_new
-    payroll_growth = ctx.payroll_growth
-    inflation = ctx.inflation
-    amo_pay_growth = ctx.amo_pay_growth
-    amo_period_new = ctx.amo_period_new
-    funding_policy = ctx.funding_policy
-    start_year = ctx.start_year
-    n_years = ctx.n_years
     return_scen_col = ctx.return_scen_col
     ava_strategy = ctx.ava_strategy
     cont_strategy = ctx.cont_strategy
@@ -1348,13 +1122,11 @@ def _compute_funding_gainloss(
     _calibrate_funding_frames(funding, liability_results, ctx, constants)
     amort_state = _setup_amort_state(ctx, funding, constants)
 
-    # --- Main year loop ---
     for i in range(1, n_years):
         year = start_year + i
         agg = funding[agg_name]
 
-        # --- Phase 1: payroll, benefits, normal cost, liability GL + AAL ---
-        # Same shape as corridor; _maybe_accumulate no-ops for single-class.
+        # --- Phase 1: payroll, benefits, NC, liability GL + AAL ---
         for cn in ctx.class_names:
             f = funding[cn]
             liab = liability_results[cn]
@@ -1366,9 +1138,6 @@ def _compute_funding_gainloss(
             ])
 
             _phase_benefits_refunds(f, liab, i, ctx)
-            # total_ben_payment / total_refund are corridor-only sums
-            # used for aggregate accumulation; gated by init-schema
-            # presence so gainloss frames don't gain spurious columns.
             if "total_ben_payment" in f.columns:
                 f.loc[i, "total_ben_payment"] = f.loc[i, "ben_payment_legacy"] + f.loc[i, "ben_payment_new"]
             if "total_refund" in f.columns:
@@ -1385,8 +1154,6 @@ def _compute_funding_gainloss(
             _phase_liability_gl_and_aal(f, liab, i, dr_current, dr_new)
             _maybe_accumulate(ctx, agg, f, i, ["aal_legacy", "aal_new", "total_aal"])
 
-            # Gainloss-only sum column; auto-creates on the frame.
-            # 2.G.6 will replace this with a proper capability flag.
             if ctx.ava_strategy.aggregation_level == "class":
                 f.loc[i, "liability_gain_loss"] = (
                     f.loc[i, "liability_gain_loss_legacy"]
@@ -1458,9 +1225,6 @@ def _compute_funding_gainloss(
 
             funding[cn] = f
 
-        # --- Plan-level AVA smoothing + allocation + finalization ---
-        # Skipped for class-level (gainloss) strategies — those did
-        # their smoothing inside the phase-2 loop.
         if ctx.ava_strategy.aggregation_level == "plan":
             _phase_ava_corridor_smoothing(agg, i, ava_strategy, dr_current, dr_new)
             ava_strategy.allocate_to_classes(agg, funding, ctx.all_classes, i)
@@ -1481,7 +1245,6 @@ def _compute_funding_gainloss(
             _phase_er_cont_totals(f, i, ctx)
             _maybe_accumulate(ctx, agg, f, i, ["total_er_cont"])
 
-            # Gainloss-only output column (gated by init-schema presence).
             if "tot_cont_rate" in f.columns:
                 f.loc[i, "tot_cont_rate"] = (
                     (f.loc[i, "ee_nc_cont_legacy"] + f.loc[i, "er_nc_cont_legacy"]
@@ -1491,8 +1254,6 @@ def _compute_funding_gainloss(
                     / f.loc[i, "total_payroll"]
                 ) if f.loc[i, "total_payroll"] > 0 else 0
 
-            # Real-cost metrics: today only emitted by gainloss strategies.
-            # 2.G.9 will replace this with a proper capability flag.
             if ctx.ava_strategy.aggregation_level == "class":
                 _phase_real_cost_metrics(f, i, year, start_year, ctx.inflation)
 
@@ -1505,9 +1266,10 @@ def _compute_funding_gainloss(
 
         _phase_amort_rolling(funding, amort_state, i, ctx)
 
-    # Build the aggregate frame as a distinct copy. For a single-class
-    # plan the aggregate IS the class frame mathematically; a copy
-    # preserves that while ensuring the dict's two entries point at
-    # different DataFrame objects (no mutation aliasing).
-    funding[agg_name] = f.copy()
+    # For single-class plans the aggregate is a distinct copy of the
+    # sole class frame (no aliasing). Multi-class plans built the
+    # aggregate via _maybe_accumulate during the loop.
+    if not ctx.is_multi_class:
+        funding[agg_name] = funding[ctx.class_names[0]].copy()
+
     return funding
