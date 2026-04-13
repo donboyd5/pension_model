@@ -1088,7 +1088,8 @@ def _compute_funding_corridor(
 
             funding[cn] = f
 
-        _nc_rate_agg(agg, i, ctx)
+        if ctx.is_multi_class:
+            _nc_rate_agg(agg, i, ctx)
 
         # --- DROP (only for plans with has_drop=true) ---
         if has_drop:
@@ -1313,20 +1314,54 @@ def _compute_funding_gainloss(
     # --- Main year loop ---
     for i in range(1, n_years):
         year = start_year + i
+        agg = funding[agg_name]
 
-        # Payroll projection
-        _phase_payroll(f, i, ctx)
+        # --- Phase 1: payroll, benefits, normal cost, liability GL + AAL ---
+        # Same shape as corridor; _maybe_accumulate no-ops for single-class.
+        for cn in ctx.class_names:
+            f = funding[cn]
+            liab = liability_results[cn]
 
-        # Benefit payments from liability pipeline
-        _phase_benefits_refunds(f, liab, i, ctx)
+            _phase_payroll(f, i, ctx)
+            _maybe_accumulate(ctx, agg, f, i, [
+                "total_payroll", "payroll_db_legacy", "payroll_db_new",
+                "payroll_dc_legacy", "payroll_dc_new",
+            ])
 
-        # Normal cost (rate written by helper using canonical denominator — GH #42)
-        _phase_normal_cost(f, i, ctx)
+            _phase_benefits_refunds(f, liab, i, ctx)
+            # total_ben_payment / total_refund are corridor-only sums
+            # used for aggregate accumulation; gated by init-schema
+            # presence so gainloss frames don't gain spurious columns.
+            if "total_ben_payment" in f.columns:
+                f.loc[i, "total_ben_payment"] = f.loc[i, "ben_payment_legacy"] + f.loc[i, "ben_payment_new"]
+            if "total_refund" in f.columns:
+                f.loc[i, "total_refund"] = f.loc[i, "refund_legacy"] + f.loc[i, "refund_new"]
+            _maybe_accumulate(ctx, agg, f, i, [
+                "ben_payment_legacy", "refund_legacy",
+                "ben_payment_new", "refund_new",
+                "total_ben_payment", "total_refund",
+            ])
 
-        # Liability gain/loss + AAL roll-forward
-        _phase_liability_gl_and_aal(f, liab, i, dr_current, dr_new)
-        # Gainloss-only sum column (not in corridor schema)
-        f.loc[i, "liability_gain_loss"] = f.loc[i, "liability_gain_loss_legacy"] + f.loc[i, "liability_gain_loss_new"]
+            _phase_normal_cost(f, i, ctx)
+            _maybe_accumulate(ctx, agg, f, i, ["nc_legacy", "nc_new"])
+
+            _phase_liability_gl_and_aal(f, liab, i, dr_current, dr_new)
+            _maybe_accumulate(ctx, agg, f, i, ["aal_legacy", "aal_new", "total_aal"])
+
+            # Gainloss-only sum column; auto-creates on the frame.
+            # 2.G.6 will replace this with a proper capability flag.
+            if ctx.ava_strategy.aggregation_level == "class":
+                f.loc[i, "liability_gain_loss"] = (
+                    f.loc[i, "liability_gain_loss_legacy"]
+                    + f.loc[i, "liability_gain_loss_new"]
+                )
+
+            funding[cn] = f
+
+        if ctx.is_multi_class:
+            _nc_rate_agg(agg, i, ctx)
+        if ctx.has_drop:
+            _phase_drop_projection(funding, agg, i, ctx)
 
         # NC, EE, ER NC, statutory cascade, and amort rates
         cont_strategy.compute_rates(
