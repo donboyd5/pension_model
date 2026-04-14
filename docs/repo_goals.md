@@ -25,15 +25,21 @@ Two reference R models (Reason Foundation's FRS and TX TRS) serve as the validat
 
 ## Priority Order
 
-1. **Match R** — reproduce baselines numerically.
-2. **Generalize** — remove plan-specific code paths; move behavior into config.
-3. **Optimize** — profile and speed up the stage-3-to-results solve path (the only path where runtime matters for policy work).
-4. **Extend** — add new plans (CalPERS, NYSLRS, etc.) by configuration alone.
+1.  **Match R** — reproduce baselines numerically.
+2.  **Generalize** — remove plan-specific code paths; move behavior into config.
+3.  **Optimize** — profile and speed up the stage-3-to-results solve path (the only path where runtime matters for policy work).
+4.  **Extend** — add new plans (CalPERS, NYSLRS, etc.) by configuration alone.
 
 Each step validates the previous one.
 
 ## Design Principles
 
+- **Explicit over implicit** — commands and tests must be told which plan and scenario to run; the model never guesses or falls back to a default plan. Configuration is read and checked up front, not pieced together as the run progresses.
+- **Separate the math from the plumbing** — the core projection code (stage-3 solve) takes inputs, returns outputs, and does nothing else: no reading files, no writing files, no printing. File I/O, logging, and saving results happen in wrapper code that calls the solver. This keeps the math easy to test and cheap to re-run.
+- **Check inputs once, at the door** — validate plan config and input data when they are loaded, with clear error messages. Once inside the projection loop, trust that the data is well-formed; do not repeat the same checks deep inside the code, which makes bugs harder to find and slows the hot path.
+- **No workarounds without a paper trail** — if R behavior has to be preserved despite looking wrong, or a clean design has to wait, leave a comment pointing at a GitHub issue. No quiet hacks.
+- **Type hints on public functions** — functions that other modules call, dataclasses, and config loaders carry Python type hints. Small internal helpers can skip them when types add noise without catching anything.
+- **Single source of truth** — plan parameters live in one config file; assumptions live in one scenario file; no duplicated constants between Python and data files.
 - **Data-driven** — plan rules live in config files and lookup tables, not code branches. Benefit factors use inequality joins against rule tables, not if/else ladders.
 - **State-based cohort modeling** — actuarially distinct member states (active, DROP participant, disability retiree, deferred vested, service retiree, survivor/beneficiary) should be represented as their own sub-cohorts with explicit transitions, decrements, and cash flows, rather than folded into aggregate adjustments on the active population. The current model approximates several of these states (DROP in particular); full state-based treatment is a long-term goal and is the natural vehicle for the "full actuarial coverage" goal above.
 - **Calibrated, not reconstructed** — small adjustment factors align output with published actuarial valuations rather than modeling every detail from first principles.
@@ -51,7 +57,7 @@ Each step validates the previous one.
 - Target scope includes hybrid designs (e.g., DB + DC stacked tiers, DB + CB) and additional supplemental features as new plans are added.
 - Cohort-level projection (entry age × years of service), not individual member records.
 
-## Non-Goals
+## The Following are Not Goals
 
 - Not a replacement for an actuarial valuation.
 - Not a drop-in replacement for the R models — a clean redesign that matches them numerically, not a line-by-line port.
@@ -64,4 +70,10 @@ Each step validates the previous one.
 - **No merge without permission** — never merge a feature branch into `main` without explicit permission from the project owner.
 - **No push to origin/main without permission** — never push `main` to the remote without explicit permission.
 - **Verify before merge** — before requesting a merge, inspect actual output numbers (not just test pass/fail): R-baseline diffs, identity checks, and year-by-year reasonableness. A green test suite is necessary but not sufficient.
-- **File issues, don't silently fix** — when R appears wrong or a cleaner design is obvious, open a GitHub issue and keep R-matching behavior in the current branch. Improvements land on their own branches with their own validation.
+- **File issues, don't silently fix** — when R appears wrong or a cleaner design is obvious, open a GitHub issue and keep R-matching behavior in the current branch. Potential improvements will be worked on on their own branches with their own validation.
+
+## Questions for Reason
+
+1.  What policy options are crucial for modeling?
+
+2.  What is the next plan you'd like to have incorporated into the model?

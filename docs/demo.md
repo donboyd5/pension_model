@@ -10,7 +10,7 @@ A Python simulation model for **public-pension policy research** — projects AA
 
 **Summary of goals:** Reproduce two reference R models exactly (Florida FRS, Texas TRS), generalize so new plans are config + data only, then use it to analyze policy alternatives. ONLY AFTER MODEL IS SUFFICIENTLY GENERALIZED DO WE IMPLEMENT IMPROVEMENTS TO THE R MODEL. BEFORE THAT, OPEN GITHUB ISSUES IDENTIFYING POTENTIAL IMPROVEMENTS.
 
--   Full goals, priorities, and design principles: [model\_goals.md](model_goals.md)
+-   Full goals, priorities, and design principles: [repo\_goals.md](repo_goals.md)
 
 ---
 
@@ -47,7 +47,7 @@ This workbook is the evidence that Python matches R. It’s regenerated on every
 | [tests/](../tests/) | Pytest suite — R-baseline regression + identity checks |
 | [output/](../output/) | Run artifacts: `summary.csv`, `liability_stacked.csv`, `truth_tables.xlsx` |
 | [baseline\_outputs/](../baseline_outputs/) | Intermediate calibration / entrant-profile outputs |
-| [docs/](../docs/) | This doc, [model\_goals.md](model_goals.md), architecture notes |
+| [docs/](../docs/) | This doc, [repo\_goals.md](repo_goals.md), architecture notes |
 | [R\_model/](../R_model/) | The reference R models (FRS and TXTRS) — read-only ground truth |
 
 **The core idea:** everything plan-specific lives in `plans/<plan>/`. The Python code in `src/pension_model/` and `scenarios/*.json` is plan-agnostic.
@@ -72,7 +72,7 @@ What happens, in order, when you run `pension-model run frs --no-test`:
 5.  **Funding model.** Apply contribution policy, asset smoothing (corridor for FRS, gain/loss deferral for TRS), and amortization to get contributions, AVA, MVA, and funded ratio each year.
 6.  **Write outputs.** `summary.csv`, `liability_stacked.csv`, and — with `--truth-table` — the Excel workbook sheets.
 
-> **Key functions / call graph:** *to be filled in closer to the meeting once in-progress refactors settle.* The folder-level picture above is stable; the function-name detail is not worth pinning down today.
+> **Key functions / call graph:** *to be filled in before the meeting.* Code is frozen through the presentation, so function names and call sites can be pinned down without risk of drift.
 
 ---
 
@@ -95,7 +95,7 @@ pension-model calibrate frs --write
 
 This runs the pipeline uncalibrated, compares aggregate AAL and NC against targets pulled from `valuation_inputs` in `plan_config.json`, derives the two factors per class, and writes `plans/frs/config/calibration.json`. Subsequent `run` commands pick that file up automatically.
 
-> **Worked example / function walkthrough:** *to be filled in closer to the meeting.*
+> **Worked example / function walkthrough:** *to be filled in before the meeting.*
 
 ---
 
@@ -202,7 +202,7 @@ Optional plan features are turned on in config, not in code. A plan's `plan_conf
 
   `drop_reference_class` says which class's retirement rates and benefits govern DROP entry assumptions — FRS uses "regular" as a proxy for the plan as a whole.
 - **Data files:** tier-specific DROP entry probabilities at `plans/frs/baselines/decrement_tables/drop_entry_tier{1,2}.csv` — the probability an active member enters DROP by age × YOS.
-- **Limitations (from [model\_goals.md](model_goals.md)):** FRS DROP is currently modeled as a simplified adjustment to the active cohort, not as a full sub-cohort with its own state, interest credits, and cash-flow separation. This matches the reference R model but is a known limitation — full state-based DROP is on the long-term roadmap and will land when a plan with a richer DROP design requires it.
+- **Limitations (from [repo\_goals.md](repo_goals.md)):** FRS DROP is currently modeled as a simplified adjustment to the active cohort, not as a full sub-cohort with its own state, interest credits, and cash-flow separation. This matches the reference R model but is a known limitation — full state-based DROP is on the long-term roadmap and will land when a plan with a richer DROP design requires it.
 
 ### How scenarios interact with these features
 
@@ -266,7 +266,7 @@ low  = pd.read_csv("output/frs/low_return/summary.csv").set_index("year")
 (low["funded_ratio"] - base["funded_ratio"]).head(10)
 ```
 
-> **Deeper cells** (call `build_plan_benefit_tables`, `project_workforce`, `run_funding_model` stage by stage): *to be filled in closer to the meeting* once the function names and signatures settle. The five cells above use only the public loader and CSV outputs, both of which are stable.
+> **Deeper cells** (call `build_plan_benefit_tables`, `project_workforce`, `run_funding_model` stage by stage): *to be filled in before the meeting.* Code is frozen through the presentation, so the stage-by-stage cells can be pinned down now.
 
 ### 8b. VSCode / Positron debugger — true line-by-line stepping
 
@@ -283,7 +283,7 @@ When REPL isn’t enough, set a breakpoint and step through.
 5.  **Variables** panel (left) shows locals at the paused frame.
 6.  **Debug Console** (bottom) evaluates arbitrary Python against the paused frame — e.g. type `bt.shape` or `bt.query("eayos == 25").head()`.
 
-> **Minimal `.vscode/launch.json` snippet:** *to be filled in closer to the meeting* once the CLI entry-point name is settled.
+> **Minimal `.vscode/launch.json` snippet:** *to be filled in before the meeting.* Code is frozen through the presentation, so the CLI entry point is stable.
 
 Mental model for an R user: the breakpoint + Variables panel is the Python analog to running R line by line with the environment pane open. The Debug Console is the Python analog to typing at the R prompt while paused.
 
