@@ -1,67 +1,65 @@
 # Pension Model — Demo
 
-Narration support for a ~30-minute screen-share walkthrough. Audience: policy researchers / analysts.
-
----
-
-## 1\. Background & approach
+## 1. Background & approach
 
 A Python simulation model for **public-pension policy research** — projects AAL, UAL, assets, funded ratios, and employer contributions over long horizons, across plans and scenarios, with no plan-specific code.
 
 **Summary of goals:** Reproduce two reference R models exactly (Florida FRS, Texas TRS), generalize so new plans are config + data only, then use it to analyze policy alternatives. ONLY AFTER MODEL IS SUFFICIENTLY GENERALIZED DO WE IMPLEMENT IMPROVEMENTS TO THE R MODEL. BEFORE THAT, OPEN GITHUB ISSUES IDENTIFYING POTENTIAL IMPROVEMENTS.
 
--   Full goals, priorities, and design principles: [repo\_goals.md](repo_goals.md)
+- Full goals, priorities, and design principles: [repo_goals.md](docs/repo_goals.md)
 
----
+------------------------------------------------------------------------
 
-## 2\. Quick demo — matching R
+## 2. Quick demo — matching R
 
-Run the following commands. Each run writes to `output/<plan>/` and updates the shared workbook [output/truth\_tables.xlsx](../output/truth_tables.xlsx).
+Run the following commands. Each run writes to `output/<plan>/` and updates the shared workbook [output/truth_tables.xlsx](../output/truth_tables.xlsx).
 
-bash
+``` bash
+# Florida FRS baseline — skip tests, write truth table
+pension-model run frs --no-test --truth-table
 
-Copy
-
-```bash
-# Florida FRS baseline — skip tests, write truth tablepension-model run frs --no-test --truth-table# Texas TRS baseline — samepension-model run txtrs --no-test --truth-table
+# Texas TRS baseline — same
+pension-model run txtrs --no-test --truth-table
 ```
 
-Then open `output/truth_tables.xlsx` and show:
+Open `output/truth_tables.xlsx` and show:
 
--   `frs_Py` / `txtrs_Py` — Python results (overwritten each run).
--   `frs_R` / `txtrs_R` — R baseline (frozen reference).
--   `frs_diff` / `txtrs_diff` — **the punchline sheet**: R, Python, and diff side by side, column by column. Diffs are at float noise (~1e-15).
+- `frs_Py` / `txtrs_Py` — Python results (overwritten each run).
 
-This workbook is the evidence that Python matches R. It’s regenerated on every run, so it can’t drift silently.
+- `frs_R` / `txtrs_R` — R baseline (frozen reference).
 
----
+- `frs_diff` / `txtrs_diff` — **the punchline sheet**: R, Python, and diff side by side, column by column. Diffs are at float noise (\~1e-15).
 
-## 3\. Model structure at a glance
+This workbook is the evidence that Python matches R. It’s regenerated on every run – if differences are non-zero, they are highlighted in Excel.
+
+------------------------------------------------------------------------
+
+## 3. Model structure at a glance
 
 | Folder | What’s in it |
-| --- | --- |
-| [src/pension\_model/](../src/pension_model/) | The Python package — CLI (command line interface), core computation modules, plan-config loader |
+|------------------------------------|------------------------------------|
+| [src/pension_model/](../src/pension_model/) | The Python package — CLI (command line interface), core computation modules, plan-config loader |
 | [plans/](../plans/) | One subfolder per plan (`frs/`, `txtrs/`, …): Each has `config/`, `data/`, `baselines/` |
-| [scenarios/](../scenarios/) | JSON overrides for policy experiments (low\_return, no\_cola, high\_discount) |
+| [scenarios/](../scenarios/) | JSON overrides for policy experiments (low_return, no_cola, high_discount) |
 | [scripts/](../scripts/) | One-off utilities: data extraction, baseline building, validation |
-| [tests/](../tests/) | Pytest suite — R-baseline regression + identity checks |
-| [output/](../output/) | Run artifacts: `summary.csv`, `liability_stacked.csv`, `truth_tables.xlsx` |
-| [baseline\_outputs/](../baseline_outputs/) | Intermediate calibration / entrant-profile outputs |
-| [docs/](../docs/) | This doc, [repo\_goals.md](repo_goals.md), architecture notes |
-| [R\_model/](../R_model/) | The reference R models (FRS and TXTRS) — read-only ground truth |
+| [tests/](../tests/) | Pytest suite — check for R-baseline regression,  check identities and similar calculations |
+| [output/](../output/) | Results of simulation runs: `summary.csv`, `liability_stacked.csv`, `truth_tables.xlsx` |
+| [baseline_outputs/](../baseline_outputs/) | Intermediate calibration / entrant-profile outputs |
+| [docs/](../docs/) | This doc, [repo_goals.md](repo_goals.md), architecture notes |
+| [R_model/](../R_model/) | The reference R models (FRS and TXTRS) — read-only ground truth |
 
-**The core idea:** everything plan-specific lives in `plans/<plan>/`. The Python code in `src/pension_model/` and `scenarios/*.json` is plan-agnostic.
+**The core idea:** everything plan-specific lives in `plans/<plan>/`. The Python code in `src/pension_model/` is plan-agnostic as are the JSON files in and `scenarios/*.json` .
 
 ### Inside a plan — using FRS
 
--   [plans/frs/config/plan\_config.json](../plans/frs/config/plan_config.json) — classes (admin, regular, senior\_mgmt, judges, eco, eso, …), benefit formulas, COLA, funding policy, economic assumptions, valuation targets.
--   [plans/frs/config/calibration.json](../plans/frs/config/calibration.json) — per-class `nc_cal` and `pvfb_term_current` (see §5).
--   `plans/frs/data/` — “stage-3” model-input CSVs: demographics, decrements, mortality, funding inputs.
--   `plans/frs/baselines/` — R reference outputs for regression tests (whether anything that once worked has since been broken).
+- [plans/frs/config/plan_config.json](../plans/frs/config/plan_config.json) — classes (admin, regular, senior_mgmt, judges, eco, eso, …), benefit formulas, COLA, funding policy, economic assumptions, valuation targets.
+- [plans/frs/config/calibration.json](../plans/frs/config/calibration.json) — per-class `nc_cal` and `pvfb_term_current` (see §5).
+- `plans/frs/data/` — “stage-3” model-input CSVs: demographics, decrements, mortality, funding inputs.
+- `plans/frs/baselines/` — R reference outputs for regression tests (whether anything that once worked has since been broken).
 
----
+------------------------------------------------------------------------
 
-## 4\. How the model works — FRS example
+## 4. How the model works — FRS example
 
 What happens, in order, when you run `pension-model run frs --no-test`:
 
@@ -74,52 +72,50 @@ What happens, in order, when you run `pension-model run frs --no-test`:
 
 ### Call graph — which function does each stage
 
-| # | Stage | Function | File : line |
-|---|---|---|---|
-| 1 | Load config | `load_plan_config(config_path, calibration_path=None, scenario_path=None) -> PlanConfig` | [plan\_config.py:1470](../src/pension_model/plan_config.py#L1470) |
+| \# | Stage | Function | File : line |
+|------------------|------------------|------------------|------------------|
+| 1 | Load config | `load_plan_config(config_path, calibration_path=None, scenario_path=None) -> PlanConfig` | [plan_config.py:1470](../src/pension_model/plan_config.py#L1470) |
 | 2 | Build benefit tables | `build_plan_benefit_tables(inputs_by_class, constants) -> dict` | [core/pipeline.py:72](../src/pension_model/core/pipeline.py#L72) |
 | 3 | Project workforce | `project_workforce(initial_active, separation_rates, benefit_decisions, mortality_rates, entrant_profile, class_name, start_year, model_period, …) -> dict` | [core/workforce.py:19](../src/pension_model/core/workforce.py#L19) |
 | 4 | Aggregate liabilities | `compute_active_liability`, `compute_term_liability`, `compute_retire_liability`, `compute_refund_liability` | [core/pipeline.py:260](../src/pension_model/core/pipeline.py#L260), [:375](../src/pension_model/core/pipeline.py#L375), [:458](../src/pension_model/core/pipeline.py#L458), [:420](../src/pension_model/core/pipeline.py#L420) |
-| 5 | Funding model | `run_funding_model(liability_results, funding_inputs, constants) -> dict` | [core/funding\_model.py:124](../src/pension_model/core/funding_model.py#L124) |
+| 5 | Funding model | `run_funding_model(liability_results, funding_inputs, constants) -> dict` | [core/funding_model.py:124](../src/pension_model/core/funding_model.py#L124) |
 | 6 | Write outputs | `_write_outputs`, `_emit_truth_table` | [cli.py:205](../src/pension_model/cli.py#L205), [:221](../src/pension_model/cli.py#L221) |
 
 The orchestrator that ties stages 2–4 together is [`run_plan_pipeline(constants, …)`](../src/pension_model/core/pipeline.py#L911) in `core/pipeline.py`. The top-level CLI driver is [`_run_plan`](../src/pension_model/cli.py#L313) (invoked by `cmd_run` at [cli.py:429](../src/pension_model/cli.py#L429), which is what `pension-model run frs --no-test` calls).
 
 **Reading strategy for a new contributor:** start at `cli.py:_run_plan`, follow it into `run_plan_pipeline` in `core/pipeline.py`, then let each stage's function pull you into the next module. Every stage function has a docstring describing inputs and outputs.
 
----
+------------------------------------------------------------------------
 
-## 5\. Calibration
+## 5. Calibration
 
-The model is **calibrated, not reconstructed** — rather than modeling every actuarial detail from first principles, we apply two small per-class adjustment factors so our results land on the published actuarial valuation.
+The model is **calibrated** in the same way the Reaon models are, so that baseline results approximate the published actuarial valuation.
 
--   `nc_cal` — multiplicative scaling on normal cost.
--   `pvfb_term_current` — additive UAL adjustment for current terminated-vested members.
+- `nc_cal` — multiplicative scaling on normal cost.
+- `pvfb_term_current` — additive UAL adjustment for current terminated-vested members.
 
 Computed by:
 
-bash
+``` bash
 
-Copy
-
-```bash
-pension-model calibrate frs --write
+pension-model calibrate frs # show potential calibration factors
+# pension-model calibrate frs --write  # this will write the calibration factors to calibration.json
 ```
 
-This runs the pipeline uncalibrated, compares aggregate AAL and NC against targets pulled from `valuation_inputs` in `plan_config.json`, derives the two factors per class, and writes `plans/frs/config/calibration.json`. Subsequent `run` commands pick that file up automatically.
+This runs the pipeline uncalibrated, compares aggregate AAL and NC against targets pulled from `valuation_inputs` in `plan_config.json`, and derives the two factors per class. With the –write option, it writes `plans/frs/config/calibration.json`. Subsequent `run` commands pick that file up automatically.
 
 ### What calibration actually does — worked example
 
 The command above:
 
-1. Calls [`cmd_calibrate`](../src/pension_model/cli.py#L351) in `cli.py`.
-2. Runs the pipeline once with **neutral** calibration (every class's `nc_cal = 1.0`, `pvfb_term_current = 0.0`) via `run_plan_pipeline(constants)`.
-3. Pulls per-class targets from `valuation_inputs` in `plan_config.json` using [`build_targets_from_config`](../src/pension_model/core/calibration.py#L120). Each target is a `CalibrationTargets(val_norm_cost, val_aal, …)` — the AAL and NC rate the plan's actuarial valuation reports.
-4. Calls [`run_calibration(liability_results, targets, start_year)`](../src/pension_model/core/calibration.py#L78), which loops classes and calls [`calibrate_class`](../src/pension_model/core/calibration.py#L45) for each.
+1.  Calls [`cmd_calibrate`](../src/pension_model/cli.py#L351) in `cli.py`.
+2.  Runs the pipeline once with **neutral** calibration (every class's `nc_cal = 1.0`, `pvfb_term_current = 0.0`) via `run_plan_pipeline(constants)`.
+3.  Pulls per-class targets from `valuation_inputs` in `plan_config.json` using [`build_targets_from_config`](../src/pension_model/core/calibration.py#L120). Each target is a `CalibrationTargets(val_norm_cost, val_aal, …)` — the AAL and NC rate the plan's actuarial valuation reports.
+4.  Calls [`run_calibration(liability_results, targets, start_year)`](../src/pension_model/core/calibration.py#L78), which loops classes and calls [`calibrate_class`](../src/pension_model/core/calibration.py#L45) for each.
 
 **The formulas** (from `calibrate_class`):
 
-```python
+``` python
 model_nc  = liability_output.loc[year == start_year, "nc_rate_db_legacy_est"]
 model_aal = liability_output.loc[year == start_year, "total_aal_est"]
 
@@ -129,21 +125,21 @@ pvfb_term_current = val_aal - model_aal           # additive lump to close AAL g
 
 The two factors are then written to `plans/frs/config/calibration.json`. Every subsequent `pension-model run frs …` loads that file via `load_plan_config(..., calibration_path=...)` and applies the factors inside the pipeline.
 
-**Why two factors and not more?** `nc_cal` captures scaling discrepancies in normal cost (typically from decrement-table or salary-scale differences vs. the AV's assumptions). `pvfb_term_current` absorbs the AAL gap that's left over — mostly the difference between a cohort-level model and an AV's member-by-member liability. Two knobs is enough to hit two targets exactly.
+**Why two factors and not more?** `nc_cal` captures scaling discrepancies in normal cost (typically from decrement-table or salary-scale differences vs. the AV's assumptions, and from use of grouped data whereas the AV was based on member-level data). `pvfb_term_current` absorbs the AAL gap that's left over — mostly the difference between a cohort-level model and an AV's member-by-member liability. Two knobs is enough to hit two targets exactly.
 
----
+------------------------------------------------------------------------
 
-## 6\. Policy simulation
+## 6. Policy simulation
 
 Scenarios are JSON files that override specific config sections. No code changes, no new plan.
 
-Example — [scenarios/low\_return.json](../scenarios/low_return.json):
+Example — [scenarios/low_return.json](../scenarios/low_return.json):
 
 json
 
 Copy
 
-```json
+``` json
 {  "name": "low_return",  "description": "Pessimistic investment return: 5% (vs baseline 6.7% FRS / 7% TRS)",  "overrides": {    "economic": {      "model_return": 0.05,      "return_scen": "model"    }  }}
 ```
 
@@ -153,11 +149,11 @@ bash
 
 Copy
 
-```bash
+``` bash
 pension-model run frs --no-test --scenario scenarios/low_return.json --truth-table
 ```
 
-Outputs land under `output/frs/low_return/` rather than `output/frs/`, so baseline and scenario artifacts never collide. **Calibration factors are not re-derived** — calibration is part of the baseline, not the scenario.
+Outputs are written to `output/frs/low_return/` rather than `output/frs/`, so baseline and scenario results never collide. **Calibration factors are not re-derived** — calibration is part of the baseline, not the scenario.
 
 Scenarios are **plan-agnostic by design** — no plan name appears anywhere in a scenario file. The loader just deep-merges the `overrides` dict into whatever plan config was passed on the command line, so the same `low_return.json` works for FRS, TRS, or any future plan.
 
@@ -165,11 +161,11 @@ Overrideable sections today include `economic`, `benefit.cola`, `funding` (amort
 
 Open gap (tracked as [issue #44](https://github.com/donboyd5/pension_model/issues/44)): the merge silently creates any key it doesn’t find, so a scenario that overrides a feature a given plan lacks (e.g., a 3-tier COLA override on a single-tier plan, or a DROP-suspension scenario on a plan without DROP) quietly no-ops instead of failing loudly. The enhancement will validate overrides against the target plan and either warn or stop with a clear message.
 
-Other scenarios currently in the repo: [no\_cola.json](../scenarios/no_cola.json), [high\_discount.json](../scenarios/high_discount.json).
+Other scenarios currently in the repo: [no_cola.json](../scenarios/no_cola.json), [high_discount.json](../scenarios/high_discount.json).
 
----
+------------------------------------------------------------------------
 
-## 7\. Plan features via config — DC, CB, DROP
+## 7. Plan features via config — DC, CB, DROP
 
 Optional plan features are turned on in config, not in code. A plan's `plan_config.json` declares which features apply; the Python pipeline reads those declarations and selects the right code paths. Below are the three non-DB features currently wired up.
 
@@ -178,11 +174,14 @@ Optional plan features are turned on in config, not in code. A plan's `plan_conf
 ### 7a. Defined Contribution (DC)
 
 - **Exercised today:** FRS (the FRS Investment Plan) and TRS (the ORP).
+
 - **Activation:** add `"dc"` to `benefit.benefit_types`. Presence of the string is the switch; there is no boolean flag.
+
 - **Allocation:** DC's share of each cohort is set by `plan_design` ratios; for FRS, DC employer contribution rates sit in `valuation_inputs` per class.
+
 - **TRS config block** (fuller, because TRS exposes DC assumptions directly):
 
-  ```json
+  ``` json
   "benefit": {
     "benefit_types": ["db", "cb", "dc"],
     "dc": {
@@ -194,15 +193,18 @@ Optional plan features are turned on in config, not in code. A plan's `plan_conf
   ```
 
 - **Data files:** DC shows up as `payroll_dc_legacy`, `payroll_dc_new`, `er_dc_rate_legacy`, `er_dc_rate_new` columns in each plan's `init_funding.csv`. No DC-specific decrement files — DC members don't have mortality-driven cash flows, only account-balance accumulation.
+
 - **Limitations:** no vesting delay modeled, no embedded options (early-withdrawal penalties, annuitization choice). Straightforward account-balance accumulation.
 
 ### 7b. Cash Balance (CB)
 
 - **Exercised today:** TRS only. FRS has no CB.
+
 - **Activation:** add `"cb"` to `benefit.benefit_types` **and** provide a `benefit.cash_balance` block. Both are required; just the `benefit_types` entry alone won't do anything.
+
 - **TRS config block:**
 
-  ```json
+  ``` json
   "benefit": {
     "benefit_types": ["db", "cb", "dc"],
     "cash_balance": {
@@ -219,15 +221,17 @@ Optional plan features are turned on in config, not in code. A plan's `plan_conf
   }
   ```
 
-- **Interest crediting rate (ICR)** is computed each year from the return scenario using a floor-cap-with-upside-share formula implemented in [src/pension\_model/core/icr.py](../src/pension_model/core/icr.py). That's the knob that makes CB interesting for policy work — change `icr_floor`, `icr_cap`, or `icr_upside_share` to change the risk-sharing shape.
+- **Interest crediting rate (ICR)** is computed each year from the return scenario using a floor-cap-with-upside-share formula implemented in [src/pension_model/core/icr.py](../src/pension_model/core/icr.py). That's the knob that makes CB interesting for policy work — change `icr_floor`, `icr_cap`, or `icr_upside_share` to change the risk-sharing shape.
+
 - **Limitations:** CB has not yet been validated against an external actuarial reference. Annuity conversion uses a fixed rate rather than age-based commutation factors.
 
 ### 7c. Deferred Retirement Option Plan (DROP)
 
 - **Exercised today:** FRS only.
+
 - **Activation:** boolean flag at plan level.
 
-  ```json
+  ``` json
   "funding": {
     "has_drop": true,
     "drop_reference_class": "regular"
@@ -235,16 +239,18 @@ Optional plan features are turned on in config, not in code. A plan's `plan_conf
   ```
 
   `drop_reference_class` says which class's retirement rates and benefits govern DROP entry assumptions — FRS uses "regular" as a proxy for the plan as a whole.
+
 - **Data files:** tier-specific DROP entry probabilities at `plans/frs/baselines/decrement_tables/drop_entry_tier{1,2}.csv` — the probability an active member enters DROP by age × YOS.
-- **Limitations (from [repo\_goals.md](repo_goals.md)):** FRS DROP is currently modeled as a simplified adjustment to the active cohort, not as a full sub-cohort with its own state, interest credits, and cash-flow separation. This matches the reference R model but is a known limitation — full state-based DROP is on the long-term roadmap and will land when a plan with a richer DROP design requires it.
+
+- **Limitations (from [repo_goals.md](repo_goals.md)):** FRS DROP is currently modeled as a simplified adjustment to the active cohort, not as a full sub-cohort with its own state, interest credits, and cash-flow separation. This matches the reference R model but is a known limitation — full state-based DROP is on the long-term roadmap and will land when a plan with a richer DROP design requires it.
 
 ### How scenarios interact with these features
 
 All three feature dicts are reachable from scenario overrides via the usual deep-merge — e.g., a scenario could set `benefit.cash_balance.icr_floor: 0.0` to stress-test the CB floor, or `funding.has_drop: false` to suspend DROP. Remember the silent-no-op gap on plans that lack the feature ([issue #44](https://github.com/donboyd5/pension_model/issues/44)) — a CB scenario run against FRS today won't error, it just won't do anything.
 
----
+------------------------------------------------------------------------
 
-## 8\. Stepping through the model (optional / deeper-dive)
+## 8. Stepping through the model (optional / deeper-dive)
 
 Two ways to inspect what the code is actually doing. Use whichever matches the question.
 
@@ -256,7 +262,7 @@ Open the Positron Python console and call the pipeline stages one at a time, kee
 
 **Starter cells — stable, safe to try out now:**
 
-```python
+``` python
 # --- cell 1: imports and config load ---
 from pathlib import Path
 from pension_model.plan_config import load_plan_config
@@ -266,14 +272,14 @@ cfg.scenario_name            # None for baseline
 list(cfg.raw.keys())         # top-level config sections
 ```
 
-```python
+``` python
 # --- cell 2: drill into a config section ---
 cfg.raw["economic"]          # discount rates, model return, growth rates
 cfg.raw["classes"]           # list of membership classes
 cfg.raw["benefit"]["benefit_types"]   # ['db', 'dc'] for FRS, ['db', 'cb', 'dc'] for TRS
 ```
 
-```python
+``` python
 # --- cell 3: inspect a data file directly ---
 import pandas as pd
 
@@ -283,7 +289,7 @@ salary.shape
 salary.describe()
 ```
 
-```python
+``` python
 # --- cell 4: inspect run outputs after `pension-model run frs --no-test` ---
 summary = pd.read_csv("output/frs/summary.csv")
 summary.head()
@@ -293,7 +299,7 @@ liab = pd.read_csv("output/frs/liability_stacked.csv")
 liab.head()
 ```
 
-```python
+``` python
 # --- cell 5: compare baseline vs a scenario output ---
 base = pd.read_csv("output/frs/summary.csv").set_index("year")
 low  = pd.read_csv("output/frs/low_return/summary.csv").set_index("year")
@@ -302,7 +308,7 @@ low  = pd.read_csv("output/frs/low_return/summary.csv").set_index("year")
 
 **Deeper cells — drive the pipeline one stage at a time:**
 
-```python
+``` python
 # --- cell 6: one call end-to-end (then pick apart the result) ---
 from pension_model.core.pipeline import run_plan_pipeline
 
@@ -313,7 +319,7 @@ liability["regular"][["year", "total_aal_est", "total_payroll_est",
                       "nc_rate_db_legacy_est"]].head()
 ```
 
-```python
+``` python
 # --- cell 7: stage 2 on its own — benefit tables ---
 from pension_model.core.data_loader import load_plan_inputs
 from pension_model.core.pipeline import build_plan_benefit_tables
@@ -327,7 +333,7 @@ bvt = plan_tables["benefit_val"]
 bvt[bvt["class_name"] == "regular"].head()       # PVFB / PVFS / NC per cohort
 ```
 
-```python
+``` python
 # --- cell 8: stage 5 on its own — funding model ---
 from pension_model.core.funding_model import load_funding_inputs, run_funding_model
 
@@ -339,7 +345,7 @@ agg = funding["frs"]
 agg[["year", "mva_eoy", "ava_eoy", "funded_ratio", "er_contribution"]].head(10)
 ```
 
-```python
+``` python
 # --- cell 9: quick sanity plot (matplotlib) ---
 import matplotlib.pyplot as plt
 
@@ -357,16 +363,16 @@ When REPL isn’t enough, set a breakpoint and step through.
 2.  Click the gutter next to a line (or press **F9**) to set a breakpoint.
 3.  **Run → Start Debugging (F5)** using a launch config that runs the CLI as a module.
 4.  Step controls:
-    -   **F10** — step *over* the current line
-    -   **F11** — step *into* a function call
-    -   **Shift-F11** — step *out* of the current function
-    -   **F5** — continue to the next breakpoint
+    - **F10** — step *over* the current line
+    - **F11** — step *into* a function call
+    - **Shift-F11** — step *out* of the current function
+    - **F5** — continue to the next breakpoint
 5.  **Variables** panel (left) shows locals at the paused frame.
 6.  **Debug Console** (bottom) evaluates arbitrary Python against the paused frame — e.g. type `bt.shape` or `bt.query("eayos == 25").head()`.
 
 **Minimal `.vscode/launch.json` snippet** — save as `.vscode/launch.json` at the repo root:
 
-```json
+``` json
 {
   "version": "0.2.0",
   "configurations": [
@@ -396,15 +402,15 @@ With that file in place, open the **Run and Debug** panel (Ctrl+Shift+D), pick a
 
 Mental model for an R user: the breakpoint + Variables panel is the Python analog to running R line by line with the environment pane open. The Debug Console is the Python analog to typing at the R prompt while paused.
 
----
+------------------------------------------------------------------------
 
-## 9\. Where we are and what’s next — discussion prompts
+## 9. Where we are and what’s next — discussion prompts
 
 **Where we are:**
 
--   Two reference plans match R at float noise: FRS (7 classes, DROP) and Texas TRS (1 class).
--   Zero plan-specific Python code — everything plan-specific is JSON + CSV.
--   Scenario system working; `low_return` validated bit-identical to R.
+- Two reference plans match R at float noise: FRS (7 classes, DROP) and Texas TRS (1 class).
+- Zero plan-specific Python code — everything plan-specific is JSON + CSV.
+- Scenario system working; `low_return` validated bit-identical to R.
 
 **Open questions for the group** (discussion, not presentation):
 
@@ -414,7 +420,7 @@ Mental model for an R user: the breakpoint + Variables panel is the Python analo
 4.  **Outputs / visualizations?** What format makes scenario results easiest for policy audiences to read?
 5.  **Validation appetite?** For a new plan, what level of R-or-AV matching does this audience need before trusting scenario results?
 
----
+------------------------------------------------------------------------
 
 ## Appendix A — Naming conventions
 
@@ -423,7 +429,7 @@ A decoder ring for the short names you’ll see on screen. Python code leans on 
 ### A.1 Common variable-name abbreviations
 
 | Name | Stands for | What it is |
-| --- | --- | --- |
+|------------------------|------------------------|------------------------|
 | `cfg`, `config` | **P**lan **Config** | The full plan specification loaded from `plan_config.json` (a frozen `PlanConfig` dataclass). |
 | `ctx` | **F**unding **Context** | A bundle of state passed into the funding model — scalars, strategies, and DataFrames for one funding compute run. |
 | `wf` | **W**ork**f**orce | The projected active-member DataFrame (one row per cohort × year). |
@@ -434,7 +440,7 @@ A decoder ring for the short names you’ll see on screen. Python code leans on 
 ### A.2 Actuarial acronyms (appear in column names, outputs, config)
 
 | Acronym | Meaning |
-| --- | --- |
+|------------------------------------|------------------------------------|
 | `aal` | **A**ctuarial **A**ccrued **L**iability — PV of benefits already earned. |
 | `ual` | **U**nfunded **A**ctuarial **L**iability — `aal − ava`. |
 | `nc` | **N**ormal **C**ost — PV of benefits earned in the coming year. |
@@ -451,7 +457,7 @@ A decoder ring for the short names you’ll see on screen. Python code leans on 
 ### A.3 Key classes (dataclasses) — the “nouns” the code passes around
 
 | Class | What it holds |
-| --- | --- |
+|------------------------------------|------------------------------------|
 | `PlanConfig` | Frozen dataclass holding every parameter parsed from `plan_config.json`. |
 | `FundingContext` | State for one funding compute: scalars, smoothing strategy, roll-forward frames. |
 | `CompactMortality` | Mortality rates keyed by age × gender × class. |
@@ -460,15 +466,15 @@ A decoder ring for the short names you’ll see on screen. Python code leans on 
 
 ### A.4 Module naming — `src/pension_model/`
 
--   **Nouns, not verbs.** `benefit_tables.py`, `workforce.py`, `funding_model.py` — each module is named for what it *produces* or *is about*.
--   **Top level** (`src/pension_model/*.py`): entry points and cross-cutting utilities — `cli.py`, `plan_config.py`, `truth_table.py`.
--   **`core/` subpackage**: the computation engine — `benefit_tables.py`, `workforce.py`, `pipeline.py`, `funding_model.py`, `calibration.py`, `mortality_builder.py`, `data_loader.py`, etc.
--   **Leading underscore** (e.g., `_funding_core.py`, `_funding_helpers.py`, `_funding_strategies.py`) marks a module as *internal* — an implementation detail of the funding model, not intended for outside callers. Read the non-underscored `funding_model.py` first; dip into the underscored ones only when you need the mechanics.
+- **Nouns, not verbs.** `benefit_tables.py`, `workforce.py`, `funding_model.py` — each module is named for what it *produces* or *is about*.
+- **Top level** (`src/pension_model/*.py`): entry points and cross-cutting utilities — `cli.py`, `plan_config.py`, `truth_table.py`.
+- **`core/` subpackage**: the computation engine — `benefit_tables.py`, `workforce.py`, `pipeline.py`, `funding_model.py`, `calibration.py`, `mortality_builder.py`, `data_loader.py`, etc.
+- **Leading underscore** (e.g., `_funding_core.py`, `_funding_helpers.py`, `_funding_strategies.py`) marks a module as *internal* — an implementation detail of the funding model, not intended for outside callers. Read the non-underscored `funding_model.py` first; dip into the underscored ones only when you need the mechanics.
 
 ### A.5 Plan config — top-level sections of `plan_config.json`
 
 | Section | What lives there |
-| --- | --- |
+|------------------------------------|------------------------------------|
 | `data` | Path to the plan’s data directory. |
 | `economic` | Discount rates (`dr_current`, `dr_new`, `dr_old`), `model_return`, payroll / population growth, inflation. |
 | `benefit` | Employee contribution rate, FAS averaging window, benefit types, COLA schedules. |
@@ -489,7 +495,7 @@ A decoder ring for the short names you’ll see on screen. Python code leans on 
 Pattern: `{class}_{kind}.csv`.
 
 | Subfolder | Typical files |
-| --- | --- |
+|------------------------------------|------------------------------------|
 | `demographics/` | `{class}_salary.csv`, `{class}_headcount.csv`, `{class}_salary_growth.csv`, `retiree_distribution.csv` |
 | `decrements/` | `{class}_retirement_rates.csv`, `{class}_termination_rates.csv` |
 | `mortality/` | Base tables; names vary by source (SOA table × gender). |
