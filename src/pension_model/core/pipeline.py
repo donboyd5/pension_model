@@ -32,14 +32,7 @@ from pension_model.core.benefit_tables import (
 
 
 def _headcount_total(df: pd.DataFrame) -> float:
-    """Sum total active headcount from either long- or wide-format headcount.
-
-    Stage 3 data uses long format with an explicit ``count`` column. The
-    cross-class sep-class lookups in ``build_plan_benefit_tables`` still read
-    R-side wide-format CSVs from ``baseline_outputs/`` (one column per yos
-    bucket, age in the first column); migrating those to stage 3 is
-    tracked as a separate data-layout task.
-    """
+    """Sum total active headcount from either long- or wide-format headcount."""
     if "count" in df.columns:
         return float(df["count"].sum())
     return float(df.iloc[:, 1:].sum().sum())

@@ -34,8 +34,8 @@ def load_funding_inputs(funding_dir: Path) -> dict:
       - ``return_scenarios.csv`` (required)
       - ``amort_layers.csv`` (optional — plans with layered amortization)
 
-    Also accepts the legacy ``baseline_outputs/`` layout where the files
-    are named ``init_funding_data.csv`` and ``current_amort_layers.csv``.
+    Also accepts the legacy filenames ``init_funding_data.csv`` and
+    ``current_amort_layers.csv`` (still used under some plans' baselines/).
     """
     # init_funding: try standard name first, fall back to legacy
     init_path = funding_dir / "init_funding.csv"

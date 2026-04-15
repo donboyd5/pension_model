@@ -51,10 +51,9 @@ This workbook is the evidence that Python matches R. It’s regenerated on every
 | [scenarios/](../scenarios/) | JSON overrides for policy experiments (low_return, no_cola, high_discount) |
 | [scripts/](../scripts/) | One-off utilities: data extraction, baseline building, validation |
 | [tests/](../tests/) | Pytest suite — check for R-baseline regression, check identities and similar calculations |
-| [output/](../output/) | Results of simulation runs: `summary.csv`, `liability_stacked.csv`, `truth_tables.xlsx` |
-| [baseline_outputs/](../baseline_outputs/) | Intermediate calibration / entrant-profile outputs |
+| [output/](../output/) | Results of simulation runs: `summary.csv`, `liability_stacked.csv`, `truth_tables.xlsx` (gitignored) |
 | [docs/](../docs/) | This doc, [repo_goals.md](repo_goals.md), architecture notes |
-| [R_model/](../R_model/) | The reference R models (FRS and TXTRS) — read-only ground truth |
+| [R_model/](../R_model/) | The reference R models (FRS and TXTRS) — copied per environment, not tracked |
 
 **The core idea:** everything plan-specific lives in `plans/<plan>/`. The Python code in `src/pension_model/` is plan-agnostic as are the JSON files in and `scenarios/*.json` .
 
