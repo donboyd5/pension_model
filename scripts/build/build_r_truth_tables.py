@@ -21,7 +21,7 @@ Usage:
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).parent.parent
+ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from pension_model.truth_table import (  # noqa: E402
