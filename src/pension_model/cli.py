@@ -240,7 +240,7 @@ def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
         upsert_sheet_to_excel(df, xlsx_path, f"{plan_name}_Py")
 
         # Also refresh the R sheet and diff sheet from the R CSV
-        r_csv = OUTPUT_BASE / f"{plan_name}_R_truth_table.csv"
+        r_csv = Path("plans") / plan_name / "baselines" / "r_truth_table.csv"
         if r_csv.exists():
             r_df = pd.read_csv(r_csv)
             upsert_sheet_to_excel(r_df, xlsx_path, f"{plan_name}_R")

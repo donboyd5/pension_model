@@ -55,9 +55,10 @@ def main():
     upsert_sheet_to_excel(frs_r, out_path, "frs_R")
     upsert_sheet_to_excel(txtrs_r, out_path, "txtrs_R")
 
-    # Also write companion CSVs for anyone who wants to diff outside Excel
-    frs_r.to_csv(out_path.parent / "frs_R_truth_table.csv", index=False)
-    txtrs_r.to_csv(out_path.parent / "txtrs_R_truth_table.csv", index=False)
+    # Also write companion CSVs to each plan's baselines directory, where the
+    # CLI looks for them when building the --truth-table diff sheet.
+    frs_r.to_csv(ROOT / "plans" / "frs" / "baselines" / "r_truth_table.csv", index=False)
+    txtrs_r.to_csv(ROOT / "plans" / "txtrs" / "baselines" / "r_truth_table.csv", index=False)
 
     # Write live-formula diff sheets (Py - R). These reference the *_R and
     # *_Py sheets so they update automatically whenever the pipeline rewrites
