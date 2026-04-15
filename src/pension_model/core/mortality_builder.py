@@ -213,7 +213,7 @@ def build_compact_mortality_from_excel(
         CompactMortality with employee and retiree rates by (age, year)
     """
     # Read base mortality tables — use config map if available, else fallback map
-    from pension_model.plan_config import PlanConfig
+    from pension_model.config_schema import PlanConfig
     if isinstance(constants, PlanConfig) and constants.base_table_map:
         base_type = constants.get_base_table_type(class_name)
     else:
@@ -374,7 +374,7 @@ def build_compact_mortality_from_csv(
         male_mp_forward_shift: Shift male MP table forward by N years (config-driven)
     """
     # For "regular" base_type: average of general and teacher tables
-    from pension_model.plan_config import PlanConfig
+    from pension_model.config_schema import PlanConfig
     if isinstance(constants, PlanConfig) and constants.base_table_map:
         base_type = constants.get_base_table_type(class_name)
     else:

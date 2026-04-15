@@ -56,7 +56,7 @@ def project_workforce(
 
     # Age range
     min_age = min(entry_ages)
-    max_age = 120
+    max_age = constants.max_age if constants is not None else 120
     ages = list(range(min_age, max_age + 1))
     n_ages = len(ages)
 
@@ -188,7 +188,7 @@ def project_workforce(
     # Deferred vested members use employee mortality until they reach a
     # retirement-eligible tier (norm/early), then switch to retiree mortality.
     # We batch-resolve tiers per term stock using resolve_tiers_vec.
-    from pension_model.plan_config import resolve_tiers_vec as _resolve_tiers_vec, EARLY
+    from pension_model.config_resolvers import resolve_tiers_vec as _resolve_tiers_vec, EARLY
 
     ea_arr_int = np.array(entry_ages, dtype=np.int64)
 

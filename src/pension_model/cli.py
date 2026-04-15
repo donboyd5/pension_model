@@ -351,7 +351,7 @@ def _run_plan(constants, args):
 def cmd_calibrate(args):
     """Run calibration: compute nc_cal and pvfb_term_current from AV targets."""
     from pension_model.core.pipeline import run_plan_pipeline
-    from pension_model.plan_config import discover_plans, load_plan_config
+    from pension_model.config_loading import discover_plans, load_plan_config
     from pension_model.core.calibration import (
         build_targets_from_config, run_calibration, format_diagnostics,
         format_comparison, write_calibration_json,
@@ -434,7 +434,7 @@ def run_tests():
 
 def cmd_run(args):
     """Dispatch `pension-model run <plan>` to the unified runner."""
-    from pension_model.plan_config import discover_plans, load_plan_config
+    from pension_model.config_loading import discover_plans, load_plan_config
 
     if args.test_only:
         print(f"Running tests...")
@@ -466,7 +466,7 @@ def cmd_run(args):
 
 def cmd_list(args):
     """List discovered plans and whether each has a registered runner."""
-    from pension_model.plan_config import discover_plans
+    from pension_model.config_loading import discover_plans
 
     plans = discover_plans()
     if not plans:
@@ -481,7 +481,7 @@ def cmd_list(args):
 def main():
     warnings.filterwarnings("ignore")
 
-    from pension_model.plan_config import discover_plans
+    from pension_model.config_loading import discover_plans
     discovered = sorted(discover_plans().keys())
 
     parser = argparse.ArgumentParser(prog="pension-model", description="Pension model CLI")

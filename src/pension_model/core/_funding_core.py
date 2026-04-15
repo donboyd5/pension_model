@@ -23,6 +23,7 @@ from typing import Any, Optional
 import numpy as np
 import pandas as pd
 
+from pension_model.config_schema import PlanConfig
 from pension_model.core.pipeline import _get_pmt
 from pension_model.core._funding_helpers import (
     _aal_rollforward,
@@ -102,13 +103,13 @@ class FundingContext:
 
 
 def _resolve_funding_context(
-    constants,
+    constants: PlanConfig,
     funding_inputs: dict,
 ) -> FundingContext:
     """Build a :class:`FundingContext` from the plan config and inputs.
 
     Reads ``constants.economic``, ``constants.funding``,
-    ``constants.ranges``, and ``constants.raw`` to extract all scalars,
+    ``constants.ranges``, and typed plan properties to extract all scalars,
     flags, and strategy selections a funding compute run needs.
 
     Selects ``ava_strategy`` from ``funding.ava_smoothing.method``
@@ -124,11 +125,9 @@ def _resolve_funding_context(
     econ = constants.economic
     fund = constants.funding
     r = constants.ranges
-    raw = constants.raw if hasattr(constants, "raw") else {}
-    funding_raw = raw.get("funding", {})
 
     # amo_method normalization (legacy pre-Phase-3 code path)
-    amo_method = fund.amo_method if hasattr(fund, "amo_method") else "level_pct"
+    amo_method = fund.amo_method
     amo_pay_growth = fund.amo_pay_growth
     if amo_method == "level $":
         amo_pay_growth = 0
@@ -136,8 +135,8 @@ def _resolve_funding_context(
     # Class / DROP topology
     class_names = list(constants.classes)
     agg_name = constants.plan_name
-    has_drop = funding_raw.get("has_drop", False)
-    drop_ref_class = funding_raw.get("drop_reference_class", class_names[0]) if class_names else None
+    has_drop = constants.has_drop
+    drop_ref_class = constants.drop_reference_class or (class_names[0] if class_names else None)
     all_classes = class_names + (["drop"] if has_drop else [])
     is_multi_class = len(class_names) > 1
 
@@ -161,7 +160,7 @@ def _resolve_funding_context(
             f"Supported: 'corridor', 'gain_loss'."
         )
 
-    stat_rates = funding_raw.get("statutory_rates")
+    stat_rates = constants.statutory_rates
     if stat_rates:
         ee_schedule = stat_rates.get(
             "ee_rate_schedule",
@@ -170,7 +169,7 @@ def _resolve_funding_context(
         cont_strategy = StatutoryContributions(
             funding_policy=fund.funding_policy,
             ee_schedule=ee_schedule,
-            components=_resolve_er_rate_components(funding_raw),
+            components=_resolve_er_rate_components(stat_rates),
         )
     else:
         cont_strategy = ActuarialContributions(
@@ -180,12 +179,12 @@ def _resolve_funding_context(
     return FundingContext(
         dr_current=econ.dr_current,
         dr_new=econ.dr_new,
-        dr_old=getattr(econ, "dr_old", None),
+        dr_old=econ.dr_old,
         payroll_growth=econ.payroll_growth,
         inflation=econ.inflation,
         amo_pay_growth=amo_pay_growth,
         amo_period_new=fund.amo_period_new,
-        funding_lag=getattr(fund, "funding_lag", 0),
+        funding_lag=fund.funding_lag,
         db_ee_cont_rate=constants.benefit.db_ee_cont_rate,
         model_return=econ.model_return,
         start_year=r.start_year,
@@ -201,14 +200,14 @@ def _resolve_funding_context(
         has_cb=has_cb,
         has_dc=has_dc,
         funding_policy=fund.funding_policy,
-        return_scen_col=raw.get("economic", {}).get("return_scen", "assumption"),
+        return_scen_col=constants.return_scen_col,
         init_funding=funding_inputs["init_funding"],
         amort_layers=funding_inputs.get("amort_layers"),
         ret_scen=funding_inputs["return_scenarios"].copy(),
     )
 
 
-def _resolve_er_rate_components(funding_raw: dict) -> list:
+def _resolve_er_rate_components(stat_rates: dict) -> list:
     """Build the list of statutory employer rate components from config.
 
     Reads ``funding.statutory_rates.er_rate_components`` (a list of
@@ -219,7 +218,6 @@ def _resolve_er_rate_components(funding_raw: dict) -> list:
     A plan that uses the statutory contribution strategy must declare
     its components explicitly — there are no hardcoded defaults.
     """
-    stat_rates = funding_raw.get("statutory_rates", {})
     components = stat_rates.get("er_rate_components")
     if components is None:
         raise ValueError(
@@ -285,7 +283,7 @@ def _setup_funding_frames(ctx: FundingContext) -> dict:
     return funding
 
 
-def _setup_amort_state(ctx: FundingContext, funding: dict, constants) -> dict:
+def _setup_amort_state(ctx: FundingContext, funding: dict, constants: PlanConfig) -> dict:
     """Build the amortization-state structure for the year loop.
 
     Returns one of two shapes, dispatched on whether the plan ships an
@@ -300,8 +298,8 @@ def _setup_amort_state(ctx: FundingContext, funding: dict, constants) -> dict:
     * ``{"mode": "local", "debt_current": ndarray, "pay_current":
       ndarray, "amo_per_current_diag": ndarray, "debt_new": ndarray,
       "pay_new": ndarray, "amo_per_new": ndarray, "n_amo": int}`` —
-      synthesised from a scalar ``amo_period_current`` (read from
-      ``constants.raw["funding"]``) plus ``ctx.amo_period_new``.
+      synthesised from a scalar ``amo_period_current`` plus
+      ``ctx.amo_period_new``.
 
     The second shape is a data-prep workaround: a plan that ships an
     ``amort_layers.csv`` can be handled uniformly via the per-class
@@ -348,8 +346,7 @@ def _setup_amort_state(ctx: FundingContext, funding: dict, constants) -> dict:
         return {"mode": "per_class", "amo_tables": amo_tables}
 
     # Local mode: synthesise layer arrays from scalar amo_period_current.
-    funding_raw = (constants.raw if hasattr(constants, "raw") else {}).get("funding", {})
-    amo_period_current = funding_raw.get("amo_period_current", 30)
+    amo_period_current = constants.amo_period_current or 30
     amo_period_new = ctx.amo_period_new
     n_years = ctx.n_years
 

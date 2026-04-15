@@ -15,6 +15,11 @@ Key functions:
 import numpy as np
 from typing import Callable
 
+from pension_model.config_helpers import (
+    extract_normal_retirement_params,
+    get_sep_type,
+    resolve_cola_scalar,
+)
 from pension_model.core.compact_mortality import CompactMortality
 
 
@@ -124,7 +129,6 @@ def compute_cohort_annuity_factors(
         # Determine distribution age
         # Vested: defer to earliest normal retirement age
         # Retiree/non-vested: distribute at term_age
-        from pension_model.plan_config import get_sep_type, extract_normal_retirement_params
         sep_type = get_sep_type(tier)
 
         if sep_type == "vested":
@@ -149,7 +153,6 @@ def compute_cohort_annuity_factors(
         n_future = max_age - dist_age + 1
 
         # COLA rate for this cohort (config-driven)
-        from pension_model.plan_config import resolve_cola_scalar
         cola = resolve_cola_scalar(constants, tier, entry_year, yos)
 
         # Build survival × discount × cola vector from dist_age to max_age
@@ -222,8 +225,6 @@ def compute_cohort_benefits(
       salary, fas, db_benefit, pvfb_at_term, pvfb_wealth_at_term,
       pvfb_at_current, pvfs_at_current, indv_norm_cost, pvfnc
     """
-    from pension_model.plan_config import get_sep_type
-
     r = constants.ranges
     econ = constants.economic
     ben = constants.benefit

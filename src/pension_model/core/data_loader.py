@@ -13,11 +13,12 @@ Entry points:
   - load_plan_data(class_name, constants): per-class loader (called
     internally by load_plan_inputs; still available for debugging).
 """
+from dataclasses import replace
 from pathlib import Path
 import pandas as pd
 import numpy as np
 
-from pension_model.plan_config import PlanConfig
+from pension_model.config_schema import PlanConfig
 
 
 def _load_retiree_distribution(path: Path) -> pd.DataFrame:
@@ -125,12 +126,11 @@ def _build_mortality_from_csv(
     # Determine table name from config: per-class map takes precedence
     # (for multi-class plans with different base tables). Otherwise fall back
     # to the plan-wide mortality.base_table setting (single-table plans).
-    base_table_map = constants.raw.get("base_table_map", {})
+    base_table_map = constants.base_table_map
     if class_name in base_table_map:
         table_name = base_table_map[class_name]
     else:
-        mort_cfg = constants.raw.get("mortality", {})
-        base_table_label = mort_cfg.get("base_table", "general")
+        base_table_label = constants.mortality_base_table
         # Map verbose config labels to CSV table names
         table_name_map = {
             "pub_2010_teacher_below_median": "teacher_below_median",
@@ -140,8 +140,8 @@ def _build_mortality_from_csv(
         }
         table_name = table_name_map.get(base_table_label, base_table_label)
 
-    mp_shift = getattr(constants, "male_mp_forward_shift", 0)
-    max_age = constants.ranges.max_age if hasattr(constants.ranges, "max_age") else 120
+    mp_shift = constants.male_mp_forward_shift
+    max_age = constants.max_age
     max_year = (constants.ranges.start_year + constants.ranges.model_period
                 + max_age - constants.ranges.min_age)
 
@@ -208,8 +208,7 @@ def _resolve_age_group_breaks(constants: PlanConfig) -> list:
     Required for plans with YOS-only termination rate tables. Raises
     ValueError with a clear message if the config field is missing.
     """
-    raw = constants.raw if hasattr(constants, "raw") else {}
-    groups_cfg = raw.get("modeling", {}).get("age_groups")
+    groups_cfg = constants.age_groups
     if not groups_cfg:
         raise ValueError(
             "modeling.age_groups is required in plan config when the "
@@ -296,7 +295,7 @@ def _build_years_from_nr_decrements(
     Uses the existing build_txtrs_separation_rate_table logic but reads
     from CSV instead of Excel.
     """
-    from pension_model.plan_config import get_tier
+    from pension_model.config_resolvers import get_tier
 
     r = constants.ranges
     yos_rates = term_df[term_df["lookup_type"] == "yos"].copy()
@@ -418,20 +417,21 @@ def _build_years_from_nr_decrements(
 # Plan-wide stacked loader
 # ---------------------------------------------------------------------------
 
-def load_plan_inputs(constants: PlanConfig) -> dict:
+def load_plan_inputs(constants: PlanConfig) -> tuple[PlanConfig, dict]:
     """Load stage 3 data for an entire plan.
 
     This is the recommended entry point. Calls load_plan_data once per
-    class, attaches plan-wide reduction tables to ``constants``, and
-    returns the per-class inputs dicts that downstream functions
+    class, prepares plan-wide derived inputs, and returns the per-class
+    inputs dicts that downstream functions
     (build_plan_benefit_tables, _project_and_aggregate_class) consume.
 
     Args:
-        constants: PlanConfig for the plan. Modified in place to attach
-            ``_reduce_tables`` if the plan provides reduction tables.
+        constants: PlanConfig for the plan.
 
     Returns:
-        {class_name: inputs dict from load_plan_data}
+        Tuple of:
+          - PlanConfig, with ``reduce_tables`` populated when available
+          - {class_name: inputs dict from load_plan_data}
     """
     classes = list(constants.classes)
 
@@ -439,15 +439,28 @@ def load_plan_inputs(constants: PlanConfig) -> dict:
 
     for cn in classes:
         inputs = load_plan_data(cn, constants)
+        inputs["_raw_headcount_total"] = float(inputs["headcount"]["count"].sum())
         raw_inputs_by_class[cn] = inputs
 
-    # Attach reduction tables (early-retire factor lookup) to config.
-    # These are plan-wide, not per-class; take from the first class that
-    # provides them.
+    reduction_tables = None
     for cn in classes:
         rt = raw_inputs_by_class[cn].get("_reduction_tables")
         if rt is not None:
-            object.__setattr__(constants, "_reduce_tables", rt)
+            reduction_tables = rt
             break
 
-    return raw_inputs_by_class
+    constants = replace(constants, reduce_tables=reduction_tables)
+
+    # Pre-compute per-class headcount adjustment ratios so the core
+    # pipeline no longer needs to read demographic CSVs mid-computation.
+    for cn in classes:
+        acfr = constants.valuation_inputs.get(cn, {})
+        target = constants.class_data[cn].total_active_member
+        hc_group = acfr.get("headcount_group")
+        if hc_group and len(hc_group) > 1:
+            raw_total = sum(raw_inputs_by_class[peer]["_raw_headcount_total"] for peer in hc_group)
+        else:
+            raw_total = raw_inputs_by_class[cn]["_raw_headcount_total"]
+        raw_inputs_by_class[cn]["_adjustment_ratio"] = target / raw_total
+
+    return constants, raw_inputs_by_class

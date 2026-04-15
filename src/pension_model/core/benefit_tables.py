@@ -15,6 +15,7 @@ Design for generalization:
 
 import numpy as np
 import pandas as pd
+from pension_model.config_schema import EARLY, NORM, VESTED, PlanConfig
 
 def _get_salary_growth_col(class_name: str, constants=None) -> str:
     """Resolve salary growth column name for a class.
@@ -22,7 +23,6 @@ def _get_salary_growth_col(class_name: str, constants=None) -> str:
     Uses salary_growth_col_map from config if available, otherwise
     auto-generates ``salary_increase_{class_name}``.
     """
-    from pension_model.plan_config import PlanConfig
     if isinstance(constants, PlanConfig):
         col_map = constants.salary_growth_col_map
         if col_map:
@@ -78,7 +78,10 @@ def build_salary_headcount_table(
     sg = sg.rename(columns={growth_col: "salary_increase"})
 
     # Extend to cover all possible yos values (up to max yos in headcount)
-    max_possible_yos = 102  # max_age - min_age
+    max_possible_yos = (
+        constants.max_age - constants.min_age
+        if constants is not None else 102
+    )
     if sg["yos"].max() < max_possible_yos:
         extra = pd.DataFrame({"yos": range(sg["yos"].max() + 1, max_possible_yos + 1)})
         sg = pd.concat([sg, extra], ignore_index=True)
@@ -286,7 +289,7 @@ def build_salary_benefit_table(
     })
 
     # Vectorized tier at term_age (resolve_tiers_vec takes (class, ey, age, yos))
-    from pension_model.plan_config import resolve_tiers_vec as _resolve_tiers_int
+    from pension_model.config_resolvers import resolve_tiers_vec as _resolve_tiers_int
     cn_arr = np.full(len(df), class_name, dtype=object)
     tier_id_arr, ret_status_arr = _resolve_tiers_int(
         constants, cn_arr, ey_flat, term_age_flat, yos_flat,
@@ -312,7 +315,7 @@ def build_salary_benefit_table(
     # but can be overridden to start_year when entrant profile salaries are already
     # at start_year level (when entrant_salary_at_start_year is set in config).
     max_hist_year = salary_headcount["entry_year"].max()
-    if getattr(constants, "entrant_salary_at_start_year", False):
+    if constants.entrant_salary_at_start_year:
         max_hist_year = max(max_hist_year, constants.ranges.start_year)
     df["salary"] = np.where(
         df["entry_year"] <= max_hist_year,
@@ -366,8 +369,8 @@ def build_salary_benefit_table(
     df = df.drop(columns=["_contrib"])
 
     # --- Cash balance columns (when CB benefit type is active) ---
-    has_cb = hasattr(constants, "benefit_types") and "cb" in constants.benefit_types
-    cb_cfg = getattr(constants, "cash_balance", None) if has_cb else None
+    has_cb = "cb" in constants.benefit_types
+    cb_cfg = constants.cash_balance if has_cb else None
     if cb_cfg is not None and actual_icr_series is not None:
         ee_credit = cb_cfg["ee_pay_credit"]
         er_credit = cb_cfg["er_pay_credit"]
@@ -514,7 +517,7 @@ def build_separation_rate_table(
     )
 
     # Vectorized tier at term_age
-    from pension_model.plan_config import resolve_tiers_vec as _resolve_tiers_int
+    from pension_model.config_resolvers import resolve_tiers_vec as _resolve_tiers_int
     n = len(df)
     cn_arr = np.full(n, class_name, dtype=object)
     tid_arr, rs_arr = _resolve_tiers_int(
@@ -528,7 +531,6 @@ def build_separation_rate_table(
     df["ret_status"] = rs_arr
 
     # Separation rate depends on tier_id and ret_status
-    from pension_model.plan_config import NORM, EARLY
     t1_id = constants._tier_name_to_id.get("tier_1", -1)
     is_tier_1 = tid_arr == t1_id
     is_tier_23 = ~is_tier_1
@@ -598,7 +600,7 @@ def build_ann_factor_table(
         cum_mort_dr_cola, ann_factor) plus (surv_icr, ann_factor_acr)
         when CB is active for any class.
     """
-    from pension_model.plan_config import (
+    from pension_model.config_resolvers import (
         resolve_tiers_vec as _resolve_tiers_int, resolve_cola_vec, EARLY,
     )
 
@@ -691,7 +693,7 @@ def build_ann_factor_table(
 
     # --- 8. CB annuity factors (per class that has CB) ---
     if expected_icr_by_class:
-        cb_cfg = getattr(constants, "cash_balance", None)
+        cb_cfg = constants.cash_balance
         if cb_cfg is not None:
             acr = cb_cfg.get("annuity_conversion_rate", 0.04)
             surv_icr_col = np.full(len(df), np.nan, dtype=np.float64)
@@ -755,7 +757,7 @@ def build_benefit_table(
         DataFrame with db_benefit, ann_factor_term, pvfb_db_at_term_age, and
         optionally cb_benefit, pv_cb_benefit added. class_name is preserved.
     """
-    from pension_model.plan_config import (
+    from pension_model.config_resolvers import (
         resolve_ben_mult_vec, resolve_reduce_factor_vec,
     )
 
@@ -817,7 +819,7 @@ def build_benefit_table(
 
         # pv_cb_benefit: depends on vesting status
         cb_vesting = 5
-        cb_cfg = getattr(constants, "cash_balance", None)
+        cb_cfg = constants.cash_balance
         if cb_cfg is not None:
             cb_vesting = cb_cfg.get("vesting_yos", 5)
         is_vested = (df["yos"] >= cb_vesting).astype(float)
@@ -853,7 +855,6 @@ def build_final_benefit_table(benefit_table: pd.DataFrame,
     bt["term_age"] = bt["entry_age"] + bt["yos"]
 
     # Retirement eligibility from integer ret_status
-    from pension_model.plan_config import EARLY, NORM, VESTED
     if use_earliest_retire:
         bt["can_retire"] = bt["ret_status_at_da"] >= EARLY  # norm, early
     else:
@@ -1078,7 +1079,6 @@ def _resolve_sep_type_vec(ret_status: np.ndarray) -> np.ndarray:
 
     Returns string sep_type: "retire" | "vested" | "non_vested".
     """
-    from pension_model.plan_config import EARLY, VESTED
     ret_status = np.asarray(ret_status, dtype=np.int8)
     result = np.full(len(ret_status), "non_vested", dtype=object)
     result[ret_status == VESTED] = "vested"
@@ -1128,7 +1128,7 @@ def build_benefit_val_table(
 
     cb_vesting = 5
     if has_cb:
-        cb_cfg = getattr(constants, "cash_balance", None)
+        cb_cfg = constants.cash_balance
         if cb_cfg is not None:
             cb_vesting = cb_cfg.get("vesting_yos", 5)
 
