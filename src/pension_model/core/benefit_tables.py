@@ -986,46 +986,65 @@ def build_final_benefit_table(benefit_table: pd.DataFrame,
         bt = benefit_table.copy()
         bt["term_age"] = bt["entry_age"] + bt["yos"]
 
+    if len(bt) == 0:
+        out_cols = ["class_name", "entry_year", "entry_age", "term_age", "dist_age",
+                    "db_benefit", "pvfb_db_at_term_age", "ann_factor_term"]
+        for col in ["cb_benefit", "pv_cb_benefit", "cb_balance"]:
+            if col in bt.columns:
+                out_cols.append(col)
+        return bt[out_cols].copy()
+
     # Retirement eligibility from integer ret_status
     if use_earliest_retire:
         can_retire = bt["ret_status_at_da"].to_numpy(dtype=np.int8, copy=False) >= EARLY
     else:
         can_retire = bt["ret_status_at_da"].to_numpy(dtype=np.int8, copy=False) == NORM
 
-    # Determine distribution age per (class_name, entry_year, entry_age, term_age).
-    # R formula: retire_age = n() - sum(can_retire) + min(retire_age)
-    grp_keys = ["class_name", "entry_year", "entry_age", "term_age"]
-    dist_age_keys = bt.loc[:, grp_keys + ["dist_age", "ret_status_at_da"]].copy()
-    dist_age_keys["can_retire"] = can_retire
-    dist_age_df = (
-        dist_age_keys.groupby(grp_keys, sort=False, observed=True)
-        .agg(
-            count=("can_retire", "count"),
-            retire_count=("can_retire", "sum"),
-            min_dist_age=("dist_age", "min"),
-            term_ret_status=("ret_status_at_da", "first"),
-        )
-        .reset_index()
-    )
-    dist_age_df["earliest_retire_age"] = (
-        dist_age_df["count"] - dist_age_df["retire_count"] + dist_age_df["min_dist_age"]
-    )
+    # benefit_table rows stay contiguous by
+    # (class_name, entry_year, entry_age, term_age), and dist_age is
+    # monotone within each group. That lets us compute the target row by
+    # offset instead of building a grouped summary frame and re-indexing
+    # back into the full table.
+    class_col = bt["class_name"]
+    if hasattr(class_col, "cat"):
+        class_codes = class_col.cat.codes.to_numpy(dtype=np.int64, copy=False)
+    else:
+        class_codes, _ = pd.factorize(class_col, sort=False)
+        class_codes = class_codes.astype(np.int64, copy=False)
 
-    # For vested (not non_vested): use earliest_norm_retire_age
-    # For non_vested and retirees: use term_age
-    is_vested = dist_age_df["term_ret_status"] == VESTED
-    dist_age_df["dist_age"] = np.where(
-        is_vested, dist_age_df["earliest_retire_age"], dist_age_df["term_age"]
-    ).astype(int)
+    entry_year = bt["entry_year"].to_numpy(dtype=np.int64, copy=False)
+    entry_age = bt["entry_age"].to_numpy(dtype=np.int64, copy=False)
+    term_age = bt["term_age"].to_numpy(dtype=np.int64, copy=False)
+    dist_age = bt["dist_age"].to_numpy(dtype=np.int64, copy=False)
+    ret_status = bt["ret_status_at_da"].to_numpy(dtype=np.int8, copy=False)
 
-    # Select one benefit row per target distribution age while preserving
-    # the grouped order from the summary frame.
-    selection_index = pd.MultiIndex.from_frame(dist_age_df[grp_keys + ["dist_age"]])
-    fbt = (
-        bt.set_index(grp_keys + ["dist_age"], drop=False)
-        .loc[selection_index]
-        .reset_index(drop=True)
+    group_starts_mask = np.empty(len(bt), dtype=bool)
+    group_starts_mask[0] = True
+    group_starts_mask[1:] = (
+        (class_codes[1:] != class_codes[:-1])
+        | (entry_year[1:] != entry_year[:-1])
+        | (entry_age[1:] != entry_age[:-1])
+        | (term_age[1:] != term_age[:-1])
     )
+    group_starts = np.flatnonzero(group_starts_mask)
+    group_stops = np.append(group_starts[1:], len(bt))
+
+    group_count = group_stops - group_starts
+    min_dist_age = dist_age[group_starts]
+    retire_count = np.add.reduceat(can_retire.astype(np.int64, copy=False), group_starts)
+    earliest_retire_age = group_count - retire_count + min_dist_age
+
+    # For vested (not non_vested): use earliest normal retirement age.
+    # For non-vested and retirees: use term_age, which is also the first
+    # row in the contiguous group.
+    selected_dist_age = np.where(
+        ret_status[group_starts] == VESTED,
+        earliest_retire_age,
+        term_age[group_starts],
+    ).astype(np.int64)
+    selected_rows = group_starts + (selected_dist_age - min_dist_age)
+    fbt = bt.take(selected_rows).copy()
+    fbt["dist_age"] = selected_dist_age
 
     # Replace NaN benefits with 0
     fbt["db_benefit"] = fbt["db_benefit"].fillna(0)

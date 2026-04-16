@@ -53,3 +53,22 @@ def test_plan_tables_keep_unique_merge_keys(prepared_plan_tables):
     assert aft_term.duplicated(
         ["class_name", "entry_year", "entry_age", "yos"]
     ).sum() == 0, f"{plan_name}: term-age annuity key must stay unique"
+
+
+def test_benefit_rows_stay_contiguous_and_ordered(prepared_plan_tables):
+    plan_name, plan_tables = prepared_plan_tables
+    benefit = plan_tables["benefit"]
+    grp_keys = ["class_name", "entry_year", "entry_age", "term_age"]
+
+    key_frame = benefit[grp_keys]
+    separated_duplicate_groups = key_frame.duplicated() & key_frame.ne(key_frame.shift()).any(axis=1)
+    assert not separated_duplicate_groups.any(), (
+        f"{plan_name}: benefit rows for one cohort must remain contiguous"
+    )
+
+    dist_age_monotone = benefit.groupby(
+        grp_keys, sort=False, observed=True
+    )["dist_age"].apply(lambda s: s.is_monotonic_increasing)
+    assert bool(dist_age_monotone.all()), (
+        f"{plan_name}: dist_age must stay monotone within each benefit cohort"
+    )
