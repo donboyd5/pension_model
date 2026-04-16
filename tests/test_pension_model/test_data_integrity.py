@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = [pytest.mark.data]
+
 DATA_DIR = Path(__file__).parent.parent.parent / "plans"
 
 # Groups of classes that should have identical decrement files.

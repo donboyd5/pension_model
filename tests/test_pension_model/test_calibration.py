@@ -12,6 +12,8 @@ from pathlib import Path
 import pytest
 import numpy as np
 
+pytestmark = [pytest.mark.regression, pytest.mark.plan_frs]
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 FRS_BASELINES = Path(__file__).parent.parent.parent / "plans" / "frs" / "baselines"

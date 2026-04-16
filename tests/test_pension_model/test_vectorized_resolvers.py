@@ -6,6 +6,8 @@ equivalent across a grid of inputs, for both FRS and TRS plans.
 import numpy as np
 import pytest
 
+pytestmark = [pytest.mark.unit]
+
 from pension_model.plan_config import (
     load_frs_config,
     load_txtrs_config,

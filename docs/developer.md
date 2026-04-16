@@ -476,6 +476,12 @@ pension-model run frs                    # runs model + tests automatically
 pension-model run frs --test-only        # tests only, no model run
 ```
 
+For the proposed long-run taxonomy, retention rules, and run-profile model,
+see [testing_strategy.md](testing_strategy.md). The current suite still mixes
+permanent invariants, reviewed-baseline regressions, and transitional
+R-reproduction tests; that document is the intended guide for rationalizing
+them over time.
+
 ### Test Suite Organization
 
 The test suite in `tests/test_pension_model/` is organized into three layers:

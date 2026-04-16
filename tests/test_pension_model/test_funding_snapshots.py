@@ -31,6 +31,8 @@ import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
+pytestmark = [pytest.mark.snapshot, pytest.mark.regression]
+
 # pyarrow powers parquet I/O for these snapshots; declared in pyproject.toml
 # under [project.optional-dependencies].dev. Skip cleanly with a clear message
 # rather than dying inside pandas with a cryptic ImportError.

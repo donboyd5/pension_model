@@ -6,6 +6,8 @@ a balancing MVA identity.
 
 import pytest
 
+pytestmark = [pytest.mark.invariant, pytest.mark.regression]
+
 from pension_model.truth_table import (
     TRUTH_TABLE_COLUMNS,
     build_python_truth_table,

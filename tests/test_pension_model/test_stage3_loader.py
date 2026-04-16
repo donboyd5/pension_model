@@ -37,6 +37,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+pytestmark = [
+    pytest.mark.regression,
+    pytest.mark.transitional,
+    pytest.mark.plan_frs,
+]
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 FRS_CLASSES = ["regular", "special", "admin", "eco", "eso",

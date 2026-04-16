@@ -101,4 +101,11 @@ markers = [
     "slow: marks tests as slow",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
+    "invariant: marks tests that verify plan-independent model identities or contracts",
+    "regression: marks reviewed-baseline or anti-drift regression tests",
+    "snapshot: marks exact snapshot tests used to guard refactors or reviewed outputs",
+    "data: marks data or fixture integrity tests",
+    "transitional: marks tests tied to the current R-reproduction or migration phase",
+    "plan_frs: marks tests primarily tied to the FRS reference plan",
+    "plan_txtrs: marks tests primarily tied to the TXTRS reference plan",
 ]

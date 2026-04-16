@@ -10,6 +10,12 @@ from pathlib import Path
 import pytest
 import pandas as pd
 
+pytestmark = [
+    pytest.mark.regression,
+    pytest.mark.transitional,
+    pytest.mark.plan_frs,
+]
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 

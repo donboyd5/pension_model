@@ -11,6 +11,12 @@ import pytest
 import numpy as np
 import pandas as pd
 
+pytestmark = [
+    pytest.mark.regression,
+    pytest.mark.transitional,
+    pytest.mark.plan_frs,
+]
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 FRS_BASELINES = Path(__file__).parent.parent.parent / "plans" / "frs" / "baselines"

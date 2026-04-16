@@ -419,11 +419,46 @@ def cmd_calibrate(args):
 # Tests
 # ---------------------------------------------------------------------------
 
-def run_tests():
-    """Run all baseline validation and unit tests via pytest."""
+DEFAULT_CORE_TEST_FILES = [
+    "tests/test_pension_model/test_plan_config.py",
+    "tests/test_pension_model/test_vectorized_resolvers.py",
+    "tests/test_pension_model/test_data_integrity.py",
+]
+
+PLAN_TEST_FILES = {
+    "frs": [
+        "tests/test_pension_model/test_consistency.py",
+        "tests/test_pension_model/test_calibration.py",
+        "tests/test_pension_model/test_funding_baseline.py",
+        "tests/test_pension_model/test_benefit_tables.py",
+        "tests/test_pension_model/test_stage3_loader.py",
+        "tests/test_pension_model/test_truth_table.py",
+        "tests/test_pension_model/test_rundown.py",
+    ],
+    "txtrs": [
+        "tests/test_pension_model/test_truth_table.py",
+        "tests/test_pension_model/test_multi_class_gainloss.py",
+    ],
+}
+
+
+def run_tests(plan_name: str | None = None):
+    """Run a shared-core plus plan-specific pytest subset.
+
+    When ``plan_name`` is provided, the CLI does not run the full repository
+    suite by default. It runs a smaller shared-core slice plus the tests most
+    closely tied to that plan. This keeps post-run validation aligned with the
+    plan the user actually ran while leaving the full suite available via
+    direct pytest invocation or future CI/full-profile commands.
+    """
     import subprocess
+    test_targets = list(DEFAULT_CORE_TEST_FILES)
+    if plan_name is None:
+        test_targets = ["tests/test_pension_model/"]
+    else:
+        test_targets.extend(PLAN_TEST_FILES.get(plan_name, []))
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", "tests/test_pension_model/", "-v", "--tb=short"],
+        [sys.executable, "-m", "pytest", *test_targets, "-v", "--tb=short"],
     )
     return result.returncode == 0
 
@@ -437,8 +472,8 @@ def cmd_run(args):
     from pension_model.config_loading import discover_plans, load_plan_config
 
     if args.test_only:
-        print(f"Running tests...")
-        ok = run_tests()
+        print(f"Running tests for plan '{args.plan}'...")
+        ok = run_tests(args.plan)
         sys.exit(0 if ok else 1)
 
     plans = discover_plans()
@@ -459,8 +494,8 @@ def cmd_run(args):
     _run_plan(constants, args)
 
     if not args.no_test:
-        print("\nRunning tests...")
-        tests_ok = run_tests()
+        print(f"\nRunning tests for plan '{args.plan}'...")
+        tests_ok = run_tests(args.plan)
         sys.exit(0 if tests_ok else 1)
 
 

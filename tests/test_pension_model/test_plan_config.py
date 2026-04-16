@@ -7,6 +7,8 @@ and that all derived properties match expected values.
 
 import pytest
 
+pytestmark = [pytest.mark.unit]
+
 from pension_model.plan_config import load_frs_config
 
 

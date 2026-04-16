@@ -21,6 +21,8 @@ import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
 
+pytestmark = [pytest.mark.regression, pytest.mark.plan_txtrs]
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 
