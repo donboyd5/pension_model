@@ -32,6 +32,17 @@ def _get_design_ratios(constants: PlanConfig, class_name: str):
     return constants.get_design_ratios(class_name), list(constants.benefit_types)
 
 
+def _filter_lookup_to_runtime(lookup: pd.DataFrame, wf: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    """Trim a prepared lookup to the runtime year slices actually used."""
+    if lookup.empty or wf.empty:
+        return lookup
+
+    mask = np.ones(len(lookup), dtype=bool)
+    for col in columns:
+        mask &= lookup[col].between(wf[col].min(), wf[col].max()).to_numpy()
+    return lookup.loc[mask]
+
+
 def _allocate_term(wf, pop_col, design_ratios, benefit_types, new_year, design_cutoff_year=2018):
     """Allocate term/refund/retire workforce to benefit type buckets."""
     ey = wf["entry_year"]
@@ -45,7 +56,7 @@ def _allocate_term(wf, pop_col, design_ratios, benefit_types, new_year, design_c
     return wf
 
 
-def compute_active_liability(wf_active: pd.DataFrame, benefit_val: pd.DataFrame,
+def compute_active_liability(wf_active: pd.DataFrame, active_benefit_lookup: pd.DataFrame,
                              class_name: str, constants) -> pd.DataFrame:
     """Compute active member liability by year."""
     r = constants.ranges
@@ -59,14 +70,8 @@ def compute_active_liability(wf_active: pd.DataFrame, benefit_val: pd.DataFrame,
     wf["entry_year"] = wf["year"] - (wf["age"] - wf["entry_age"])
     wf["yos"] = wf["age"] - wf["entry_age"]
 
-    bvt_cols = ["entry_year", "entry_age", "yos", "salary"]
-    for bt in benefit_types:
-        cols = _get_bt_columns(bt)
-        for c in cols.values():
-            if c is not None and c in benefit_val.columns and c not in bvt_cols:
-                bvt_cols.append(c)
     wf = wf.merge(
-        benefit_val[bvt_cols].drop_duplicates(subset=["entry_year", "entry_age", "yos"]),
+        active_benefit_lookup,
         on=["entry_year", "entry_age", "yos"],
         how="left",
     )
@@ -124,8 +129,8 @@ def compute_active_liability(wf_active: pd.DataFrame, benefit_val: pd.DataFrame,
     return result
 
 
-def compute_term_liability(wf_term: pd.DataFrame, benefit_val: pd.DataFrame,
-                           term_discount_lookup: pd.DataFrame, class_name: str,
+def compute_term_liability(wf_term: pd.DataFrame, term_liability_lookup: pd.DataFrame,
+                           class_name: str,
                            constants: PlanConfig) -> pd.DataFrame:
     """Compute projected terminated vested liability by year."""
     r = constants.ranges
@@ -134,15 +139,17 @@ def compute_term_liability(wf_term: pd.DataFrame, benefit_val: pd.DataFrame,
 
     wf = wf_term[(wf_term["year"] <= r.start_year + r.model_period) & (wf_term["n_term"] > 0)].copy()
     wf["entry_year"] = wf["year"] - (wf["age"] - wf["entry_age"])
+    term_liability_lookup = _filter_lookup_to_runtime(
+        term_liability_lookup,
+        wf,
+        ["year", "term_year"],
+    )
 
-    bvt_key = benefit_val[["entry_year", "entry_age", "yos", "pvfb_db_at_term_age"]].copy()
-    bvt_key["term_year"] = bvt_key["entry_year"] + bvt_key["yos"]
-    bvt_key = bvt_key.drop_duplicates(subset=["entry_age", "entry_year", "term_year"])
-    wf = wf.merge(bvt_key[["entry_age", "entry_year", "term_year", "pvfb_db_at_term_age"]],
-                  on=["entry_age", "entry_year", "term_year"], how="left")
-
-    wf = wf.merge(term_discount_lookup, left_on=["entry_age", "entry_year", "age", "year", "term_year"],
-                  right_on=["entry_age", "entry_year", "dist_age", "dist_year", "term_year"], how="left")
+    wf = wf.merge(
+        term_liability_lookup,
+        on=["entry_age", "entry_year", "age", "year", "term_year"],
+        how="left",
+    )
 
     wf["pvfb_db_term"] = wf["pvfb_db_at_term_age"] / wf["cum_mort_dr"]
     wf = _allocate_term(wf, "n_term", design_ratios, benefit_types, r.new_year, design_cutoff)
@@ -171,10 +178,18 @@ def compute_refund_liability(wf_refund: pd.DataFrame, refund_lookup: pd.DataFram
 
     wf = wf_refund[(wf_refund["year"] <= r.start_year + r.model_period) & (wf_refund["n_refund"] > 0)].copy()
     wf["entry_year"] = wf["year"] - (wf["age"] - wf["entry_age"])
+    refund_lookup = _filter_lookup_to_runtime(
+        refund_lookup,
+        wf,
+        ["year", "term_year"],
+    )
 
     has_cb_bal = "cb_balance" in refund_lookup.columns
-    wf = wf.merge(refund_lookup, left_on=["entry_age", "entry_year", "age", "year", "term_year"],
-                  right_on=["entry_age", "entry_year", "dist_age", "dist_year", "term_year"], how="left")
+    wf = wf.merge(
+        refund_lookup,
+        on=["entry_age", "entry_year", "age", "year", "term_year"],
+        how="left",
+    )
 
     wf = _allocate_term(wf, "n_refund", design_ratios, benefit_types, r.new_year, design_cutoff)
     sum_cols = []
@@ -204,14 +219,29 @@ def compute_retire_liability(wf_retire: pd.DataFrame, retire_benefit_lookup: pd.
 
     wf = wf_retire[wf_retire["year"] <= r.start_year + r.model_period].copy()
     wf["entry_year"] = wf["year"] - (wf["age"] - wf["entry_age"])
+    retire_benefit_lookup = _filter_lookup_to_runtime(
+        retire_benefit_lookup,
+        wf,
+        ["retire_year", "term_year"],
+    )
+    retire_annuity_lookup = _filter_lookup_to_runtime(
+        retire_annuity_lookup,
+        wf,
+        ["year", "term_year"],
+    )
 
     has_cb_ben = "cb_benefit" in retire_benefit_lookup.columns
-    wf = wf.merge(retire_benefit_lookup, left_on=["entry_age", "entry_year", "retire_year", "term_year"],
-                  right_on=["entry_age", "entry_year", "dist_year", "term_year"], how="left")
+    wf = wf.merge(
+        retire_benefit_lookup,
+        on=["entry_age", "entry_year", "retire_year", "term_year"],
+        how="left",
+    )
 
-    wf = wf.merge(retire_annuity_lookup, left_on=["entry_age", "entry_year", "year", "term_year"],
-                  right_on=["entry_age", "entry_year", "dist_year", "term_year"],
-                  how="left", suffixes=("", "_af"))
+    wf = wf.merge(
+        retire_annuity_lookup,
+        on=["entry_age", "entry_year", "year", "term_year"],
+        how="left",
+    )
 
     wf["db_benefit_final"] = wf["db_benefit"] * (1 + wf["cola"]) ** (wf["year"] - wf["retire_year"])
     wf["pvfb_db_retire"] = wf["db_benefit_final"] * (wf["ann_factor"] - 1)

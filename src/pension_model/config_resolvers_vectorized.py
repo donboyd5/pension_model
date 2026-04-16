@@ -28,6 +28,88 @@ if TYPE_CHECKING:
     from pension_model.config_schema import PlanConfig
 
 
+def _encode_class_name_values(class_name) -> Tuple[np.ndarray, np.ndarray]:
+    """Return integer class codes plus object labels for grouping work.
+
+    `class_name` often arrives as a pandas Categorical when called from the
+    stacked benefit-table pipeline. Preserving those integer codes avoids
+    materializing a large object array just to group by class.
+    """
+    if hasattr(class_name, "cat"):
+        cat = class_name.cat
+        return (
+            np.asarray(cat.codes, dtype=np.int64),
+            np.asarray(cat.categories.astype(object), dtype=object),
+        )
+    if hasattr(class_name, "codes") and hasattr(class_name, "categories"):
+        return (
+            np.asarray(class_name.codes, dtype=np.int64),
+            np.asarray(class_name.categories.astype(object), dtype=object),
+        )
+
+    labels, codes = np.unique(np.asarray(class_name, dtype=object), return_inverse=True)
+    return codes.astype(np.int64, copy=False), labels.astype(object, copy=False)
+
+
+def _encode_class_group_values(
+    config: "PlanConfig",
+    class_name,
+) -> Tuple[np.ndarray, Tuple[str, ...]]:
+    """Return per-row group codes plus the corresponding group labels.
+
+    The benefit-table pipeline frequently passes millions of rows with only a
+    handful of distinct membership classes. Mapping classes to groups once per
+    unique class avoids repeated dictionary lookups on the full row set.
+    """
+    class_codes, class_labels = _encode_class_name_values(class_name)
+    group_labels = tuple(
+        dict.fromkeys(config._class_to_group.get(class_value, "default") for class_value in class_labels)
+    )
+    group_to_code = {group_label: i for i, group_label in enumerate(group_labels)}
+    class_group_codes = np.array(
+        [group_to_code[config._class_to_group.get(class_value, "default")] for class_value in class_labels],
+        dtype=np.int16,
+    )
+    return class_group_codes[class_codes], group_labels
+
+
+def _iter_class_tier_groups(
+    class_name,
+    tier_id: np.ndarray,
+    n_tiers: int,
+    mask: Optional[np.ndarray] = None,
+):
+    """Yield `(class_name, tier_id, row_indices)` groups without pandas."""
+    class_codes, class_labels = _encode_class_name_values(class_name)
+    tier_id = np.asarray(tier_id, dtype=np.int32)
+
+    if mask is None:
+        row_index = np.arange(len(tier_id), dtype=np.int64)
+        class_codes = class_codes
+        tier_subset = tier_id
+    else:
+        row_index = np.flatnonzero(mask)
+        class_codes = class_codes[row_index]
+        tier_subset = tier_id[row_index]
+
+    if len(row_index) == 0:
+        return
+
+    pair_codes = class_codes.astype(np.int64) * n_tiers + tier_subset.astype(np.int64)
+    order = np.argsort(pair_codes, kind="mergesort")
+    sorted_pair_codes = pair_codes[order]
+    group_starts = np.flatnonzero(
+        np.r_[True, sorted_pair_codes[1:] != sorted_pair_codes[:-1]]
+    )
+    group_stops = np.append(group_starts[1:], len(order))
+
+    for start, stop in zip(group_starts, group_stops):
+        idx_arr = row_index[order[start:stop]]
+        pair_code = int(sorted_pair_codes[start])
+        class_code = pair_code // n_tiers
+        yield class_labels[class_code], pair_code % n_tiers, idx_arr
+
+
 def resolve_tiers_vec(
     config: PlanConfig,
     class_name: np.ndarray,
@@ -46,7 +128,11 @@ def resolve_tiers_vec(
         effective_entry_age = np.asarray(entry_age, dtype=np.int64)
         effective_entry_age = np.where(effective_entry_age > 0, effective_entry_age, age - yos)
 
-    group = np.array([config._class_to_group.get(cn, "default") for cn in class_name], dtype=object)
+    group_codes, group_labels = _encode_class_group_values(config, class_name)
+    eligibility_by_tier_group = tuple(
+        tuple(_get_eligibility(tier_def, group_label, config.tier_defs) for group_label in group_labels)
+        for tier_def in config.tier_defs
+    )
 
     gf_tier_def = next(
         (td for td in config.tier_defs if td.get("assignment") == "grandfathered_rule"),
@@ -75,11 +161,13 @@ def resolve_tiers_vec(
 
     ret_status = np.full(len(entry_year), NON_VESTED, dtype=np.int8)
     for tier_index, tier_def in enumerate(config.tier_defs):
-        for grp in set(group.tolist()):
-            combo_mask = (tier_id == tier_index) & (group == grp)
+        tier_mask = tier_id == tier_index
+        if not tier_mask.any():
+            continue
+        for group_code, eligibility in enumerate(eligibility_by_tier_group[tier_index]):
+            combo_mask = tier_mask & (group_codes == group_code)
             if not combo_mask.any():
                 continue
-            eligibility = _get_eligibility(tier_def, grp, config.tier_defs)
             if not eligibility:
                 continue
 
@@ -159,8 +247,6 @@ def resolve_ben_mult_vec(
     yos: np.ndarray,
     dist_year: np.ndarray,
 ) -> np.ndarray:
-    import pandas as pd
-
     tier_id = np.asarray(tier_id, dtype=np.int32)
     ret_status = np.asarray(ret_status, dtype=np.int8)
     dist_age = np.asarray(dist_age, dtype=np.int64)
@@ -168,16 +254,10 @@ def resolve_ben_mult_vec(
     dist_year = np.asarray(dist_year, dtype=np.int64)
 
     result = np.full(len(tier_id), np.nan, dtype=np.float64)
-    keys = pd.Series(
-        list(
-            zip(
-                class_name.tolist() if hasattr(class_name, "tolist") else list(class_name),
-                tier_id.tolist(),
-            )
-        )
-    )
-    for (class_name_value, tier_index), idx in keys.groupby(keys).groups.items():
-        idx_arr = np.asarray(idx, dtype=np.int64)
+    n_tiers = len(config.tier_defs)
+    for class_name_value, tier_index, idx_arr in _iter_class_tier_groups(
+        class_name, tier_id, n_tiers
+    ):
         class_rules = config.benefit_mult_defs.get(class_name_value)
         if class_rules is None:
             continue
@@ -225,8 +305,6 @@ def resolve_reduce_factor_vec(
     yos: np.ndarray,
     entry_year: np.ndarray,
 ) -> np.ndarray:
-    import pandas as pd
-
     tier_id = np.asarray(tier_id, dtype=np.int32)
     ret_status = np.asarray(ret_status, dtype=np.int8)
     dist_age = np.asarray(dist_age, dtype=np.int64)
@@ -239,9 +317,10 @@ def resolve_reduce_factor_vec(
     if not needs_reduction.any():
         return result
 
-    keys = pd.Series(list(zip(class_name.tolist(), tier_id.tolist())))[needs_reduction]
-    for (class_name_value, tier_index), idx in keys.groupby(keys).groups.items():
-        idx_arr = np.asarray(idx, dtype=np.int64)
+    n_tiers = len(config.tier_defs)
+    for class_name_value, tier_index, idx_arr in _iter_class_tier_groups(
+        class_name, tier_id, n_tiers, mask=needs_reduction
+    ):
         tier_def = config.tier_defs[tier_index]
         if tier_def is None:
             continue

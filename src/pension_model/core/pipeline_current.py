@@ -96,31 +96,37 @@ def compute_current_retiree_liability(
     init["n_retire_current"] = init["n_retire_ratio"] * retiree_pop
     init["total_ben_current"] = init["total_ben_ratio"] * ben_payment_current
     init["avg_ben_current"] = init["total_ben_current"] / init["n_retire_current"]
-    init["year"] = ranges.start_year
+    init_by_age = init.set_index("age")[["n_retire_current", "avg_ben_current"]]
 
     ann_factor_retire = ann_factor_retire[
         ann_factor_retire["year"] <= ranges.start_year + ranges.model_period
-    ].copy()
-    merged = ann_factor_retire.merge(
-        init[["age", "year", "n_retire_current", "avg_ben_current", "total_ben_current"]],
-        on=["age", "year"],
-        how="left",
-    )
+    ]
 
-    results = []
-    for _, group in merged.groupby("base_age"):
+    projected_groups = []
+    for base_age, group in ann_factor_retire.groupby("base_age"):
+        if base_age not in init_by_age.index:
+            continue
+
         g = group.sort_values("year").copy()
-        n = _recur_grow(g["n_retire_current"].values.copy(), -g["mort_final"].values)
-        avg = _recur_grow2(g["avg_ben_current"].values.copy(), g["cola"].values)
+        init_row = init_by_age.loc[base_age]
+        n = _recur_grow(
+            np.full(len(g), float(init_row["n_retire_current"])),
+            -g["mort_final"].to_numpy(copy=False),
+        )
+        avg = _recur_grow2(
+            np.full(len(g), float(init_row["avg_ben_current"])),
+            g["cola"].to_numpy(copy=False),
+        )
 
         g["n_retire_current"] = n
         g["avg_ben_current"] = avg
         g["total_ben_current"] = n * avg
-        g["pvfb_retire_current"] = avg * (g["ann_factor_retire"].values - 1)
-        g = g[g["n_retire_current"].notna()]
-        results.append(g)
+        g["pvfb_retire_current"] = avg * (g["ann_factor_retire"].to_numpy(copy=False) - 1)
+        projected_groups.append(
+            g[["year", "n_retire_current", "total_ben_current", "pvfb_retire_current"]]
+        )
 
-    projected = pd.concat(results, ignore_index=True)
+    projected = pd.concat(projected_groups, ignore_index=True)
 
     return projected.groupby("year").agg(
         retire_ben_current_est=("total_ben_current", "sum"),

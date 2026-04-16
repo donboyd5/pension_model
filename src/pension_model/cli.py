@@ -535,13 +535,38 @@ def cmd_list(args):
 def cmd_benchmark(args):
     """Profile runtime stages for one or more plans."""
     from pension_model.config_loading import discover_plans, load_plan_config
-    from pension_model.core.profiling import profile_plan_runtime
+    from pension_model.core.profiling import (
+        build_runtime_baseline,
+        compare_runtime_baselines,
+        load_runtime_baseline,
+        profile_plan_runtime,
+        write_runtime_baseline,
+    )
+
+    def _format_delta(metric: dict, *, scale: float = 1.0, suffix: str = "") -> str:
+        current = metric["current"]
+        baseline = metric["baseline"]
+        delta = metric["delta"]
+        pct_delta = metric["pct_delta"]
+        if current is None or baseline is None or delta is None:
+            return "n/a"
+
+        current_scaled = current / scale
+        baseline_scaled = baseline / scale
+        delta_scaled = delta / scale
+        pct_text = "" if pct_delta is None else f", {pct_delta:+.1%}"
+        return (
+            f"{current_scaled:.2f}{suffix} vs {baseline_scaled:.2f}{suffix} "
+            f"({delta_scaled:+.2f}{suffix}{pct_text})"
+        )
 
     plans = discover_plans()
     requested = [args.plan] if args.plan else sorted(plans)
     if not requested:
         print("No plans found under plans/")
         sys.exit(1)
+
+    profiles_by_plan: dict[str, list] = {}
 
     for plan_name in requested:
         if plan_name not in plans:
@@ -557,12 +582,14 @@ def cmd_benchmark(args):
         )
 
         print(f"\n{plan_name}:")
+        profiles_by_plan[plan_name] = []
         for iteration in range(args.repeats):
             profile = profile_plan_runtime(
                 constants,
                 include_funding=args.include_funding,
                 research_mode=args.research_mode,
             )
+            profiles_by_plan[plan_name].append(profile)
             summary = profile.as_dict()
             timings = summary["stage_timings"]
             timing_parts = [
@@ -570,12 +597,49 @@ def cmd_benchmark(args):
                 f"build_plan_benefit_tables={timings['build_plan_benefit_tables']:.2f}s",
                 f"split_plan_tables={timings['split_plan_tables']:.2f}s",
                 f"liability={summary['liability_timing']:.2f}s",
+                f"prepare_peak={profile.prepare_peak_mib:.1f}MiB",
+                f"liability_peak={profile.liability_peak_mib:.1f}MiB",
             ]
             if summary["funding_timing"] is not None:
                 timing_parts.append(f"funding={summary['funding_timing']:.2f}s")
+            if profile.funding_peak_mib is not None:
+                timing_parts.append(f"funding_peak={profile.funding_peak_mib:.1f}MiB")
             if summary["retains_plan_tables"]:
                 timing_parts.append("research_mode=on")
             print(f"  run {iteration + 1}: " + ", ".join(timing_parts))
+
+    current_baseline = None
+    if args.baseline_out or args.compare_baseline:
+        current_baseline = build_runtime_baseline(profiles_by_plan)
+
+    if args.baseline_out:
+        output_path = write_runtime_baseline(args.baseline_out, current_baseline)
+        print(f"\nWrote runtime baseline to {output_path}")
+
+    if args.compare_baseline:
+        reference_baseline = load_runtime_baseline(args.compare_baseline)
+        comparison = compare_runtime_baselines(current_baseline, reference_baseline)
+        print("\nBaseline Comparison:")
+        for plan_name in requested:
+            plan_comparison = comparison["plans"].get(plan_name)
+            if plan_comparison is None:
+                print(f"  {plan_name}: no matching entry in baseline")
+                continue
+
+            timing_parts = [
+                "build_plan_benefit_tables="
+                + _format_delta(plan_comparison["stage_timings"]["build_plan_benefit_tables"], suffix="s"),
+                "liability="
+                + _format_delta(plan_comparison["liability_timing"], suffix="s"),
+                "prepare_peak="
+                + _format_delta(plan_comparison["prepare_peak_bytes"], scale=1024 * 1024, suffix="MiB"),
+            ]
+            if plan_comparison["funding_timing"]["current"] is not None:
+                timing_parts.append(
+                    "funding="
+                    + _format_delta(plan_comparison["funding_timing"], suffix="s")
+                )
+            print(f"  {plan_name}: " + ", ".join(timing_parts))
 
 
 def main():
@@ -614,6 +678,10 @@ def main():
                        help="Also profile the funding stage")
     bench.add_argument("--research-mode", action="store_true",
                        help="Retain full stacked plan tables for debug and research inspection")
+    bench.add_argument("--baseline-out", type=str, default=None,
+                       help="Write a JSON runtime baseline summarizing the benchmark runs")
+    bench.add_argument("--compare-baseline", type=str, default=None,
+                       help="Compare the current benchmark summary against a saved baseline JSON")
 
     args = parser.parse_args()
 

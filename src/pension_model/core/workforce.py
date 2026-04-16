@@ -15,7 +15,6 @@ R's flow each year:
 import numpy as np
 import pandas as pd
 
-
 def project_workforce(
     initial_active: pd.DataFrame,
     separation_rates: pd.DataFrame,
@@ -196,39 +195,56 @@ def project_workforce(
     term_stocks = {}
     retire_stocks = {}
 
-    # Helper: record nonzero entries from a 2D matrix
+    # Helper: accumulate nonzero entries from a 2D matrix as column arrays.
     ea_grid = np.array(entry_ages)  # [n_entry]
 
-    def _record_matrix(matrix, year_val, extra_cols=()):
-        """Extract nonzero cells from a 2D [n_entry, n_ages] matrix.
+    def _empty_record_store(value_col, extra_cols=()):
+        """Return a column-oriented store for one workforce output."""
+        cols = ["entry_age", "age", "year"]
+        cols.extend(extra_cols)
+        cols.append(value_col)
+        return {col: [] for col in cols}
 
-        Returns list of row tuples: (entry_age, age, year, *extra_cols, value).
-        """
+    def _append_matrix_records(store, matrix, year_val, value_col, extra_cols=()):
+        """Append nonzero cells from a 2D [n_entry, n_ages] matrix."""
         ei_idx, ai_idx = np.nonzero(matrix > 1e-10)
         if len(ei_idx) == 0:
-            return []
+            return
         vals = matrix[ei_idx, ai_idx]
-        eas = ea_grid[ei_idx]
-        cur_ages = ai_idx + min_age
+        eas = ea_grid[ei_idx].astype(np.int64, copy=False)
+        cur_ages = (ai_idx + min_age).astype(np.int64, copy=False)
         n = len(ei_idx)
         year_arr = np.full(n, year_val, dtype=np.int64)
-        cols = [eas, cur_ages, year_arr]
-        for ec in extra_cols:
-            if isinstance(ec, (int, np.integer)):
-                cols.append(np.full(n, ec, dtype=np.int64))
+        store["entry_age"].append(eas)
+        store["age"].append(cur_ages)
+        store["year"].append(year_arr)
+        for col_name, col_value in extra_cols:
+            if isinstance(col_value, (int, np.integer)):
+                store[col_name].append(np.full(n, col_value, dtype=np.int64))
             else:
-                cols.append(ec)
-        cols.append(vals)
-        return list(zip(*[c.tolist() if hasattr(c, 'tolist') else c for c in cols]))
+                store[col_name].append(np.asarray(col_value))
+        store[value_col].append(vals.astype(np.float64, copy=False))
+
+    def _records_to_frame(store):
+        """Build one workforce output DataFrame from accumulated arrays."""
+        columns = list(store)
+        first_col = columns[0]
+        if not store[first_col]:
+            return pd.DataFrame(columns=columns)
+        data = {
+            col: np.concatenate(chunks) if len(chunks) > 1 else chunks[0]
+            for col, chunks in store.items()
+        }
+        return pd.DataFrame(data)
 
     # Collect outputs
-    all_active = []
-    all_term = []
-    all_retire = []
-    all_refund = []
+    all_active = _empty_record_store("n_active")
+    all_term = _empty_record_store("n_term", extra_cols=("term_year",))
+    all_retire = _empty_record_store("n_retire", extra_cols=("term_year", "retire_year"))
+    all_refund = _empty_record_store("n_refund", extra_cols=("term_year",))
 
     # Record year 0
-    all_active.extend(_record_matrix(active, start_year))
+    _append_matrix_records(all_active, active, start_year, "n_active")
 
     # Main projection loop
     for t in range(1, n_years):
@@ -256,7 +272,7 @@ def project_workforce(
             active_after += new_entrants
 
         active = active_after
-        all_active.extend(_record_matrix(active, year))
+        _append_matrix_records(all_active, active, year, "n_active")
 
         # 4. Age existing term stocks with tier-aware mortality
         # For each term stock, batch-resolve tiers for nonzero cells to determine
@@ -302,7 +318,13 @@ def project_workforce(
         rp_slice = refund_prob_arr[:, :, t]
         refund_amounts = new_term_stocks[year] * rp_slice
         new_term_stocks[year] -= refund_amounts
-        all_refund.extend(_record_matrix(refund_amounts, year, extra_cols=(year,)))
+        _append_matrix_records(
+            all_refund,
+            refund_amounts,
+            year,
+            "n_refund",
+            extra_cols=(("term_year", year),),
+        )
 
         # 7. Remove retirees from ALL term stocks
         for ty in list(new_term_stocks.keys()):
@@ -355,16 +377,28 @@ def project_workforce(
 
         # Record term and retire stocks
         for ty, ts in new_term_stocks.items():
-            all_term.extend(_record_matrix(ts, year, extra_cols=(ty,)))
+            _append_matrix_records(
+                all_term,
+                ts,
+                year,
+                "n_term",
+                extra_cols=(("term_year", ty),),
+            )
 
         for (ty, ry), rs in retire_stocks.items():
-            all_retire.extend(_record_matrix(rs, year, extra_cols=(ty, ry)))
+            _append_matrix_records(
+                all_retire,
+                rs,
+                year,
+                "n_retire",
+                extra_cols=(("term_year", ty), ("retire_year", ry)),
+            )
 
         term_stocks = new_term_stocks
 
     return {
-        "wf_active": pd.DataFrame(all_active, columns=["entry_age", "age", "year", "n_active"]),
-        "wf_term": pd.DataFrame(all_term, columns=["entry_age", "age", "year", "term_year", "n_term"]),
-        "wf_retire": pd.DataFrame(all_retire, columns=["entry_age", "age", "year", "term_year", "retire_year", "n_retire"]),
-        "wf_refund": pd.DataFrame(all_refund, columns=["entry_age", "age", "year", "term_year", "n_refund"]),
+        "wf_active": _records_to_frame(all_active),
+        "wf_term": _records_to_frame(all_term),
+        "wf_retire": _records_to_frame(all_retire),
+        "wf_refund": _records_to_frame(all_refund),
     }
