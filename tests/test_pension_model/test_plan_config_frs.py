@@ -1,9 +1,4 @@
-"""
-Tests for PlanConfig loading and properties.
-
-Verifies that plan configs load correctly for both FRS and TRS,
-and that all derived properties match expected values.
-"""
+"""FRS-specific PlanConfig tests."""
 
 import pytest
 
@@ -16,10 +11,6 @@ from pension_model.plan_config import load_frs_config
 def frs_config():
     return load_frs_config()
 
-
-# ---------------------------------------------------------------------------
-# Test PlanConfig loads correctly
-# ---------------------------------------------------------------------------
 
 class TestPlanConfigLoad:
     def test_frs_loads(self, frs_config):
@@ -41,22 +32,9 @@ class TestPlanConfigLoad:
         acfr = frs_config.get_class_inputs("regular")
         assert abs(acfr["ben_payment"] - 8_391_759_183.37) < 1.0
         assert acfr["val_norm_cost"] == 0.0896
-        # Calibration should be applied
-        assert acfr["nc_cal"] != 1.0  # calibration loaded
-
-    def test_txtrs_loads(self):
-        from pension_model.plan_config import load_txtrs_config
-        config = load_txtrs_config()
-        assert config.plan_name == "txtrs"
-        assert len(config.classes) == 1
-        assert config.classes[0] == "all"
-        assert config.dr_current == 0.07
-        assert config.db_ee_cont_rate == 0.0825
-        assert config.cash_balance is not None
-        assert config.cash_balance["ee_pay_credit"] == 0.06
+        assert acfr["nc_cal"] != 1.0
 
     def test_frs_tier_lookups(self, frs_config):
-        """Tier lookup tables are populated correctly."""
         assert frs_config._tier_name_to_id == {"tier_1": 0, "tier_2": 1, "tier_3": 2}
         assert frs_config._tier_id_to_name == ("tier_1", "tier_2", "tier_3")
         assert frs_config._tier_id_to_fas_years == (5, 8, 8)

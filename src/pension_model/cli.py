@@ -432,26 +432,38 @@ def cmd_calibrate(args):
 # ---------------------------------------------------------------------------
 
 DEFAULT_CORE_TEST_FILES = [
-    "tests/test_pension_model/test_plan_config.py",
-    "tests/test_pension_model/test_vectorized_resolvers.py",
-    "tests/test_pension_model/test_data_integrity.py",
+    "tests/test_pension_model/test_cli_shared.py",
 ]
 
 PLAN_TEST_FILES = {
     "frs": [
+        "tests/test_pension_model/test_cli_frs.py",
+        "tests/test_pension_model/test_plan_config_frs.py",
+        "tests/test_pension_model/test_vectorized_resolvers_frs.py",
+        "tests/test_pension_model/test_data_integrity.py",
         "tests/test_pension_model/test_consistency.py",
         "tests/test_pension_model/test_calibration.py",
         "tests/test_pension_model/test_funding_baseline.py",
         "tests/test_pension_model/test_benefit_tables.py",
         "tests/test_pension_model/test_stage3_loader.py",
-        "tests/test_pension_model/test_truth_table.py",
+        "tests/test_pension_model/test_truth_table_frs.py",
         "tests/test_pension_model/test_rundown.py",
     ],
     "txtrs": [
-        "tests/test_pension_model/test_truth_table.py",
+        "tests/test_pension_model/test_cli_txtrs.py",
+        "tests/test_pension_model/test_plan_config_txtrs.py",
+        "tests/test_pension_model/test_vectorized_resolvers_txtrs.py",
+        "tests/test_pension_model/test_truth_table_txtrs.py",
         "tests/test_pension_model/test_multi_class_gainloss.py",
     ],
 }
+
+
+def _get_test_targets(plan_name: str | None = None) -> list[str]:
+    """Return the pytest targets for a full-suite or plan-scoped CLI run."""
+    if plan_name is None:
+        return ["tests/test_pension_model/"]
+    return [*DEFAULT_CORE_TEST_FILES, *PLAN_TEST_FILES.get(plan_name, [])]
 
 
 def run_tests(plan_name: str | None = None):
@@ -464,13 +476,8 @@ def run_tests(plan_name: str | None = None):
     direct pytest invocation or future CI/full-profile commands.
     """
     import subprocess
-    test_targets = list(DEFAULT_CORE_TEST_FILES)
-    if plan_name is None:
-        test_targets = ["tests/test_pension_model/"]
-    else:
-        test_targets.extend(PLAN_TEST_FILES.get(plan_name, []))
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", *test_targets, "-v", "--tb=short"],
+        [sys.executable, "-m", "pytest", *_get_test_targets(plan_name), "-v", "--tb=short"],
     )
     return result.returncode == 0
 
