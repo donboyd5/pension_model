@@ -33,3 +33,4 @@ Key shared knowledge artifacts:
 - [reports/first_year_cashflow_review_template.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/first_year_cashflow_review_template.md)
 - [reports/mortality_basis_review_template.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/mortality_basis_review_template.md)
 - [reports/new_plan_readiness_checklist.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/new_plan_readiness_checklist.md)
+- [reports/new_plan_readiness_status.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/new_plan_readiness_status.md)

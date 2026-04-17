@@ -28,6 +28,7 @@ Use:
 | `official_status` | `official_original`, `official_renamed_local_copy`, `official_derivative`, `external_reference`, or `unknown`. |
 | `selected_for` | Why this source was chosen, such as `matches_reviewed_baseline`, `latest_official_available`, `shared_reference`, `gap_fill`, `other`. |
 | `source_precedence_rank` | Default precedence rank within a plan or common source set. Lower means higher precedence. |
+| `source_role` | Functional role in prep, such as `authoritative_av`, `av_referenced_external`, `estimation_support`, `reconciliation_support`, `shared_external_reference`, `supplementary`, or `legacy_clue`. |
 | `source_unit_notes` | High-level note on source units if relevant, especially for monetary tables reported in thousands or millions. |
 | `origin_url` | Source URL when known. May be blank until provenance is complete. |
 | `original_filename` | Original filename when known, even if the local file has been renamed. |
@@ -57,6 +58,8 @@ than collapsing the concepts.
   record is incomplete.
 - Shared external references such as SOA mortality tables belong in the common
   registry, not in a single plan registry.
+- `source_precedence_rank` answers `which source is consulted first?`
+- `source_role` answers `what kind of source is this in the prep workflow?`
 - Page citations belong in artifact provenance, not the source registry. When
   artifact provenance cites pages, it should distinguish printed pages from
   PDF/electronic pages.
