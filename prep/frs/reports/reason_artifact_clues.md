@@ -274,6 +274,47 @@ not:
 1. official AV/ACFR tables
 2. direct one-step runtime mapping
 
+## Additional Narrowing From Retained `.rds` Workflow Files
+
+The retained FRS model folder also includes class-specific workflow files:
+
+- `regular_wf_data.rds`
+- `special_wf_data.rds`
+- `admin_wf_data.rds`
+- `judges_wf_data.rds`
+- `eso_wf_data.rds`
+- `eco_wf_data.rds`
+- `senior_management_wf_data.rds`
+
+These load as lists with four workforce-flow tables:
+
+- `wf_active_df`
+- `wf_term_df`
+- `wf_refund_df`
+- `wf_retire_df`
+
+Those tables carry counts by age/year/state transition, for example:
+
+- `n_active`
+- `n_term`
+- `n_refund`
+- `n_retire`
+
+But they do **not** carry:
+
+- current benefit amounts
+- class outflow constants
+- direct benefit-payment fields
+- retiree cash-flow fields
+
+Implication:
+
+- the retained `.rds` files are useful for workforce mechanics
+- they do not help explain the origin of the FRS class benefit-outflow
+  constants
+- so they further narrow the unresolved step to upstream spreadsheet/R prep
+  that is not represented in the retained workflow outputs
+
 ## Follow-Up
 
 - inspect whether a similar workbook rule exists for class benefit outflows
