@@ -92,6 +92,28 @@ The workbook then computes:
 - `n_retire_ratio`
 - `total_ben_ratio`
 
+## Relationship To The Current Runtime File
+
+A full workbook-to-runtime comparison shows that the current canonical
+`retiree_distribution.csv` is effectively a direct carry-through of the
+workbook output.
+
+Comparison result:
+
+- workbook rows = `76`
+- runtime rows = `76`
+- all ages match exactly
+- `count` matches exactly
+- `total_benefit` matches exactly
+- `avg_benefit` matches to floating-point precision, with maximum absolute
+  difference about `3.64e-12`
+
+So for practical prep purposes, the current runtime artifact can be treated as:
+
+1. valuation Appendix C grouped totals
+2. workbook smoothing to single ages
+3. direct export to canonical runtime CSV
+
 ## Current Working Interpretation
 
 The correct classification is now:
@@ -114,13 +136,13 @@ workbook literals as possibly unexplained.
   directly from valuation Appendix C tables
 - the workbook `Retiree Distribution` sheet is a substantive intermediate
   artifact, not a passive copy
+- the current canonical runtime file matches the workbook output essentially
+  exactly
 
 ## What Is Not Yet Resolved
 
 - why the smoothing starts at the specific single ages used in the workbook
 - whether the oldest-age flat-carry rules were deliberate and reviewed
-- whether the current runtime artifact matches the workbook exactly or reflects
-  later adjustments
 - whether this smoothing rule should remain a legacy reconstruction note or be
   generalized later into a documented prep method
 
@@ -137,4 +159,3 @@ how we should treat the smoothing step:
 
 - as a legacy reconstruction rule needed to reproduce current stage-3 exactly
 - or, later, as a deliberate documented estimation / canonicalization method
-

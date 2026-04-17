@@ -233,6 +233,51 @@ The workbook evidence sharpens that conclusion:
 - the unresolved part is now much narrower: where the class outflow constants
   themselves came from before being multiplied through that row-10 block
 
+## Additional ACFR Clue Mining
+
+The ACFR provides useful context on why the Special Risk family could need an
+upward adjustment, but it still does not publish a clean class-specific table
+that closes the remaining outflow gap.
+
+Useful but still incomplete source material:
+
+- `TOTAL DISABILITY BENEFITS BY SYSTEM/CLASS`
+  - printed p. `205`, PDF p. `207`
+  - this is the source already used for the disability slice in the mixed
+    composite
+- `TOTAL FRS ANNUAL BENEFITS BY TYPE OF RETIREMENT`
+  - printed p. `210`, PDF p. `212`
+  - this publishes plan-wide totals for:
+    - line-of-duty death
+    - not line-of-duty death
+    - line-of-duty disability
+    - not line-of-duty disability
+    - early
+    - normal
+- ACFR Note 1 plan provisions
+  - printed pp. `38` to `40`
+  - these describe the richer Special Risk benefit provisions, including:
+    - minimum line-of-duty disability Option 1 benefit of `65%` of average
+      final compensation for Special Risk members versus `42%` for other
+      classes
+    - line-of-duty death benefit of `100%` of salary for Special Risk members
+      versus `50%` for other classes
+
+What is still missing:
+
+- a class-specific published split of line-of-duty death benefits
+- a class-specific published split of line-of-duty disability benefits beyond
+  the broad disability totals already used
+- a published table that directly isolates the extra Special Risk-family payout
+  slices implied by those richer provisions
+
+Implication:
+
+- the ACFR strengthens the case that the remaining `special` and `admin`
+  residuals are policy-driven rather than arbitrary
+- but the ACFR still does not publish enough class-specific detail to
+  reconstruct the exact uplift embedded in the legacy class outflow constants
+
 ## What Is Not Yet Resolved
 
 The current class-level runtime values now reduce to one clean runtime rule, but
