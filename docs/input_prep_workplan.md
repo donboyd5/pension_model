@@ -214,6 +214,35 @@ Bias:
 - Keep shared logic out of plan-specific folders.
 - Keep runtime inputs behavior-preserving unless and until a separate approved change is made.
 
+## Shared Knowledge Capture
+
+Reverse-engineering work on FRS and TXTRS should be treated as an investment in
+the future prep system, not just as plan-specific archaeology.
+
+So as useful knowledge is discovered, it should be promoted out of plan-specific
+notes into shared artifacts under `prep/common/` and `docs/`.
+
+At minimum, the repo should preserve:
+
+- reusable source-faithful transform methods
+- reusable legacy-reconstruction patterns that reveal common prep risks
+- reusable estimation methods
+- reusable validation and reconciliation checks
+- provenance conventions
+- runtime build rules
+- cross-plan lessons learned
+
+Recommended shared homes:
+
+- `prep/common/methods/method_registry.md`
+- `prep/common/checks/consistency_check_catalog.md`
+- `prep/common/build/current_stage3_build_rules.md`
+- `prep/common/reports/cross_plan_lessons.md`
+
+Plan-specific evidence should still remain in `prep/{plan}/reports/`, but the
+generalizable method and design knowledge should be committed as shared repo
+artifacts so it can guide prep for new plans.
+
 ## Required Prep Layers
 
 The prep system should have five layers:

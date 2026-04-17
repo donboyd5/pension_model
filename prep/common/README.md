@@ -9,7 +9,10 @@ Use this area for:
 - reviewed shared reference tables derived from those sources
 - shared validation checks
 - shared estimation methods
+- shared source-faithful transform methods
+- shared legacy-reconstruction method notes when they reveal reusable patterns
 - shared build/export utilities
+- shared cross-plan lessons and prep design memos
 
 Recommended usage:
 
@@ -22,3 +25,8 @@ Recommended usage:
 - shared reports: `reports/`
 
 This area is upstream prep only. Runtime inputs still belong under `plans/{plan}/`.
+
+Key shared knowledge artifacts:
+
+- [methods/method_registry.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/methods/method_registry.md)
+- [reports/cross_plan_lessons.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/cross_plan_lessons.md)

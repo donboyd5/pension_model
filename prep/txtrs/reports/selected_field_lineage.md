@@ -49,8 +49,8 @@ Primary references:
 | `data/demographics/all_headcount.csv` | `derived` | Table 17 active-member count matrix | AV Table 17, printed p. `41`, PDF p. `48` | Convert the valuation matrix to canonical point-grid rows. Collapse single-year service columns `1`, `2`, `3`, and `4` into `yos = 2`; then map later service bands directly to `7`, `12`, `17`, `22`, `27`, `32`, and `37`. | Full PDF-to-runtime verification now succeeds exactly for all `59` runtime rows. The workbook is an exact intermediate representation, not a richer hidden source. |
 | `data/demographics/all_salary.csv` | `derived` | Table 17 average-compensation matrix | AV Table 17, printed p. `41`, PDF p. `48` | Convert the valuation matrix to canonical point-grid rows. For collapsed early-service cells, salary is a count-weighted average of the underlying Table 17 salary cells; later service-band salaries are taken directly. | Monetary values remain in dollars. Full PDF-to-runtime verification now succeeds exactly for all `59` runtime rows. |
 | `data/demographics/salary_growth.csv` | `derived` | Inflation plus service-related salary increase assumptions | AV Appendix 2, printed p. `63`, PDF p. `70` | Normalize source assumption structure into runtime CSV | Source is clear, but runtime table is a canonical expression. |
-| `data/demographics/entrant_profile.csv` | `derived` | AV Appendix 2 `NEW ENTRANT PROFILE` summary table | AV Appendix 2, printed p. `69`, PDF p. `76` | Convert published age-band counts and salaries into the runtime single-age canonical form, or identify a richer supporting source if needed | Source now exists in the PDF, but the current runtime artifact is more granular than the published summary table. |
-| `data/demographics/retiree_distribution.csv` | `derived` | Retiree counts and benefit amounts | AV Table 15b, printed p. `39`, PDF p. `46`; Table 20, printed p. `44`, PDF p. `51`; ACFR retiree totals as cross-check | Build canonical age distribution from summarized source data | Not obviously a direct one-table extraction target. |
+| `data/demographics/entrant_profile.csv` | `derived` | AV Appendix 2 `NEW ENTRANT PROFILE` summary table | AV Appendix 2, printed p. `69`, PDF p. `76` | Convert published age-band counts and salaries into the runtime single-age canonical form. Canonical counts use a boundary-merge rule: `20 = 15-19 + 20-24`, `25 = 20-24`, ..., `60 = 55-59`, `65 = 60-64 + 65-69`. Canonical salaries use the simple average of adjacent band-average salaries. Normalize canonical counts to `entrant_dist`. | Full PDF-to-runtime verification now succeeds exactly for all `10` runtime rows. The workbook is an exact intermediate representation, not a richer hidden source. |
+| `data/demographics/retiree_distribution.csv` | `derived` | Retiree counts and benefit amounts | AV Table 15b, printed p. `39`, PDF p. `46`; Table 20, printed p. `44`, PDF p. `51`; ACFR retiree totals as cross-check | Build canonical age distribution from summarized source data. The retained workbook uses explicit five-year spreading and smoothing formulas across grouped counts and grouped benefit totals. | Source totals exist, but the exact PDF-only build rule is not yet established. Current runtime still looks workbook-mediated rather than directly published. |
 | `data/decrements/retirement_rates.csv` | `derived` | Retirement assumptions with cohort-specific adjustments | AV Appendix 2 retirement assumptions, printed pp. `62-63`, PDF pp. `69-70` | Normalize source rates into `age,tier,retire_type,retire_rate` | Current runtime is simpler than the full source logic. |
 | `data/decrements/termination_rates.csv` | `derived` | Termination assumptions | AV Appendix 2 termination assumptions, printed p. `61`, PDF p. `68` | Convert source structure into lookup-based runtime schema | Exact build rule still needs confirmation. |
 | `data/decrements/reduction_gft.csv` | `derived` | Grandfathered early-retirement reduction table | AV Appendix 1 plan provisions | Convert printed reduction table to tidy `age,yos,reduce_factor,tier` rows | Closely aligned to source structure. |
@@ -64,7 +64,6 @@ Primary references:
 The next useful TXTRS lineage pass should pin down exact source-table references
 for:
 
-- whether any source document actually publishes entrant information in a usable form
 - the exact source and operational meaning of the 2021 TRS healthy-pensioner
   mortality tables
 - whether `Scale UMP 2021` is a direct runtime match to shared MP-2021 rates or
@@ -74,5 +73,6 @@ See also:
 
 - [valuation_input_scope.md](/home/donboyd5/Documents/python_projects/pension_model/prep/txtrs/reports/valuation_input_scope.md)
 - [entrant_profile_mapping.md](/home/donboyd5/Documents/python_projects/pension_model/prep/txtrs/reports/entrant_profile_mapping.md)
+- [retiree_distribution_mapping.md](/home/donboyd5/Documents/python_projects/pension_model/prep/txtrs/reports/retiree_distribution_mapping.md)
 - [active_grid_mapping.md](/home/donboyd5/Documents/python_projects/pension_model/prep/txtrs/reports/active_grid_mapping.md)
 - [page_crosswalk.md](/home/donboyd5/Documents/python_projects/pension_model/prep/txtrs/reports/page_crosswalk.md)

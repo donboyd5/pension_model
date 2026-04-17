@@ -67,37 +67,67 @@ Examples:
 - runtime start salaries do not match the published band-average salaries
   one-for-one
 
+## Exact Build Rule Now Verified
+
+The current runtime artifact can now be reproduced exactly from the valuation
+table.
+
+Verified against:
+
+- [plans/txtrs/data/demographics/entrant_profile.csv](/home/donboyd5/Documents/python_projects/pension_model/plans/txtrs/data/demographics/entrant_profile.csv)
+
+Exact rule:
+
+- canonical entry ages are:
+  - `20, 25, 30, 35, 40, 45, 50, 55, 60, 65`
+- count mapping:
+  - `20` uses `15-19 + 20-24`
+  - `25` uses `20-24`
+  - `30` uses `25-29`
+  - `35` uses `30-34`
+  - `40` uses `35-39`
+  - `45` uses `40-44`
+  - `50` uses `45-49`
+  - `55` uses `50-54`
+  - `60` uses `55-59`
+  - `65` uses `60-64 + 65-69`
+- start-salary mapping:
+  - each canonical age uses the simple average of the two adjacent valuation
+    band-average salaries
+  - examples:
+    - `20 -> average(15-19 salary, 20-24 salary)`
+    - `25 -> average(20-24 salary, 25-29 salary)`
+    - ...
+    - `65 -> average(60-64 salary, 65-69 salary)`
+- `entrant_dist` is each canonical count divided by the total canonical count
+
+Verification result:
+
+- runtime rows: `10`
+- missing rows: `0`
+- extra rows: `0`
+- start-salary mismatches: `0`
+- entrant-distribution mismatches: `0`
+
+This means the workbook `Entrant Profile` tab is not a richer hidden source.
+It is an exact intermediate representation of a transformation that can already
+be reconstructed from the valuation PDF alone.
+
 ## Current Working Interpretation
 
-The valuation does publish a usable entrant-profile source basis, but not in the
-same exact shape as the current runtime artifact.
+The correct classification is now:
 
-So the correct classification is:
-
-- source exists
+- source exists in the PDF
 - runtime artifact is `derived`
-
-Not:
-
-- fully missing from PDFs
+- exact reviewed build rule is known
 
 ## Implication For Prep
 
-For TXTRS, `entrant_profile.csv` should now be treated as a source-grounded
-build artifact.
+For TXTRS, `entrant_profile.csv` is now a clean source-grounded build artifact.
 
-That means the remaining task is not “find any source at all,” but:
+The prep path is:
 
-- identify the build rule from the valuation’s banded entrant profile to the
-  runtime’s single-age canonical form
-
-Possible build-rule candidates to evaluate later:
-
-- use band lower bounds
-- use band midpoints
-- spread band counts across ages within each band
-- use a richer valuation data table if another source section publishes one
-
-The right answer should be whatever exactly reproduces the current reviewed
-stage-3 artifact, or else reveals that the current artifact came from a richer
-legacy source than the PDF summary.
+- extract the valuation `NEW ENTRANT PROFILE` table
+- apply the reviewed boundary-merge and adjacent-band-average rule above
+- normalize counts to `entrant_dist`
+- validate exact equality to the canonical runtime file
