@@ -180,6 +180,40 @@ Recommended method statuses:
     specific review
   - for new plans, AV treatment should be preferred even if the legacy FRS path
     is never fully explained
+  - ACFR-backed proxying should be treated as estimation support, not as the
+    default source path, unless the AV explicitly points to that accounting
+    treatment or an equivalent external source
+
+### `av-first-source-hierarchy-v1`
+
+- Status: `confirmed`
+- Type: `source-faithful transform`
+- Purpose: Establish a default source hierarchy for new-plan prep so source use
+  is consistent and explicit.
+- Inputs:
+  - actuarial valuation
+  - any external tables or standards explicitly named by the valuation
+  - auxiliary documents such as ACFRs, GASB reports, plan guides, statutes, or
+    statistical reports
+- Outputs:
+  - classified source inventory with source roles
+  - explicit statement of what is source-direct, AV-referenced external, or
+    estimation-supporting
+- Core rule:
+  - treat the AV as the authoritative source document
+  - treat AV-referenced external materials as part of the authoritative source
+    set for the specific item they govern
+  - treat other documents as aids in estimation, reconciliation, or clue-mining
+    unless a plan-specific review justifies a different role
+- Validation:
+  - source registry records source role explicitly
+  - gap reports distinguish AV-direct gaps from estimation-supported fills
+  - provenance notes make departures from AV treatment explicit
+- Confirmed examples:
+  - FRS and TXTRS pilot guidance after reverse-engineering review
+- Notes:
+  - this is the default new-plan rule, not a claim that every legacy pilot path
+    follows it
 
 ### `eoc-payroll-subclass-allocation-v1`
 

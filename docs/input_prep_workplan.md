@@ -67,7 +67,7 @@ The following are treated as settled for planning purposes:
 - All canonical monetary outputs are stored in dollars. If a source reports values in thousands or millions, prep must scale them to dollars explicitly.
 - `discount rate` and `investment return assumption` are distinct concepts and must be documented precisely. They may have the same numeric value in a plan, but prep should not treat the terms as interchangeable.
 - New-plan prep should begin with a narrative analysis of the pension plan itself, based on the AV and other documents. See `New-Plan Narrative Analysis` below for the required scope and outputs.
-- New-plan prep must include a source sufficiency and gap report: what the AV and ACFR provide, what can be derived, and what remains missing.
+- New-plan prep must include a source sufficiency and gap report: what the AV provides directly, what the AV explicitly references externally, what can be derived from the AV, what other documents may support estimation, and what remains missing.
 - New-plan integration should proceed in multiple cuts. Start with a simpler, AV-faithful representation that can produce a usable canonical input set, then add plan-specific detail in later passes as source support and model value justify it.
 - Provenance must be tracked for all data. In general, document plus page and/or table is enough. Cell-level lineage is not the default.
 - Provenance page citations must distinguish `printed page` from `PDF/electronic page`. Printed page should be the primary human-facing citation when available, and PDF page should also be recorded when practical.
@@ -78,7 +78,7 @@ The following are treated as settled for planning purposes:
 - AV and ACFR PDFs alone may not be sufficient for all required inputs.
 - For FRS and TXTRS, source selection should prioritize the document vintages used by the reviewed R-model baselines, not necessarily the latest available reports.
 - For new plans, source selection should generally start with the latest available official documents unless there is a specific reason to use an older vintage.
-- Within a plan, the actuarial valuation should generally be treated as the authoritative source, but ACFRs and related accounting documents may help fill gaps when used carefully and explicitly.
+- Within a plan, the actuarial valuation should be treated as the authoritative source document for new-plan prep. Other documents, including the ACFR, should normally be treated as aids in estimation, reconciliation, or clue-mining unless the AV itself explicitly points to them or to an external reference source.
 - For new plans, prep should adhere to actuarial-valuation treatment as much as possible. If a prep rule departs from AV treatment, the departure should be explicit, justified, and documented as a modeling or estimation choice rather than treated as if it were source-direct.
 - Similar concepts reported in AVs and ACFRs may legitimately differ because of scope, terminology, accounting rules, actuarial rules, or measurement date differences.
 - The job of prep is to build consistent model input data from inconsistent and idiosyncratic source reporting.
@@ -105,6 +105,15 @@ Success for the pilot does not require a new runtime architecture. It requires:
 - a documented have-versus-need gap report
 - a reproducible path from sources to canonical stage-3 artifacts
 - validation that the built artifacts match the current canonical stage-3 data
+
+Success for a new plan is different. For a new plan, the first cut should:
+
+- produce a valid canonical input set in the form the runtime expects
+- stay as close to AV treatment as possible
+- identify what is directly sourced, what is derived, what is estimated, and
+  what is still missing
+- defer secondary detail until later cuts unless that detail is needed to make
+  the plan workable in the model
 
 Current pilot source set:
 
@@ -260,6 +269,35 @@ Recommended shared homes:
 - `prep/common/checks/consistency_check_catalog.md`
 - `prep/common/build/current_stage3_build_rules.md`
 - `prep/common/reports/cross_plan_lessons.md`
+- `prep/common/reports/new_plan_readiness_checklist.md`
+
+## New-Plan Readiness
+
+Before starting a genuinely new plan, the repo should have a minimal but
+operational prep package in place. The goal is not to eliminate every open
+question from FRS and TXTRS. The goal is to make sure a new plan begins with a
+controlled, AV-faithful workflow rather than with ad hoc exploration.
+
+The minimum readiness package should include:
+
+- a documented runtime input contract
+- a documented AV-first source hierarchy
+- a narrative-plan-analysis template
+- a source registry schema
+- an artifact-provenance schema
+- a source-sufficiency and gap-report pattern
+- a consistency-check catalog and plan-level check manifest
+- a first-year cash-flow review template
+- a mortality-basis review template
+- a method registry that distinguishes:
+  - approved source-faithful transforms
+  - documented estimation methods
+  - legacy-only reconstruction methods
+
+Readiness does not require every pilot mystery to be solved.
+
+It does require that unresolved pilot items be classified clearly enough that a
+new plan does not accidentally inherit them as default practice.
 
 Plan-specific evidence should still remain in `prep/{plan}/reports/`, but the
 generalizable method and design knowledge should be committed as shared repo

@@ -10,9 +10,9 @@ the patterns, risks, and useful techniques that are likely to recur.
 
 ## Main Lessons
 
-### 1. The AV is usually the primary source, but not the only useful source
+### 1. The AV should be treated as the source document for new plans
 
-Across both pilots, the actuarial valuation is usually the authoritative source
+Across both pilots, the actuarial valuation has been the most important source
 for:
 
 - actuarial assumptions
@@ -20,7 +20,16 @@ for:
 - plan provisions summarized for modeling
 - active-member demographic structure
 
-But the ACFR remains important for:
+For new plans, the operating rule should be:
+
+- the AV is the authoritative source document
+- external sources named in the AV, such as specific SOA mortality tables or
+  improvement scales, should be treated as part of the AV-backed source set
+- other documents, including the ACFR, should normally be treated as aids in
+  estimation, reconciliation, or clue-mining rather than as co-equal source
+  documents
+
+That does not make the ACFR unimportant. It remains useful for:
 
 - cash-flow categories
 - statistical tables
@@ -29,8 +38,10 @@ But the ACFR remains important for:
 
 So the right rule is:
 
-- use AV first for authoritative sourcing
-- use ACFR second for gap-filling, reconciliation, and legacy clue mining
+- use AV treatment by default
+- use AV-referenced external materials when needed
+- use ACFR second for gap-filling, reconciliation, estimation support, and
+  legacy clue mining
 
 ### 2. A lot of runtime inputs are `derived`, not directly published
 
