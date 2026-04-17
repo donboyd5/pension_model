@@ -30,3 +30,5 @@ Key shared knowledge artifacts:
 
 - [methods/method_registry.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/methods/method_registry.md)
 - [reports/cross_plan_lessons.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/cross_plan_lessons.md)
+- [reports/first_year_cashflow_review_template.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/first_year_cashflow_review_template.md)
+- [reports/mortality_basis_review_template.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/mortality_basis_review_template.md)
