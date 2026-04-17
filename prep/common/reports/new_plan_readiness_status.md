@@ -51,11 +51,15 @@ should be treated as fully ready.
 - Status: `ready`
 - Evidence:
   - [docs/narrative_plan_analysis_template.md](/home/donboyd5/Documents/python_projects/pension_model/docs/narrative_plan_analysis_template.md)
+  - [prep/common/reports/source_sufficiency_summary_template.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/source_sufficiency_summary_template.md)
+  - [prep/common/reports/artifact_coverage_matrix_template.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/artifact_coverage_matrix_template.md)
+  - [prep/common/reports/page_crosswalk_template.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/page_crosswalk_template.md)
   - [prep/common/reports/first_year_cashflow_review_template.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/first_year_cashflow_review_template.md)
   - [prep/common/reports/mortality_basis_review_template.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/mortality_basis_review_template.md)
   - [prep/common/reports/new_plan_readiness_checklist.md](/home/donboyd5/Documents/python_projects/pension_model/prep/common/reports/new_plan_readiness_checklist.md)
 - Notes:
-  - the minimum first-pass package for a new plan is now defined
+  - the minimum first-pass package for a new plan is now defined with shared
+    templates instead of only pilot-specific examples
 
 ### 4. Provenance and source-role scaffolding
 
