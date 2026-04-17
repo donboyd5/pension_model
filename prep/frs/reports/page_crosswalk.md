@@ -18,6 +18,8 @@ value FRS source references used in prep work.
 | Table 3-2 `Actuarial Liabilities by Membership Class` | `24` | `29` |
 | Table 4-3 `UAL Amortization Bases` | `31` | `36` |
 | Table 4-11 `Actuarially Calculated Employer Contribution Rates Prior to Blending with FRS Investment Plan` | `39` | `44` |
+| Table C-1 regular and early retirement by age | `C-2` | `94` |
+| Table C-2 disability retirement by age | `C-2` | `94` |
 | Table C-5 annuitant counts / annual benefits | `C-4` | `96` |
 | Table C-6 active-member summary | `C-5` | `97` |
 | Table C-8 Regular Class count/salary matrix | `C-6` | `98` |

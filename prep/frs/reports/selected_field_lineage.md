@@ -48,7 +48,7 @@ Primary references:
 | --- | --- | --- | --- | --- | --- |
 | `data/demographics/regular_headcount.csv` | `derived` | Regular Class age-by-service member counts | AV Table C-8, printed p. `C-6`, PDF p. `98` | Convert printed matrix to tidy `age,yos,count` rows | The first rows in the current file match the Regular Class printed matrix structure. |
 | `data/demographics/regular_salary.csv` | `derived` | Regular Class average salary by age and service | AV Table C-8, printed p. `C-6`, PDF p. `98` | Convert printed matrix to tidy `age,yos,salary` rows | Monetary values must remain in dollars. |
-| `data/demographics/retiree_distribution.csv` | `derived` | Annuitant counts and annual benefits | AV Tables C-5 and C-6, printed pp. `C-4` to `C-5`, PDF pp. `96` to `97`; ACFR annuitant and annual-benefit tables, printed pp. `204-211`, beginning at PDF p. `206` | Build age distribution from summarized retiree and DROP information | This is not obviously a direct one-table extraction target. |
+| `data/demographics/retiree_distribution.csv` | `derived` | Grouped retiree and disability counts / annual benefits by age | AV Tables C-1 and C-2, printed p. `C-2`, PDF p. `94` | Apply legacy workbook smoothing from grouped valuation age bands to single ages, then compute `avg_benefit` and ratios | The grouped inputs are now directly source-grounded. The remaining unresolved step is the smoothing rule, not the provenance of the grouped values. |
 | `data/decrements/regular_retirement_rates.csv` | `derived` | Tier I and Tier II retirement assumptions for Regular members | AV Appendix A retirement assumptions, printed pp. `A-5` to `A-12`, PDF pp. `54` to `61` | Normalize printed retirement tables into `age,tier,retire_type,retire_rate` rows | Current runtime collapses richer source distinctions into a simpler table. |
 | `data/decrements/regular_termination_rates.csv` | `derived` | Withdrawal assumptions for Regular members | AV Appendix A withdrawal tables, printed pp. `A-13` to `A-21`, PDF pp. `62` to `70` | Translate age/service source matrix into lookup-based runtime schema | Current runtime is not gender-specific, so some build step must reconcile source male/female tables. |
 | `data/funding/init_funding.csv` core fields: `year`, `total_payroll`, `total_aal`, `total_ava`, `total_mva`, `roa` | `derived` | AV funding exhibits and asset/liability sections, plus ACFR payroll support | AV Table 2-3, printed p. `17`, PDF p. `22`; Table 2-4, printed p. `18`, PDF p. `23`; Table 2-6, printed p. `20`, PDF p. `25`; Table 3-2, printed p. `24`, PDF p. `29`; Table 4-11, printed p. `39`, PDF p. `44`; ACFR `Annual FRS Payroll by System/Class`, printed p. `191`, PDF p. `193` | Normalize source figures into one wide canonical row per class-year | `total_aal` is tied to the valuation liability table by class; `total_payroll` for current config-aligned classes appears tied to the ACFR 2022 payroll column; AVA/MVA/ROA come from valuation funding exhibits. |
@@ -65,8 +65,11 @@ The next useful FRS lineage pass should pin down exact table references for:
 - AVA/MVA/ROA and class funding fields in `init_funding.csv`
 - the EOC-to-runtime split rule for `eco`, `eso`, and `judges`
 - the specific build rule from male/female withdrawal tables to the current non-gendered runtime termination files
+- whether the current retiree-distribution smoothing should remain a legacy
+  reconstruction note or become an explicit documented prep method
 
 See also:
 
 - [funding_mapping.md](/home/donboyd5/Documents/python_projects/pension_model/prep/frs/reports/funding_mapping.md)
 - [page_crosswalk.md](/home/donboyd5/Documents/python_projects/pension_model/prep/frs/reports/page_crosswalk.md)
+- [retiree_distribution_mapping.md](/home/donboyd5/Documents/python_projects/pension_model/prep/frs/reports/retiree_distribution_mapping.md)

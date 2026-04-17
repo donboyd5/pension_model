@@ -239,14 +239,48 @@ Examples of formula structure:
   - age 103 uses `=B59` and `=C59`
   - age 118 uses `=B74` and `=C74`
 
+The grouped literals in those formulas are now source-grounded, not free-
+floating workbook constants.
+
+Valuation source match:
+
+- [Florida FRS Valuation 2022.pdf](/home/donboyd5/Documents/python_projects/pension_model/prep/frs/sources/Florida%20FRS%20Valuation%202022.pdf)
+  - printed page `C-2`, PDF page `94`
+  - `Table C-1` `Annuitants at July 1, 2022 Regular and Early Retirement by Age`
+  - `Table C-2` `Disability Retirement by Age`
+
+Exact matches include:
+
+- `Under 50`
+  - regular/early: `1,964` and `$28,474` thousand
+  - disability: `424` and `$8,740` thousand
+- `50 to 54`
+  - regular/early: `3,903` and `$133,928` thousand
+  - disability: `805` and `$15,834` thousand
+- `55 to 59`
+  - regular/early: `15,381` and `$520,884` thousand
+  - disability: `1,663` and `$33,505` thousand
+- `60 to 64`
+  - regular/early: `46,187` and `$1,231,948` thousand
+  - disability: `2,471` and `$43,097` thousand
+- `80 & Up`
+  - regular/early: `87,072` and `$2,125,387` thousand
+  - disability: `1,033` and `$17,878` thousand
+
+This means the workbook step is better characterized as:
+
+- source-grounded grouped retirement and disability totals from the valuation
+- plus a legacy smoothing / spreading rule that converts grouped values into an
+  age-by-age runtime distribution
+
 Implication:
 
-- the workbook retiree distribution is a legacy constructed intermediate
+- the workbook retiree distribution is still a constructed intermediate
   artifact
-- it appears to smooth or spread grouped counts and grouped benefit totals over
-  multiple ages
-- this is not the same as a direct age-by-age source extraction from the AV or
-  ACFR
+- but the grouped counts and grouped benefit totals are now tied directly to
+  valuation Appendix C rather than being unexplained workbook-only literals
+- the remaining unresolved question is the smoothing rule itself, not the
+  provenance of the grouped inputs
 
 That makes retiree distribution another place where the Reason workflow likely
 inserted a substantive transformation step between official documents and the
@@ -315,6 +349,26 @@ Implication:
 - so they further narrow the unresolved step to upstream spreadsheet/R prep
   that is not represented in the retained workflow outputs
 
+The retained `Reports/extracted inputs/` folder points the same way. It
+contains extracted-input workbooks for:
+
+- normal retirement
+- early retirement
+- DROP entry
+- salary and headcount distributions
+- salary increase
+- withdrawal rates
+
+But it does not contain retained extract workbooks for:
+
+- class benefit payments
+- retiree cash flows
+- class outflow constants
+
+So the surviving FRS extracted-input artifacts are concentrated in demographics
+and decrements, not in the benefit-payment area where the remaining provenance
+gap sits.
+
 ## Follow-Up
 
 - inspect whether a similar workbook rule exists for class benefit outflows
@@ -328,6 +382,9 @@ Implication:
   revision, or later manual adjustment
 - check whether the workbook `Funding Input` sheet or another sheet documents
   the source of the outflow constants explicitly
+- decide whether the valuation-table-to-single-age smoothing rule should remain
+  a legacy reconstruction note or be promoted later to a documented shared prep
+  method if other plans present similar grouped retiree tables
 
 See also:
 
