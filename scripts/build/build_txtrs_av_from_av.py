@@ -9,6 +9,8 @@ Current scope:
   - demographics/salary_growth.csv
   - decrements/reduction_gft.csv
   - decrements/reduction_others.csv
+  - decrements/all_retirement_rates.csv
+  - decrements/all_termination_rates.csv
   - funding/init_funding.csv
 
 This script intentionally avoids using existing txtrs runtime files as inputs.
@@ -31,6 +33,8 @@ OUT_DIR = PROJECT_ROOT / "plans" / "txtrs-av" / "data"
 TABLE17_PDF_PAGE = 48
 TABLE2_PDF_PAGE = 24
 TABLE4_PDF_PAGE = 27
+TERMINATION_PDF_PAGE = 68
+RETIREMENT_PDF_PAGE = 69
 SALARY_GROWTH_PDF_PAGE = 70
 ENTRANT_PROFILE_PDF_PAGE = 76
 REDUCTION_PDF_PAGE = 54
@@ -295,6 +299,118 @@ def _parse_reduction_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
     return gft, others
 
 
+def _parse_termination_rates() -> pd.DataFrame:
+    text = _pdf_page_text(PDF_PATH, TERMINATION_PDF_PAGE)
+    lines = text.splitlines()
+    rows: list[dict] = []
+
+    yos_pairs: list[tuple[int, float]] = []
+    for line in lines:
+        match = re.match(r"^\s*(\d+)\s+([0-9]+\.[0-9]+)\s*$", line)
+        if match:
+            service_year, rate = match.groups()
+            yos_pairs.append((int(service_year), float(rate)))
+
+    if len(yos_pairs) != 10:
+        raise ValueError(f"Unexpected YOS termination rows: {yos_pairs}")
+
+    for service_year, rate in yos_pairs:
+        rows.append(
+            {
+                "lookup_type": "yos",
+                "age": pd.NA,
+                "lookup_value": service_year - 1,
+                "term_rate": rate,
+            }
+        )
+
+    rows.append(
+        {
+            "lookup_type": "years_from_nr",
+            "age": pd.NA,
+            "lookup_value": 0,
+            "term_rate": 0.0,
+        }
+    )
+
+    nr_matches = re.findall(r"(\d+)\s+([0-9]+\.[0-9]+)", text)
+    nr_pairs = [(int(k), float(v)) for k, v in nr_matches if int(k) <= 32]
+    nr_pairs = nr_pairs[-32:]
+    if len(nr_pairs) != 32 or nr_pairs[0][0] != 1 or nr_pairs[-1][0] != 32:
+        raise ValueError(f"Unexpected years-from-NR rows: {nr_pairs}")
+
+    for years_from_nr, rate in sorted(nr_pairs):
+        rows.append(
+            {
+                "lookup_type": "years_from_nr",
+                "age": pd.NA,
+                "lookup_value": years_from_nr,
+                "term_rate": rate,
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    order = pd.CategoricalDtype(["yos", "years_from_nr"], ordered=True)
+    out["lookup_type"] = out["lookup_type"].astype(order)
+    out = out.sort_values(["lookup_type", "lookup_value"]).reset_index(drop=True)
+    out["lookup_type"] = out["lookup_type"].astype(str)
+    return out
+
+
+def _parse_retirement_rates() -> pd.DataFrame:
+    text = _pdf_page_text(PDF_PATH, RETIREMENT_PDF_PAGE)
+    lines = text.splitlines()
+    normal_rates: dict[int, float] = {age: 0.0 for age in range(45, 121)}
+    early_rates: dict[int, float] = {age: 0.0 for age in range(45, 121)}
+
+    single_age_normal = re.compile(r"^\s*(5[0-9]|6[0-4])\s+([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)\s+(4[5-9]|5[0-9])\s+([0-9]+\.[0-9]+)\s*$")
+    band_with_early = re.compile(r"^\s*(65-69|70-74|75\+)\s+([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)\s+(6[0-2])\s+([0-9]+\.[0-9]+)\s*$")
+    early_only = re.compile(r"^\s*(6[0-4])\s+([0-9]+\.[0-9]+)\s*$")
+    continuation_early = re.compile(r"^\s+(6[3-4])\s+([0-9]+\.[0-9]+)\s*$")
+
+    for line in lines:
+        match = single_age_normal.match(line)
+        if match:
+            norm_age, male, female, early_age, early_rate = match.groups()
+            normal_rates[int(norm_age)] = (float(male) + float(female)) / 2.0
+            early_rates[int(early_age)] = float(early_rate)
+            continue
+
+        match = band_with_early.match(line)
+        if match:
+            band, male, female, early_age, early_rate = match.groups()
+            avg_rate = (float(male) + float(female)) / 2.0
+            if band == "65-69":
+                ages = range(65, 70)
+            elif band == "70-74":
+                ages = range(70, 75)
+            else:
+                ages = range(75, 121)
+                avg_rate = 1.0
+            for age in ages:
+                normal_rates[age] = avg_rate
+            early_rates[int(early_age)] = float(early_rate)
+            continue
+
+        match = early_only.match(line)
+        if match:
+            early_age, early_rate = match.groups()
+            early_rates[int(early_age)] = float(early_rate)
+            continue
+
+        match = continuation_early.match(line)
+        if match:
+            early_age, early_rate = match.groups()
+            early_rates[int(early_age)] = float(early_rate)
+
+    rows: list[dict] = []
+    for age in range(45, 121):
+        rows.append({"age": age, "tier": "all", "retire_type": "early", "retire_rate": early_rates[age]})
+    for age in range(45, 121):
+        rows.append({"age": age, "tier": "all", "retire_type": "normal", "retire_rate": normal_rates[age]})
+    return pd.DataFrame(rows)
+
+
 def _parse_init_funding() -> pd.DataFrame:
     table2_lines = _pdf_page_text(PDF_PATH, TABLE2_PDF_PAGE).splitlines()
     table4_lines = _pdf_page_text(PDF_PATH, TABLE4_PDF_PAGE).splitlines()
@@ -371,6 +487,8 @@ def main() -> None:
     entrant_profile = _parse_entrant_profile()
     salary_growth = _parse_salary_growth()
     reduction_gft, reduction_others = _parse_reduction_tables()
+    retirement_rates = _parse_retirement_rates()
+    termination_rates = _parse_termination_rates()
     init_funding = _parse_init_funding()
 
     _write_csv(headcount, OUT_DIR / "demographics" / "all_headcount.csv")
@@ -379,6 +497,8 @@ def main() -> None:
     _write_csv(salary_growth, OUT_DIR / "demographics" / "salary_growth.csv")
     _write_csv(reduction_gft, OUT_DIR / "decrements" / "reduction_gft.csv")
     _write_csv(reduction_others, OUT_DIR / "decrements" / "reduction_others.csv")
+    _write_csv(retirement_rates, OUT_DIR / "decrements" / "all_retirement_rates.csv")
+    _write_csv(termination_rates, OUT_DIR / "decrements" / "all_termination_rates.csv")
     _write_csv(init_funding, OUT_DIR / "funding" / "init_funding.csv")
 
 

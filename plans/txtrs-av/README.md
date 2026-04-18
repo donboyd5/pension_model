@@ -6,9 +6,10 @@ Current state:
 
 - first-cut `config/plan_config.json` committed
 - first-cut AV-built demographics and reduction tables committed
+- first-cut AV-built retirement and termination tables committed
 - first-cut AV-built `funding/init_funding.csv` committed
-- retiree distribution, retirement/termination tables, mortality files, and
-  `funding/return_scenarios.csv` still pending
+- retiree distribution, mortality files, and `funding/return_scenarios.csv`
+  still pending
 - prep work should build source-supported artifacts here in later passes
 
 Rules:
