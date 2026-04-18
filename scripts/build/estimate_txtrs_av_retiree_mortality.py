@@ -39,7 +39,13 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from pension_model.core.mortality_builder import _read_base_mort_table, _read_mp_table
+from pension_model.core.mortality_builder import (
+    _build_mp_final,
+    _read_base_mort_csv,
+    _read_base_mort_table,
+    _read_mp_csv,
+    _read_mp_table,
+)
 
 
 PUB_PATH = PROJECT_ROOT / "prep" / "common" / "sources" / "soa_pub2010_amount_mort_rates.xlsx"
@@ -66,6 +72,15 @@ OUT_PLOT_2021 = (
 OUT_PLOT_VALIDATION = (
     PROJECT_ROOT / "prep" / "txtrs-av" / "reference_tables" / "estimated_retiree_mortality_validation.svg"
 )
+OUT_PLOT_TXTRS_COMPARE = (
+    PROJECT_ROOT
+    / "prep"
+    / "txtrs-av"
+    / "reference_tables"
+    / "estimated_retiree_mortality_vs_txtrs_runtime.svg"
+)
+TXTRS_BASE_RATES = PROJECT_ROOT / "plans" / "txtrs" / "data" / "mortality" / "base_rates.csv"
+TXTRS_IMPROVEMENT = PROJECT_ROOT / "plans" / "txtrs" / "data" / "mortality" / "improvement_scale.csv"
 
 
 @dataclass(frozen=True)
@@ -257,6 +272,36 @@ def _build_validation(base_2021: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFra
     return detail, summary
 
 
+def _build_txtrs_runtime_curves(target_year: int) -> pd.DataFrame:
+    base = _read_base_mort_csv(TXTRS_BASE_RATES, "teacher_below_median")
+    male_mp = _read_mp_csv(TXTRS_IMPROVEMENT, "male", CFG.min_age)
+    female_mp = _read_mp_csv(TXTRS_IMPROVEMENT, "female", CFG.min_age)
+
+    male_shift = 2
+    year_cols = [c for c in male_mp.columns if c != "age"]
+    new_names = {c: str(int(c) - male_shift) for c in year_cols}
+    male_mp = male_mp.rename(columns=new_names)
+    last_year = max(int(c) for c in male_mp.columns if c != "age")
+    ultimate = male_mp[str(last_year)].values
+    for y in range(last_year + 1, last_year + 1 + male_shift):
+        male_mp[str(y)] = ultimate
+
+    male_final = _build_mp_final(
+        male_mp, "male", CFG.base_year, CFG.min_age, CFG.max_age, max(target_year, 2154)
+    )
+    female_final = _build_mp_final(
+        female_mp, "female", CFG.base_year, CFG.min_age, CFG.max_age, max(target_year, 2154)
+    )
+    male_factor = male_final[male_final["year"] == target_year][["age", "male_mp_cumprod_adj"]]
+    female_factor = female_final[female_final["year"] == target_year][["age", "female_mp_cumprod_adj"]]
+
+    out = base.merge(male_factor, on="age", how="left").merge(female_factor, on="age", how="left")
+    out = out[(out["age"] >= CFG.min_age) & (out["age"] <= CFG.max_age)].copy()
+    out["male_qx"] = out["healthy_retiree_male"] * out["male_mp_cumprod_adj"]
+    out["female_qx"] = out["healthy_retiree_female"] * out["female_mp_cumprod_adj"]
+    return out[["age", "male_qx", "female_qx"]].reset_index(drop=True)
+
+
 def _svg_line(points: list[tuple[float, float]], color: str, width: float = 2.0, dash: str | None = None) -> str:
     coords = " ".join(f"{x:.2f},{y:.2f}" for x, y in points)
     dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
@@ -307,7 +352,7 @@ def _plot_fit_2021(base_2021: pd.DataFrame) -> None:
 
     body = ['<text x="40" y="35" font-size="24" font-family="monospace">TXTRS-AV healthy retiree mortality fit, 2021</text>']
     body.append(
-        '<text x="40" y="58" font-size="14" font-family="monospace">Estimated 2021 curve vs projected PubT-2010(B) reference and published 2021 checkpoints. Y-axis is log10(qx).</text>'
+        '<text x="40" y="58" font-size="14" font-family="monospace">Solid teal = exploratory txtrs-av estimate. Dashed gray = projected PubT-2010(B) teacher healthy-retiree reference. Orange points = published 2021 TRS checkpoints. Y-axis is log10(qx).</text>'
     )
 
     for i, gender in enumerate(("male", "female")):
@@ -349,11 +394,11 @@ def _plot_fit_2021(base_2021: pd.DataFrame) -> None:
     legend_x = 80
     legend_y = 630
     body.append(_svg_line([(legend_x, legend_y), (legend_x + 35, legend_y)], "#005f73", width=2.5))
-    body.append('<text x="125" y="634" font-size="13" font-family="monospace">estimated 2021 healthy-retiree curve</text>')
-    body.append(_svg_line([(legend_x + 340, legend_y), (legend_x + 375, legend_y)], "#999999", width=2.0, dash="6 4"))
-    body.append('<text x="385" y="634" font-size="13" font-family="monospace">projected PubT-2010(B) reference</text>')
+    body.append('<text x="125" y="634" font-size="13" font-family="monospace">solid teal: exploratory txtrs-av estimated 2021 healthy-retiree curve</text>')
+    body.append(_svg_line([(legend_x, 658), (legend_x + 35, 658)], "#999999", width=2.0, dash="6 4"))
+    body.append('<text x="125" y="662" font-size="13" font-family="monospace">dashed gray: projected PubT-2010(B) teacher healthy-retiree reference</text>')
     body.append(_svg_circle(760, legend_y, "#bb3e03", radius=4.0))
-    body.append('<text x="775" y="634" font-size="13" font-family="monospace">published 2021 sample checkpoint</text>')
+    body.append('<text x="775" y="634" font-size="13" font-family="monospace">orange points: published 2021 TRS healthy-retiree checkpoints</text>')
 
     _write_svg(OUT_PLOT_2021, "".join(body), width=width, height=height)
 
@@ -378,7 +423,7 @@ def _plot_validation(base_2021: pd.DataFrame) -> None:
 
     body = ['<text x="40" y="35" font-size="24" font-family="monospace">TXTRS-AV healthy retiree mortality validation</text>']
     body.append(
-        '<text x="40" y="58" font-size="14" font-family="monospace">Estimated curves for 2021/2023/2051/2053 vs published checkpoints. Y-axis is log10(qx).</text>'
+        '<text x="40" y="58" font-size="14" font-family="monospace">Each colored line is the projected txtrs-av estimate for that year. Matching colored points are the published TRS checkpoints. Y-axis is log10(qx).</text>'
     )
 
     colors = {2021: "#005f73", 2023: "#0a9396", 2051: "#ca6702", 2053: "#ee9b00"}
@@ -390,7 +435,7 @@ def _plot_validation(base_2021: pd.DataFrame) -> None:
             y0 = tops[row_idx]
             body.append(f'<rect x="{x0}" y="{y0}" width="{panel_w}" height="{panel_h}" fill="none" stroke="#333" stroke-width="1"/>')
             body.append(
-                f'<text x="{x0}" y="{y0 - 15}" font-size="18" font-family="monospace">{gender.title()} {" / ".join(str(y) for y in years_pair)}</text>'
+                f'<text x="{x0}" y="{y0 - 15}" font-size="18" font-family="monospace">{gender.title()} projected estimate and checkpoints: {" / ".join(str(y) for y in years_pair)}</text>'
             )
             for age_tick in range(20, 121, 10):
                 x = _map_age(age_tick, x0, panel_w)
@@ -422,11 +467,99 @@ def _plot_validation(base_2021: pd.DataFrame) -> None:
         body.append(_svg_line([(legend_x + offset, legend_y), (legend_x + offset + 30, legend_y)], colors[year], width=2.5))
         body.append(_svg_circle(legend_x + offset + 15, legend_y, colors[year], radius=3.8))
         body.append(
-            f'<text x="{legend_x + offset + 40}" y="{legend_y + 4}" font-size="13" font-family="monospace">{year} estimated curve and checkpoints</text>'
+            f'<text x="{legend_x + offset + 40}" y="{legend_y + 4}" font-size="13" font-family="monospace">{year}: line = estimated curve, points = published checkpoints</text>'
         )
         offset += 260
 
     _write_svg(OUT_PLOT_VALIDATION, "".join(body), width=width, height=height)
+
+
+def _plot_txtrs_comparison(base_2021: pd.DataFrame) -> None:
+    checkpoints = pd.read_csv(CHECKPOINTS_PATH)
+    years = (2021, 2023)
+    estimated = {
+        2021: pd.DataFrame(
+            {
+                "age": base_2021["age"],
+                "male_qx": base_2021["estimated_2021_male_qx"],
+                "female_qx": base_2021["estimated_2021_female_qx"],
+            }
+        ),
+        2023: _project_from_estimated_2021(base_2021, 2023),
+    }
+    txtrs_runtime = {year: _build_txtrs_runtime_curves(year) for year in years}
+
+    width = 1200
+    height = 900
+    panel_w = 480
+    panel_h = 320
+    lefts = [80, 640]
+    tops = [80, 460]
+    min_log = -4.5
+    max_log = 0.0
+
+    colors = {
+        "estimate": "#005f73",
+        "txtrs": "#ae2012",
+        2021: "#bb3e03",
+        2023: "#0a9396",
+    }
+
+    body = ['<text x="40" y="35" font-size="24" font-family="monospace">TXTRS-AV estimate vs current txtrs runtime retiree mortality</text>']
+    body.append(
+        '<text x="40" y="58" font-size="14" font-family="monospace">Solid teal = exploratory txtrs-av estimate. Dashed red = current txtrs runtime retiree mortality. Points = published TRS checkpoints for that year. Y-axis is log10(qx).</text>'
+    )
+
+    for gender_idx, gender in enumerate(("male", "female")):
+        x0 = lefts[gender_idx]
+        for row_idx, year in enumerate(years):
+            y0 = tops[row_idx]
+            body.append(f'<rect x="{x0}" y="{y0}" width="{panel_w}" height="{panel_h}" fill="none" stroke="#333" stroke-width="1"/>')
+            body.append(
+                f'<text x="{x0}" y="{y0 - 15}" font-size="18" font-family="monospace">{gender.title()} {year}</text>'
+            )
+            for age_tick in range(20, 121, 10):
+                x = _map_age(age_tick, x0, panel_w)
+                body.append(f'<line x1="{x:.2f}" y1="{y0}" x2="{x:.2f}" y2="{y0 + panel_h}" stroke="#eee" stroke-width="1"/>')
+            for q_tick in (1e-4, 1e-3, 1e-2, 1e-1, 1.0):
+                y = _map_qx(q_tick, y0, panel_h, min_log, max_log)
+                body.append(f'<line x1="{x0}" y1="{y:.2f}" x2="{x0 + panel_w}" y2="{y:.2f}" stroke="#eee" stroke-width="1"/>')
+
+            est = estimated[year]
+            tx = txtrs_runtime[year]
+            est_pts = [(_map_age(a, x0, panel_w), _map_qx(q, y0, panel_h, min_log, max_log))
+                       for a, q in zip(est["age"], est[f"{gender}_qx"])]
+            tx_pts = [(_map_age(a, x0, panel_w), _map_qx(q, y0, panel_h, min_log, max_log))
+                      for a, q in zip(tx["age"], tx[f"{gender}_qx"])]
+            body.append(_svg_line(est_pts, colors["estimate"], width=2.5))
+            body.append(_svg_line(tx_pts, colors["txtrs"], width=2.0, dash="7 4"))
+
+            pts = checkpoints[
+                (checkpoints["member_state"] == "healthy_retiree")
+                & (checkpoints["gender"] == gender)
+                & (checkpoints["rate_year"] == year)
+            ]
+            for _, pt in pts.iterrows():
+                body.append(
+                    _svg_circle(
+                        _map_age(float(pt["age"]), x0, panel_w),
+                        _map_qx(float(pt["qx"]), y0, panel_h, min_log, max_log),
+                        colors[year],
+                        radius=3.8,
+                    )
+                )
+
+    legend_y = 860
+    body.append(_svg_line([(80, legend_y), (110, legend_y)], colors["estimate"], width=2.5))
+    body.append('<text x="120" y="864" font-size="13" font-family="monospace">solid teal: exploratory txtrs-av estimate</text>')
+    body.append(_svg_line([(430, legend_y), (460, legend_y)], colors["txtrs"], width=2.0, dash="7 4"))
+    body.append('<text x="470" y="864" font-size="13" font-family="monospace">dashed red: current txtrs runtime retiree mortality</text>')
+    body.append(_svg_circle(820, legend_y, colors[2021], radius=3.8))
+    body.append('<text x="835" y="864" font-size="13" font-family="monospace">points: published 2021 checkpoint</text>')
+    body.append(_svg_circle(820, 888, colors[2023], radius=3.8))
+    body.append('<text x="835" y="892" font-size="13" font-family="monospace">points: published 2023 checkpoint</text>')
+
+    _write_svg(OUT_PLOT_TXTRS_COMPARE, "".join(body), width=width, height=height)
 
 
 def main() -> None:
@@ -439,12 +572,14 @@ def main() -> None:
     summary.to_csv(OUT_SUMMARY, index=False)
     _plot_fit_2021(base_2021)
     _plot_validation(base_2021)
+    _plot_txtrs_comparison(base_2021)
 
     print(f"Wrote {OUT_BASE}")
     print(f"Wrote {OUT_VALIDATION}")
     print(f"Wrote {OUT_SUMMARY}")
     print(f"Wrote {OUT_PLOT_2021}")
     print(f"Wrote {OUT_PLOT_VALIDATION}")
+    print(f"Wrote {OUT_PLOT_TXTRS_COMPARE}")
     print(summary.to_string(index=False))
 
 
