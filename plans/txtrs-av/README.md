@@ -4,9 +4,10 @@ This folder is the runtime target for the fresh AV-first `txtrs-av` onboarding.
 
 Current state:
 
-- folder skeleton only
 - first-cut `config/plan_config.json` committed
-- no committed runtime data artifacts yet
+- first-cut AV-built demographics and reduction tables committed
+- retiree distribution, retirement/termination tables, mortality files, and
+  funding files still pending
 - prep work should build source-supported artifacts here in later passes
 
 Rules:
