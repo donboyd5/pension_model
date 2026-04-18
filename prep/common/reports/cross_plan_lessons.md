@@ -273,6 +273,25 @@ So mortality prep should be treated as a two-part task:
 Without both, a runtime mortality artifact may be reproducible but still not be
 source-faithful.
 
+TXTRS-AV now adds a usable fallback rule:
+
+- if the named plan-specific mortality table cannot be obtained, use a
+  documented estimation path rather than silently inheriting a compatibility
+  approximation from an older model
+- treat this as a two-stage problem:
+  - estimate the base table from the full evidence set
+  - validate the improvement implementation separately across later published
+    sample years
+- when the plan methodology explicitly borrows from published external teacher
+  or public-plan mortality, use those external rates as scaffolding only where
+  the plan evidence says they belong
+- use shape-preserving smoothing or graduation so workbook discontinuities do
+  not become plan facts by accident
+- preserve a clear label such as `documented estimation` so the result is not
+  mistaken for a source-faithful table
+
+This is a pattern we should expect on other plans, not a one-off TXTRS detail.
+
 ## Recurring Source Situations To Expect On New Plans
 
 These patterns already look likely to recur:

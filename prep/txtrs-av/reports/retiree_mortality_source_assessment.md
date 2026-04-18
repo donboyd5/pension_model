@@ -230,19 +230,49 @@ reference tables under `prep/common/`, not only on TXTRS-specific documents.
 But those shared SOA-style tables would support the estimator; they would not by
 themselves replace the need for plan-specific TRS evidence.
 
-## Decision
+## Current Working Decision
 
-Current decision:
+Current working decision:
 
-- do not estimate yet
-- use the experience study as the main methodology source now that it is in the
-  `txtrs-av` source set
 - continue trying to obtain the actual healthy-pensioner table
-- if that fails, write a documented estimation method that uses the full
-  evidence set described above
+- until that happens, allow a documented fallback estimator for
+  `txtrs-av` retiree mortality
+- treat the estimator as `good enough for current model use`, not as
+  source-faithful closure of the mortality question
+
+## Current Fallback Status
+
+The current `txtrs-av` prototype now implements the fallback structure above:
+
+- start from shared PubT-2010(B) healthy-retiree reference rates
+- project to `2021` using the immediate-convergence / ultimate-rate
+  interpretation of `Scale UMP 2021`
+- smooth the reference curve so workbook discontinuities do not dominate the
+  plan-specific fit
+- fit a shape-preserving spline in log-`qx` space through the published
+  `2021` TRS healthy-retiree checkpoints
+- validate projected rates against later published sample years
+
+Current practical result:
+
+- the fitted `2021` exploratory curve now passes through the published
+  `2021` sample checkpoints essentially exactly
+- the resulting curve is smooth enough to support exploratory `txtrs-av`
+  runtime use
+- later-year extreme-old-age checkpoints, especially around age `110`, still
+  show visible discrepancies and should be treated as an unresolved tail-age
+  issue rather than silently forced into the fit
+
+Operational implication:
+
+- for current `txtrs-av` onboarding, this is a usable documented fallback
+- for final source-faithful closure, the actual `2021 TRS of Texas Healthy
+  Pensioner Mortality Tables` would still be preferable
 
 ## Related Artifacts
 
 - [mortality_basis_review.md](/home/donboyd5/Documents/python_projects/pension_model/prep/txtrs-av/reports/mortality_basis_review.md)
 - [source_sufficiency_summary.md](/home/donboyd5/Documents/python_projects/pension_model/prep/txtrs-av/reports/source_sufficiency_summary.md)
+- [txtrs_runtime_mortality_comparison.md](/home/donboyd5/Documents/python_projects/pension_model/prep/txtrs-av/reports/txtrs_runtime_mortality_comparison.md)
+- [estimate_txtrs_av_retiree_mortality.py](/home/donboyd5/Documents/python_projects/pension_model/scripts/build/estimate_txtrs_av_retiree_mortality.py)
 - existing repo issue [#52](https://github.com/donboyd5/pension_model/issues/52)

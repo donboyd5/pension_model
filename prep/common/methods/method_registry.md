@@ -215,6 +215,51 @@ Recommended method statuses:
   - this is the default new-plan rule, not a claim that every legacy pilot path
     follows it
 
+### `mortality-checkpoint-spline-estimation-v1`
+
+- Status: `partially_confirmed`
+- Type: `documented estimation`
+- Purpose: Build a usable plan-specific mortality base table when the valuation
+  names the mortality basis and publishes sample rates, but the full age-by-sex
+  source table is unavailable.
+- Inputs:
+  - valuation-backed or experience-study sample rates by age, sex, and year
+  - valuation-backed description of the base-table construction rules
+  - AV-referenced external mortality tables for ages that explicitly borrow
+    from published reference mortality
+  - valuation-backed or methodology-backed improvement-scale implementation rule
+- Outputs:
+  - estimated plan-specific base mortality table by age and sex
+  - validation comparisons against published sample checkpoints across one or
+    more years
+- Core rule:
+  - start from the relevant published external reference mortality where the
+    plan methodology explicitly borrows from it
+  - smooth the reference curve before fitting if the workbook itself has local
+    discontinuities that are not supported by the plan evidence
+  - fit the plan-specific curve in log-`qx` space with a shape-preserving spline
+  - force the fitted curve through the published checkpoint ages for the base
+    year
+  - apply the documented or best-supported improvement rule separately and
+    validate against later published checkpoint years
+- Validation:
+  - exact or near-exact fit to the published base-year checkpoints
+  - explicit multi-year validation against later published checkpoint years
+  - plots that show the fitted curve, the reference curve, and the checkpoint
+    points distinctly
+  - explicit note of any remaining tail-age discrepancies or cross-vintage
+    inconsistencies
+- Confirmed examples:
+  - TXTRS-AV retiree mortality fallback when the `2021 TRS of Texas Healthy
+    Pensioner Mortality Tables` are not available locally
+- Limits:
+  - this is not source-faithful reconstruction; it is a documented fallback
+    method
+  - later-year extreme-age checkpoints may conflict with a simple monotone
+    improvement story and should be documented rather than overfit silently
+  - plan-specific methodology still governs the age ranges, reference-table
+    choice, and improvement implementation
+
 ### `eoc-payroll-subclass-allocation-v1`
 
 - Status: `partially_confirmed`
