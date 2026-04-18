@@ -10,14 +10,17 @@ Method summary:
   1. Start from shared PubT-2010(B) healthy-retiree rates.
   2. Project those rates to 2021 using the ultimate MP-2021 / UMP-2021 rates
      immediately for all future years ("immediate convergence").
-  3. Fit an age-specific multiplicative adjustment in log space so the
-     projected 2021 reference curve matches the published 2021 healthy-retiree
-     sample checkpoints from the 2022 experience study.
-  4. Apply a credibility envelope:
-     - full weight at ages 60-95
-     - taper toward the published-teacher reference below 60 and above 95
-  5. Enforce monotone non-decreasing qx by age and cap at 1.0.
-  6. Validate projected rates against published 2021/2051 and 2023/2053
+  3. Smooth the projected teacher reference with a shape-preserving cubic
+     Hermite spline over decennial knot ages so local workbook discontinuities
+     do not dominate the TRS fit.
+  4. Fit the 2021 curve directly in log-qx space with a shape-preserving cubic
+     Hermite spline. The curve is anchored to the teacher reference at ages 20
+     and 30, then forced through the published 2021 healthy-retiree sample
+     checkpoints from the 2022 experience study. This keeps the reference
+     where TRS gives no checkpoint and uses the published TRS points where it
+     does.
+  6. Enforce monotone non-decreasing qx by age and cap at 1.0.
+  7. Validate projected rates against published 2021/2051 and 2023/2053
      checkpoints from the experience study and the 2024 AV.
 
 Outputs:
@@ -89,9 +92,8 @@ class FitConfig:
     max_age: int = 120
     base_year: int = 2010
     target_base_year: int = 2021
-    full_credibility_min_age: int = 60
-    full_credibility_max_age: int = 95
     anchor_floor: float = 1e-10
+    reference_knot_step: int = 10
 
 
 CFG = FitConfig()
@@ -128,33 +130,78 @@ def _project_with_immediate_convergence(base_qx: pd.Series, annual_improvement: 
     return base_qx * np.power(1.0 - annual_improvement, years)
 
 
-def _credibility_weight(age: np.ndarray) -> np.ndarray:
-    age = age.astype(float)
-    weights = np.ones_like(age, dtype=float)
+def _pchip_slopes(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    n = len(x)
+    h = np.diff(x)
+    delta = np.diff(y) / h
+    d = np.zeros(n, dtype=float)
 
-    young = age < CFG.full_credibility_min_age
-    if young.any():
-        weights[young] = np.clip(
-            (age[young] - CFG.min_age) / (CFG.full_credibility_min_age - CFG.min_age),
-            0.0,
-            1.0,
+    if n == 2:
+        d[:] = delta[0]
+        return d
+
+    for k in range(1, n - 1):
+        if delta[k - 1] == 0.0 or delta[k] == 0.0 or np.sign(delta[k - 1]) != np.sign(delta[k]):
+            d[k] = 0.0
+        else:
+            w1 = 2.0 * h[k] + h[k - 1]
+            w2 = h[k] + 2.0 * h[k - 1]
+            d[k] = (w1 + w2) / (w1 / delta[k - 1] + w2 / delta[k])
+
+    d0 = ((2.0 * h[0] + h[1]) * delta[0] - h[0] * delta[1]) / (h[0] + h[1])
+    if np.sign(d0) != np.sign(delta[0]):
+        d0 = 0.0
+    elif np.sign(delta[0]) != np.sign(delta[1]) and abs(d0) > abs(3.0 * delta[0]):
+        d0 = 3.0 * delta[0]
+    d[0] = d0
+
+    dn = ((2.0 * h[-1] + h[-2]) * delta[-1] - h[-1] * delta[-2]) / (h[-1] + h[-2])
+    if np.sign(dn) != np.sign(delta[-1]):
+        dn = 0.0
+    elif np.sign(delta[-1]) != np.sign(delta[-2]) and abs(dn) > abs(3.0 * delta[-1]):
+        dn = 3.0 * delta[-1]
+    d[-1] = dn
+    return d
+
+
+def _pchip_interpolate(x: np.ndarray, y: np.ndarray, x_new: np.ndarray) -> np.ndarray:
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    x_new = np.asarray(x_new, dtype=float)
+    d = _pchip_slopes(x, y)
+
+    result = np.empty_like(x_new, dtype=float)
+    for i, xn in enumerate(x_new):
+        if xn <= x[0]:
+            j = 0
+        elif xn >= x[-1]:
+            j = len(x) - 2
+        else:
+            j = int(np.searchsorted(x, xn) - 1)
+        h = x[j + 1] - x[j]
+        t = (xn - x[j]) / h
+        h00 = 2 * t**3 - 3 * t**2 + 1
+        h10 = t**3 - 2 * t**2 + t
+        h01 = -2 * t**3 + 3 * t**2
+        h11 = t**3 - t**2
+        result[i] = (
+            h00 * y[j]
+            + h10 * h * d[j]
+            + h01 * y[j + 1]
+            + h11 * h * d[j + 1]
         )
-
-    old = age > CFG.full_credibility_max_age
-    if old.any():
-        weights[old] = np.clip(
-            1.0
-            - (age[old] - CFG.full_credibility_max_age)
-            / (CFG.max_age - CFG.full_credibility_max_age),
-            0.0,
-            1.0,
-        )
-
-    return weights
+    return result
 
 
-def _interpolate_log_adjustment(ages: np.ndarray, anchor_ages: np.ndarray, anchor_log_ratio: np.ndarray) -> np.ndarray:
-    return np.interp(ages, anchor_ages, anchor_log_ratio, left=anchor_log_ratio[0], right=anchor_log_ratio[-1])
+def _smooth_reference_curve(ages: np.ndarray, qx: np.ndarray) -> np.ndarray:
+    knot_ages = np.arange(CFG.min_age, CFG.max_age + 1, CFG.reference_knot_step, dtype=float)
+    if knot_ages[-1] != CFG.max_age:
+        knot_ages = np.append(knot_ages, float(CFG.max_age))
+    knot_idx = np.searchsorted(ages, knot_ages)
+    knot_idx = np.clip(knot_idx, 0, len(ages) - 1)
+    knot_qx = np.maximum(qx[knot_idx], CFG.anchor_floor)
+    smoothed_log = _pchip_interpolate(knot_ages, np.log(knot_qx), ages)
+    return np.exp(smoothed_log)
 
 
 def _monotone_cap(qx: np.ndarray) -> np.ndarray:
@@ -172,7 +219,6 @@ def _build_base_2021_estimate() -> pd.DataFrame:
         (checkpoints["member_state"] == "healthy_retiree")
         & (checkpoints["source_id"] == "EXPSTUDY_2022")
         & (checkpoints["rate_year"] == 2021)
-        & (checkpoints["age"] < 120)
     ].copy()
 
     merged = pub.merge(mp, on="age", how="inner")
@@ -183,28 +229,48 @@ def _build_base_2021_estimate() -> pd.DataFrame:
     merged["ref_2021_female_qx"] = _project_with_immediate_convergence(
         merged["female_qx"], merged["female_improvement"], years_forward
     )
+    merged["ref_2021_male_qx_smoothed"] = _smooth_reference_curve(
+        merged["age"].to_numpy(dtype=float),
+        merged["ref_2021_male_qx"].to_numpy(dtype=float),
+    )
+    merged["ref_2021_female_qx_smoothed"] = _smooth_reference_curve(
+        merged["age"].to_numpy(dtype=float),
+        merged["ref_2021_female_qx"].to_numpy(dtype=float),
+    )
 
-    out = merged[["age", "male_improvement", "female_improvement", "ref_2021_male_qx", "ref_2021_female_qx"]].copy()
+    out = merged[
+        [
+            "age",
+            "male_improvement",
+            "female_improvement",
+            "ref_2021_male_qx",
+            "ref_2021_female_qx",
+            "ref_2021_male_qx_smoothed",
+            "ref_2021_female_qx_smoothed",
+        ]
+    ].copy()
 
     for gender in ("male", "female"):
         fit_gender = fit_points[fit_points["gender"] == gender].sort_values("age")
         joined = fit_gender.merge(out, on="age", how="left")
-        ref_col = f"ref_2021_{gender}_qx"
-        ratios = np.maximum(joined["qx"].to_numpy(dtype=float), CFG.anchor_floor) / np.maximum(
-            joined[ref_col].to_numpy(dtype=float), CFG.anchor_floor
-        )
-        anchor_log_ratio = np.log(ratios)
+        ref_col = f"ref_2021_{gender}_qx_smoothed"
         ages = out["age"].to_numpy(dtype=float)
-        anchor_ages = joined["age"].to_numpy(dtype=float)
-        raw_log_adj = _interpolate_log_adjustment(ages, anchor_ages, anchor_log_ratio)
-        cred = _credibility_weight(ages)
-        adj = np.exp(raw_log_adj * cred)
-        est = out[ref_col].to_numpy(dtype=float) * adj
+        anchor_ages = np.concatenate(
+            [
+                np.array([CFG.min_age, CFG.min_age + CFG.reference_knot_step], dtype=float),
+                joined["age"].to_numpy(dtype=float),
+            ]
+        )
+        anchor_qx = np.concatenate(
+            [
+                out.loc[out["age"] == CFG.min_age, ref_col].to_numpy(dtype=float),
+                out.loc[out["age"] == CFG.min_age + CFG.reference_knot_step, ref_col].to_numpy(dtype=float),
+                np.maximum(joined["qx"].to_numpy(dtype=float), CFG.anchor_floor),
+            ]
+        )
+        est = np.exp(_pchip_interpolate(anchor_ages, np.log(anchor_qx), ages))
         est = _monotone_cap(est)
-        out[f"credibility_weight_{gender}"] = cred
         out[f"estimated_2021_{gender}_qx"] = est
-
-    out.loc[out["age"] == 120, ["estimated_2021_male_qx", "estimated_2021_female_qx"]] = 1.0
     return out
 
 
@@ -352,7 +418,7 @@ def _plot_fit_2021(base_2021: pd.DataFrame) -> None:
 
     body = ['<text x="40" y="35" font-size="24" font-family="monospace">TXTRS-AV healthy retiree mortality fit, 2021</text>']
     body.append(
-        '<text x="40" y="58" font-size="14" font-family="monospace">Solid teal = exploratory txtrs-av estimate. Dashed gray = projected PubT-2010(B) teacher healthy-retiree reference. Orange points = published 2021 TRS checkpoints. Y-axis is log10(qx).</text>'
+        '<text x="40" y="58" font-size="14" font-family="monospace">Solid teal = exploratory txtrs-av estimate. Dashed gray = smoothed projected PubT-2010(B) teacher healthy-retiree reference. Orange points = published 2021 TRS checkpoints. Y-axis is log10(qx).</text>'
     )
 
     for i, gender in enumerate(("male", "female")):
@@ -376,7 +442,7 @@ def _plot_fit_2021(base_2021: pd.DataFrame) -> None:
                 f'<text x="{x0 - 60}" y="{y + 4:.2f}" font-size="12" font-family="monospace">{q_tick:.0e}</text>'
             )
 
-        ref_col = f"ref_2021_{gender}_qx"
+        ref_col = f"ref_2021_{gender}_qx_smoothed"
         est_col = f"estimated_2021_{gender}_qx"
         ref_pts = [(_map_age(a, x0, panel_w), _map_qx(q, y0, panel_h, min_log, max_log))
                    for a, q in zip(base_2021["age"], base_2021[ref_col])]
@@ -396,7 +462,7 @@ def _plot_fit_2021(base_2021: pd.DataFrame) -> None:
     body.append(_svg_line([(legend_x, legend_y), (legend_x + 35, legend_y)], "#005f73", width=2.5))
     body.append('<text x="125" y="634" font-size="13" font-family="monospace">solid teal: exploratory txtrs-av estimated 2021 healthy-retiree curve</text>')
     body.append(_svg_line([(legend_x, 658), (legend_x + 35, 658)], "#999999", width=2.0, dash="6 4"))
-    body.append('<text x="125" y="662" font-size="13" font-family="monospace">dashed gray: projected PubT-2010(B) teacher healthy-retiree reference</text>')
+    body.append('<text x="125" y="662" font-size="13" font-family="monospace">dashed gray: smoothed projected PubT-2010(B) teacher healthy-retiree reference</text>')
     body.append(_svg_circle(760, legend_y, "#bb3e03", radius=4.0))
     body.append('<text x="775" y="634" font-size="13" font-family="monospace">orange points: published 2021 TRS healthy-retiree checkpoints</text>')
 
