@@ -110,10 +110,8 @@ Success for a new plan is different. For a new plan, the first cut should:
 
 - produce a valid canonical input set in the form the runtime expects
 - stay as close to AV treatment as possible
-- identify what is directly sourced, what is derived, what is estimated, and
-  what is still missing
-- defer secondary detail until later cuts unless that detail is needed to make
-  the plan workable in the model
+- identify what is directly sourced, what is derived, what is estimated, and what is still missing
+- defer secondary detail until later cuts unless that detail is needed to make the plan workable in the model
 
 Current pilot source set:
 
@@ -125,18 +123,13 @@ Current pilot source set:
   - `Texas TRS Valuation 2024.pdf`
   - `Texas TRS ACFR 2023.pdf`
 
-These are the current pilot documents because the immediate goal is to reproduce
-the reviewed baselines that were anchored to the sources used by Reason. For new
-plans, the default should usually be the latest official source set instead.
+These are the current pilot documents because the immediate goal is to reproduce the reviewed baselines that were anchored to the sources used by Reason. For new plans, the default should usually be the latest official source set instead.
 
 ## New-Plan Narrative Analysis
 
 New-plan prep should begin with a narrative analysis of the pension plan itself.
 
-This should happen before detailed source coverage and gap reporting, because it
-establishes what kind of plan we are dealing with, what kinds of inputs the
-model will likely need, and where the likely mismatches between reported data
-and required canonical inputs will arise.
+This should happen before detailed source coverage and gap reporting, because it establishes what kind of plan we are dealing with, what kinds of inputs the model will likely need, and where the likely mismatches between reported data and required canonical inputs will arise.
 
 At minimum, the narrative analysis should cover:
 
@@ -156,8 +149,7 @@ The narrative analysis should not be purely descriptive. It should also identify
 - any plan features that may pressure the current runtime contract
 - what will be modeled directly
 - what will be excluded from direct modeling
-- what may be approximated because it is too small, too rare, not separately
-  reported, or not material enough to model directly
+- what may be approximated because it is too small, too rare, not separately reported, or not material enough to model directly
 
 Each narrative should therefore include an explicit section on:
 
@@ -170,11 +162,10 @@ These scope choices are not assumed to be permanent.
 
 In some plans, the right practical sequence will be:
 
-1. start with a simpler representation
-2. rely more heavily on calibration to hit reviewed valuation targets
-3. add structural detail over time as source support, validation evidence, and
-   modeling value justify it
-4. reduce reliance on calibration as more plan-specific structure is modeled
+1.  start with a simpler representation
+2.  rely more heavily on calibration to hit reviewed valuation targets
+3.  add structural detail over time as source support, validation evidence, and modeling value justify it
+4.  reduce reliance on calibration as more plan-specific structure is modeled
 
 This should be treated as the default onboarding strategy for new plans:
 
@@ -185,11 +176,8 @@ This should be treated as the default onboarding strategy for new plans:
   - produce the required canonical inputs in the form the runtime expects
   - avoid premature complexity
 - later cuts:
-  - add secondary member groups, rare elections, finer class splits, and more
-    detailed source-driven structure where that detail materially improves the
-    model
-  - reduce reliance on broad proxies or calibration where the source support is
-    strong enough to do so
+  - add secondary member groups, rare elections, finer class splits, and more detailed source-driven structure where that detail materially improves the model
+  - reduce reliance on broad proxies or calibration where the source support is strong enough to do so
 
 So the prep record should distinguish between:
 
@@ -197,12 +185,9 @@ So the prep record should distinguish between:
 - `current simplification`
 - `candidate future inclusion`
 
-An early exclusion may therefore be a temporary scope decision rather than a
-final statement that the feature will never be modeled.
+An early exclusion may therefore be a temporary scope decision rather than a final statement that the feature will never be modeled.
 
-This is important for both old and new plans. A useful prep narrative should
-not only explain the plan; it should explain the modeling boundary we are
-choosing within that plan.
+This is important for both old and new plans. A useful prep narrative should not only explain the plan; it should explain the modeling boundary we are choosing within that plan.
 
 ## Early Architecture Gate
 
@@ -242,11 +227,9 @@ Bias:
 
 ## Shared Knowledge Capture
 
-Reverse-engineering work on FRS and TXTRS should be treated as an investment in
-the future prep system, not just as plan-specific archaeology.
+Reverse-engineering work on FRS and TXTRS should be treated as an investment in the future prep system, not just as plan-specific archaeology.
 
-So as useful knowledge is discovered, it should be promoted out of plan-specific
-notes into shared artifacts under `prep/common/` and `docs/`.
+So as useful knowledge is discovered, it should be promoted out of plan-specific notes into shared artifacts under `prep/common/` and `docs/`.
 
 At minimum, the repo should preserve:
 
@@ -257,11 +240,8 @@ At minimum, the repo should preserve:
 - provenance conventions
 - runtime build rules
 - cross-plan lessons learned
-- first-year cash-flow treatment rules when observed year-0 inputs are broader
-  than the later-year modeled benefit concept
-- mortality review rules that separate missing external source tables from
-  ambiguity about how the named improvement scale or convergence rule should be
-  implemented
+- first-year cash-flow treatment rules when observed year-0 inputs are broader than the later-year modeled benefit concept
+- mortality review rules that separate missing external source tables from ambiguity about how the named improvement scale or convergence rule should be implemented
 
 Recommended shared homes:
 
@@ -273,10 +253,7 @@ Recommended shared homes:
 
 ## New-Plan Readiness
 
-Before starting a genuinely new plan, the repo should have a minimal but
-operational prep package in place. The goal is not to eliminate every open
-question from FRS and TXTRS. The goal is to make sure a new plan begins with a
-controlled, AV-faithful workflow rather than with ad hoc exploration.
+Before starting a genuinely new plan, the repo should have a minimal but operational prep package in place. The goal is not to eliminate every open question from FRS and TXTRS. The goal is to make sure a new plan begins with a controlled, AV-faithful workflow rather than with ad hoc exploration.
 
 The minimum readiness package should include:
 
@@ -296,12 +273,9 @@ The minimum readiness package should include:
 
 Readiness does not require every pilot mystery to be solved.
 
-It does require that unresolved pilot items be classified clearly enough that a
-new plan does not accidentally inherit them as default practice.
+It does require that unresolved pilot items be classified clearly enough that a new plan does not accidentally inherit them as default practice.
 
-Plan-specific evidence should still remain in `prep/{plan}/reports/`, but the
-generalizable method and design knowledge should be committed as shared repo
-artifacts so it can guide prep for new plans.
+Plan-specific evidence should still remain in `prep/{plan}/reports/`, but the generalizable method and design knowledge should be committed as shared repo artifacts so it can guide prep for new plans.
 
 ## Required Prep Layers
 
@@ -360,39 +334,33 @@ The source registry should also record:
 - whether the document was chosen because it matches a reviewed historical baseline or because it is the latest available official document
 - whether the stored filename is the original filename or a local canonical filename
 
-Mortality is the first active example of this shared-source pattern. The current
-pilot already relies on shared SOA references under `prep/common/sources/` for
-FRS, and likely for part of TXTRS as well.
+Mortality is the first active example of this shared-source pattern. The current pilot already relies on shared SOA references under `prep/common/sources/` for FRS, and likely for part of TXTRS as well.
 
 ### Page-reference convention
 
 When provenance records cite pages, they should identify page type explicitly:
 
-- `printed page`: the page label printed in the report itself, such as `C-4`,
-  `A-5`, or `205`
+- `printed page`: the page label printed in the report itself, such as `C-4`, `A-5`, or `205`
 - `PDF/electronic page`: the viewer or file page number used by PDF tools
 
 Default rule:
 
 - use printed page as the primary citation when available
 - also record PDF/electronic page when practical
-- if only one is known, record that and leave the other blank rather than
-  guessing
+- if only one is known, record that and leave the other blank rather than guessing
 
-This matters because actuarial valuations and ACFRs often have front matter,
-appendices, and internal page labels that do not align with PDF page offsets.
+This matters because actuarial valuations and ACFRs often have front matter, appendices, and internal page labels that do not align with PDF page offsets.
 
 ### Source precedence within a plan
 
 Default precedence when similar concepts appear in multiple documents:
 
-1. actuarial valuation
-2. ACFR
-3. other related official documents such as GASB reports
-4. approved external reference sources when explicitly needed
+1.  actuarial valuation
+2.  ACFR
+3.  other related official documents such as GASB reports
+4.  approved external reference sources when explicitly needed
 
-This is only a default. Prep must still document why a particular source was
-used for a particular quantity.
+This is only a default. Prep must still document why a particular source was used for a particular quantity.
 
 ### Legacy unresolved reconstruction vs new estimation
 
@@ -400,8 +368,7 @@ These two situations must be handled separately.
 
 #### Legacy unresolved reconstruction
 
-This applies when the current reviewed baseline contains a value or rule that
-can be reproduced but not yet fully explained from source documents.
+This applies when the current reviewed baseline contains a value or rule that can be reproduced but not yet fully explained from source documents.
 
 Documentation should record:
 
@@ -411,13 +378,11 @@ Documentation should record:
 - whether each candidate succeeded, partially matched, or failed
 - what remains unknown
 
-These items should remain explicitly marked as unresolved rather than presented
-as confirmed source lineage.
+These items should remain explicitly marked as unresolved rather than presented as confirmed source lineage.
 
 #### New-plan estimation
 
-This applies when a new plan does not publish a required input and we choose to
-fill the gap with an approved method.
+This applies when a new plan does not publish a required input and we choose to fill the gap with an approved method.
 
 Documentation should record:
 
@@ -427,13 +392,11 @@ Documentation should record:
 - why estimation was necessary
 - diagnostics, checks, and validation results
 
-New-plan estimation should always be fully specified, even when legacy
-reconstruction remains partly unresolved.
+New-plan estimation should always be fully specified, even when legacy reconstruction remains partly unresolved.
 
 ### Handling legitimate AV-versus-ACFR differences
 
-Prep should assume that AV and ACFR values for similar concepts may differ for
-legitimate reasons, including:
+Prep should assume that AV and ACFR values for similar concepts may differ for legitimate reasons, including:
 
 - different scope of the covered plan or system
 - different terminology
@@ -441,22 +404,18 @@ legitimate reasons, including:
 - different actuarial versus accounting rules
 - different recognition or smoothing methods
 
-Prep should therefore not treat every difference as an error. Instead, the
-workflow should classify differences into categories such as:
+Prep should therefore not treat every difference as an error. Instead, the workflow should classify differences into categories such as:
 
 - same concept, same measurement basis
 - same concept, different measurement basis
 - related but not identical concept
 - terminology difference requiring dictionary mapping
 
-The actuarial valuation should generally be treated as authoritative, but other
-documents may be used to fill gaps, sometimes with simple scaling or bridging
-methods, when that is explicitly documented and reviewable.
+The actuarial valuation should generally be treated as authoritative, but other documents may be used to fill gaps, sometimes with simple scaling or bridging methods, when that is explicitly documented and reviewable.
 
 ### Term dictionary and concept mapping
 
-Prep should maintain a small working dictionary of major terms and their likely
-relationships across actuarial and accounting documents.
+Prep should maintain a small working dictionary of major terms and their likely relationships across actuarial and accounting documents.
 
 Examples:
 
@@ -467,9 +426,7 @@ Examples:
 - actuarial value of assets
 - fiduciary net position
 
-This dictionary should not assume exact equivalence. It should explain how terms
-are related, where they differ, and which one maps to which runtime or prep
-concept.
+This dictionary should not assume exact equivalence. It should explain how terms are related, where they differ, and which one maps to which runtime or prep concept.
 
 ### Source filename policy
 
@@ -484,12 +441,10 @@ Current bias:
 
 But this creates an additional provenance obligation:
 
-- the source registry must preserve the original document title and original
-  filename when known
+- the source registry must preserve the original document title and original filename when known
 - any local canonical filename must map back to the original source identity
 
-This decision does not need to be finalized immediately, but the workplan should
-treat it as an explicit operational choice rather than letting naming drift ad hoc.
+This decision does not need to be finalized immediately, but the workplan should treat it as an explicit operational choice rather than letting naming drift ad hoc.
 
 ### 2. Extracted
 
