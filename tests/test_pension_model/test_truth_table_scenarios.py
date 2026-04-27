@@ -7,11 +7,12 @@ divergence (max relative diff < 1e-10).
 
 Coverage today:
   - frs x {baseline, low_return, high_discount}
-  - txtrs x {baseline}
+  - txtrs x {baseline, low_return, high_discount}
 
-Cells without an R baseline yet (frs x no_cola, txtrs x high_discount) are
-not exercised here. Generate the R baseline first, then add the cell to
-the parametrize list.
+Cells without an R baseline yet (frs x no_cola; txtrs x no_cola is
+non-applicable because TXTRS uses a different COLA structure than FRS)
+are not exercised here. Generate the R baseline first, then add the cell
+to the parametrize list.
 """
 
 from pathlib import Path
@@ -65,8 +66,17 @@ def _build_python_truth_table(plan: str, scenario: str | None) -> pd.DataFrame:
         ("frs", "low_return"),
         ("frs", "high_discount"),
         ("txtrs", None),
+        ("txtrs", "low_return"),
+        ("txtrs", "high_discount"),
     ],
-    ids=["frs-baseline", "frs-low_return", "frs-high_discount", "txtrs-baseline"],
+    ids=[
+        "frs-baseline",
+        "frs-low_return",
+        "frs-high_discount",
+        "txtrs-baseline",
+        "txtrs-low_return",
+        "txtrs-high_discount",
+    ],
 )
 def test_truth_table_matches_r_baseline(plan, scenario):
     r_path = _r_baseline_path(plan, scenario)
