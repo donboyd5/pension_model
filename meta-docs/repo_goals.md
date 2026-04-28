@@ -96,6 +96,7 @@ plan config + canonical input tables
 - **No push to origin/main without permission** — never push `main` to the remote without explicit permission.
 - **Verify before merge** — before requesting a merge, inspect actual output numbers (not just test pass/fail): R-baseline diffs, identity checks, and year-by-year reasonableness. A green test suite is necessary but not sufficient.
 - **File issues, don't silently fix** — when R appears wrong or a cleaner design is obvious, open a GitHub issue and keep R-matching behavior in the current branch. Potential improvements will be worked on on their own branches with their own validation.
+- **Phase-label every open issue** — every open issue carries exactly one phase label, applied when it is filed. `phase-r-is-truth` (green) is for work that fits the current Match-R phase: bug fixes, tests, documentation, or investigation that preserves R behavior. `phase-post-r` (purple) is for work that should wait until R-matching is done — typically because it would change R behavior or depends on later cleanup. `phase-anytime` (blue) is for work that is orthogonal to the phase ordering, such as upstream data-prep and provenance reviews that live outside the runtime boundary. An untagged open issue means it still needs to be triaged.
 
 ## Questions for Reason
 

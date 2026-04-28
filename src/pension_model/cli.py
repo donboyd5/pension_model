@@ -231,19 +231,37 @@ def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
         )
 
         df = build_python_truth_table(plan_name, liability, funding, constants)
+        scenario = getattr(constants, "scenario_name", None)
+
+        def _sheet_token(value):
+            if not value:
+                return plan_name
+            clean = "".join(ch if ch.isalnum() or ch in ("_", "-") else "_" for ch in value)
+            return f"{plan_name}_{clean}"
+
+        sheet_token = _sheet_token(scenario)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         csv_path = output_dir / "truth_table.csv"
         df.to_csv(csv_path, index=False)
 
         xlsx_path = OUTPUT_BASE / "truth_tables.xlsx"
-        upsert_sheet_to_excel(df, xlsx_path, f"{plan_name}_Py")
+        upsert_sheet_to_excel(df, xlsx_path, f"{sheet_token}_Py")
 
-        # Also refresh the R sheet and diff sheet from the R CSV
+        # Also refresh the matching R sheet and diff sheet from the R CSV.
         r_csv = Path("plans") / plan_name / "baselines" / "r_truth_table.csv"
+        if scenario:
+            scenario_r_csv = (
+                Path("plans")
+                / plan_name
+                / "baselines"
+                / f"r_truth_table_{scenario}.csv"
+            )
+            if scenario_r_csv.exists():
+                r_csv = scenario_r_csv
         if r_csv.exists():
             r_df = pd.read_csv(r_csv)
-            upsert_sheet_to_excel(r_df, xlsx_path, f"{plan_name}_R")
+            upsert_sheet_to_excel(r_df, xlsx_path, f"{sheet_token}_R")
             # Build side-by-side diff: year, then R/Py/diff for each metric
             numeric_cols = [c for c in r_df.columns if c not in ("plan", "year")]
             side_by_side = {"year": r_df["year"]}
@@ -253,12 +271,12 @@ def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
                 side_by_side[f"{col}_diff"] = (
                     df[col] - r_df[col] if col in df.columns else pd.NA)
             upsert_sheet_to_excel(
-                pd.DataFrame(side_by_side), xlsx_path, f"{plan_name}_diff")
+                pd.DataFrame(side_by_side), xlsx_path, f"{sheet_token}_diff")
 
         rel_csv = csv_path.relative_to(Path.cwd()) if csv_path.is_relative_to(Path.cwd()) else csv_path
         rel_xlsx = xlsx_path.relative_to(Path.cwd()) if xlsx_path.is_relative_to(Path.cwd()) else xlsx_path
         print(f"    {rel_csv}")
-        print(f"    {rel_xlsx} (sheet '{plan_name}_Py')")
+        print(f"    {rel_xlsx} (sheet '{sheet_token}_Py')")
     except Exception as e:  # noqa: BLE001 — diagnostic aid must not crash the run
         print(f"\n  WARNING: truth table could not be written: {type(e).__name__}: {e}")
 
