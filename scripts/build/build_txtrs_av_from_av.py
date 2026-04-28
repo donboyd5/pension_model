@@ -7,6 +7,7 @@ Current scope:
   - demographics/all_salary.csv
   - demographics/entrant_profile.csv
   - demographics/salary_growth.csv
+  - demographics/retiree_distribution.csv
   - decrements/reduction_gft.csv
   - decrements/reduction_others.csv
   - decrements/all_retirement_rates.csv
@@ -33,11 +34,40 @@ OUT_DIR = PROJECT_ROOT / "plans" / "txtrs-av" / "data"
 TABLE17_PDF_PAGE = 48
 TABLE2_PDF_PAGE = 24
 TABLE4_PDF_PAGE = 27
+TABLE18_PDF_PAGE = 49
 TERMINATION_PDF_PAGE = 68
 RETIREMENT_PDF_PAGE = 69
 SALARY_GROWTH_PDF_PAGE = 70
 ENTRANT_PROFILE_PDF_PAGE = 76
 REDUCTION_PDF_PAGE = 54
+
+RUNTIME_RETIREE_MIN_AGE = 55
+RUNTIME_RETIREE_MAX_AGE = 120
+
+# AV Table 18 publishes 15 age bands. The runtime artifact starts at age 55, so
+# the five pre-retirement bands ("Up to 35" through "55-59") are lumped into
+# runtime ages 55-59. The published "100 & up" band fans out across the full
+# runtime tail.
+LIFE_ANNUITY_BAND_TO_RUNTIME: dict[str, tuple[int, int]] = {
+    "Up to 35": (55, 59),
+    "35-40":    (55, 59),
+    "40-44":    (55, 59),
+    "45-49":    (55, 59),
+    "50-54":    (55, 59),
+    "55-59":    (55, 59),
+    "60-64":    (60, 64),
+    "65-69":    (65, 69),
+    "70-74":    (70, 74),
+    "75-79":    (75, 79),
+    "80-84":    (80, 84),
+    "85-89":    (85, 89),
+    "90-94":    (90, 94),
+    "95-99":    (95, 99),
+    "100 & up": (100, RUNTIME_RETIREE_MAX_AGE),
+}
+
+LIFE_ANNUITY_TOTAL_COUNT = 475_891
+LIFE_ANNUITY_TOTAL_ANNUAL = 13_100_519_264.0
 
 AGE_MAP = {
     "Under 25": 22,
@@ -476,6 +506,69 @@ def _parse_init_funding() -> pd.DataFrame:
     return pd.DataFrame([row])
 
 
+def _parse_table18_life_annuities() -> dict[str, dict[str, float]]:
+    """Read Table 18 (Distribution of Life Annuities by Age) from the AV PDF.
+
+    Returns a dict keyed by published band label with per-band published count
+    and annual annuity total. Validates against the published "Total" row.
+    """
+    text = _pdf_page_text(PDF_PATH, TABLE18_PDF_PAGE)
+    lines = text.splitlines()
+    bands: dict[str, dict[str, float]] = {}
+    for label in LIFE_ANNUITY_BAND_TO_RUNTIME.keys():
+        line_re = re.compile(rf"^\s*{re.escape(label)}\s+([\d,]+)\s+\$?\s*([\d,]+)")
+        match = None
+        for line in lines:
+            m = line_re.match(line)
+            if m:
+                match = m
+                break
+        if match is None:
+            raise ValueError(f"Could not find AV Table 18 band: {label!r}")
+        bands[label] = {
+            "count": int(match.group(1).replace(",", "")),
+            "annual": float(match.group(2).replace(",", "")),
+        }
+
+    total_count = sum(b["count"] for b in bands.values())
+    total_annual = sum(b["annual"] for b in bands.values())
+    if total_count != LIFE_ANNUITY_TOTAL_COUNT:
+        raise ValueError(
+            f"AV Table 18 count total {total_count} != published {LIFE_ANNUITY_TOTAL_COUNT}"
+        )
+    if abs(total_annual - LIFE_ANNUITY_TOTAL_ANNUAL) > 1.0:
+        raise ValueError(
+            f"AV Table 18 annuity total {total_annual} != published {LIFE_ANNUITY_TOTAL_ANNUAL}"
+        )
+    return bands
+
+
+def _build_retiree_distribution() -> pd.DataFrame:
+    raw = _parse_table18_life_annuities()
+
+    runtime_agg: dict[tuple[int, int], dict[str, float]] = {}
+    for label, key in LIFE_ANNUITY_BAND_TO_RUNTIME.items():
+        agg = runtime_agg.setdefault(key, {"count": 0.0, "annual": 0.0})
+        agg["count"] += raw[label]["count"]
+        agg["annual"] += raw[label]["annual"]
+
+    rows: list[dict] = []
+    for (lo, hi), agg in sorted(runtime_agg.items()):
+        n_ages = hi - lo + 1
+        per_age_count = agg["count"] / n_ages
+        per_age_total = agg["annual"] / n_ages
+        per_age_avg = agg["annual"] / agg["count"]
+        for age in range(lo, hi + 1):
+            rows.append({
+                "age": age,
+                "count": per_age_count,
+                "avg_benefit": per_age_avg,
+                "total_benefit": per_age_total,
+            })
+
+    return pd.DataFrame(rows).sort_values("age").reset_index(drop=True)
+
+
 def _write_csv(df: pd.DataFrame, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False)
@@ -490,11 +583,13 @@ def main() -> None:
     retirement_rates = _parse_retirement_rates()
     termination_rates = _parse_termination_rates()
     init_funding = _parse_init_funding()
+    retiree_distribution = _build_retiree_distribution()
 
     _write_csv(headcount, OUT_DIR / "demographics" / "all_headcount.csv")
     _write_csv(salary, OUT_DIR / "demographics" / "all_salary.csv")
     _write_csv(entrant_profile, OUT_DIR / "demographics" / "entrant_profile.csv")
     _write_csv(salary_growth, OUT_DIR / "demographics" / "salary_growth.csv")
+    _write_csv(retiree_distribution, OUT_DIR / "demographics" / "retiree_distribution.csv")
     _write_csv(reduction_gft, OUT_DIR / "decrements" / "reduction_gft.csv")
     _write_csv(reduction_others, OUT_DIR / "decrements" / "reduction_others.csv")
     _write_csv(retirement_rates, OUT_DIR / "decrements" / "all_retirement_rates.csv")

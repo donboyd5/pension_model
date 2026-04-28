@@ -125,6 +125,54 @@ Recommended method statuses:
   - exact PDF-only source path is not yet known for either pilot
   - should not be treated as a default forward-looking method until source
     support and justification are clearer
+- See also:
+  - the AV-direct variant `retiree_distribution_av18_band_spread_v1` is the
+    forward-looking method for plans whose AV publishes an age distribution
+    of retirees
+
+### `retiree_distribution_av18_band_spread_v1`
+
+- Status: `confirmed`
+- Type: `source-faithful transform`
+- Purpose: Build a canonical age-by-age retiree distribution directly from a
+  valuation table that publishes counts and annual annuities by age band.
+- Inputs:
+  - published age bands with count and annual annuity total
+  - declared runtime min and max retiree age
+- Outputs:
+  - canonical `retiree_distribution.csv` with columns
+    `age, count, avg_benefit, total_benefit`
+- Core rule:
+  - parse the published bands directly from the source PDF
+  - validate the parsed bands sum to the published Total row
+  - lump every published band whose upper bound is below the runtime min age
+    into the lowest runtime band, since the runtime axis does not extend below
+    that age
+  - spread each remaining published band evenly across its runtime ages
+  - spread any open-ended terminal band (such as `100 & up`) evenly across the
+    runtime tail up to the runtime max age
+  - per runtime age write `count = band_count / n_ages`,
+    `total_benefit = band_annual / n_ages`, and
+    `avg_benefit = band_annual / band_count` (constant within a band)
+- Validation:
+  - parsed bands sum to the published Total row
+  - runtime artifact totals match the published Total row up to floating-point
+    precision
+  - independent rebuild reproduces a reviewed legacy artifact at floating-point
+    precision when the legacy artifact uses the same source table
+- Confirmed examples:
+  - TXTRS-AV `retiree_distribution.csv` from AV 2024 Table 18
+- Scope notes:
+  - the method covers only the retiree population reported in the named source
+    table; in TXTRS-AV that is life annuities only (`Table 18`); disabled
+    annuitants (`Table 19`) and survivor groups need a separate decision
+  - if the runtime treats all retirees as one cohort with one mortality table,
+    folding additional groups in introduces mortality misalignment that must
+    be documented as a current modeling simplification
+- Limits:
+  - relies on the AV publishing a usable age-band distribution; plans whose AV
+    does not publish one need either a different source table or an estimation
+    method instead
 
 ### `acfr-deductions-ratio-allocation-v1`
 

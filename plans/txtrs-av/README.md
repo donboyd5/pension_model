@@ -8,8 +8,9 @@ Current state:
 - first-cut AV-built demographics and reduction tables committed
 - first-cut AV-built retirement and termination tables committed
 - first-cut AV-built `funding/init_funding.csv` committed
-- retiree distribution, mortality files, and `funding/return_scenarios.csv`
-  still pending
+- first-cut AV-built `demographics/retiree_distribution.csv` committed
+  (life annuities only; disabled and survivors deferred — see issue #71)
+- mortality files and `funding/return_scenarios.csv` still pending
 - prep work should build source-supported artifacts here in later passes
 
 Rules:
