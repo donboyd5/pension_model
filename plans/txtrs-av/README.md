@@ -15,7 +15,13 @@ Current state:
   from SOA Pub-2010(B) Teacher Below-Median Income; retiree half is the
   documented fallback estimator since the AV-named 2021 TRS healthy-retiree
   table is not public. See `prep/txtrs-av/reports/first_cut_av_data_batch_05_mortality.md`.
-- `funding/return_scenarios.csv` still pending
+- first-cut `funding/return_scenarios.csv` committed. Modeling-choice
+  artifact; runtime overrides `model`/`assumption` columns; recession
+  scenarios mirror the legacy txtrs shape. See
+  `prep/txtrs-av/reports/first_cut_av_data_batch_06_return_scenarios.md`.
+- end-to-end pipeline now runs (`pension-model run txtrs-av --no-test`).
+  Year-2024 AAL output is ~6.5% below the AV published value; that is the
+  gap `config/calibration.json` exists to close, which is the next batch.
 - prep work should build source-supported artifacts here in later passes
 
 Rules:

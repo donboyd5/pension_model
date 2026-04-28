@@ -473,7 +473,6 @@ def _parse_init_funding() -> pd.DataFrame:
     fr_mva = total_mva / total_aal
 
     row = {
-        "class": "all",
         "year": 2024,
         "total_payroll": total_payroll,
         "admin_exp_rate": admin_exp_rate,
