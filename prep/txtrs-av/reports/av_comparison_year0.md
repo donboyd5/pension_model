@@ -3,8 +3,9 @@
 ## Purpose
 
 This note compares the txtrs-av year-0 (2024) liability output to the
-AV Table 2 published values. It is a diagnostic for understanding where
-the model diverges from the AV before any calibration is applied.
+AV Table 2 published values, both before and after calibration. It is a
+diagnostic for understanding where the model diverges from the AV and
+what calibration does and does not fix.
 
 ## How to reproduce
 
@@ -16,7 +17,10 @@ python scripts/diagnostic/compare_txtrs_av_to_av.py
 Output is also saved as `prep/txtrs-av/reports/av_comparison_year0.csv`
 for spreadsheet review.
 
-## Comparison
+## Pre-calibration comparison
+
+Before `config/calibration.json` was added (cal_factor=1.0,
+nc_cal=1.0, pvfb_term_current=0):
 
 ```
 ==========================================================================================
@@ -36,6 +40,49 @@ AAL - other (term + survivor + nonvested)                 0   $     10.81B      
 AAL - total                                    $    255.29B   $    273.10B         -6.52%
 ==========================================================================================
 ```
+
+## Post-calibration comparison
+
+After running `pension-model calibrate txtrs-av --write`, which fitted
+nc_cal=1.0318 and pvfb_term_current=$17.80B:
+
+```
+==========================================================================================
+Quantity                                              Model             AV            Gap
+==========================================================================================
+Active total payroll (cohort-derived)          $     57.44B   $     57.48B         -0.07%
+PVFB - active members                          $    184.98B   $    187.88B         -1.55%
+PVFB - retirees in pay or deferred             $    133.20B   $    133.93B         -0.54%
+PVFB - retiree future survivor                            0   $      2.08B       -100.00%
+PVFB - vested inactive                         $     17.80B   $      7.51B       +137.09%
+PVFB - inactive nonvested                                 0   $      1.22B       -100.00%
+PVFB - total                                   $    335.99B   $    332.62B         +1.01%
+PVFNC (employee + employer)                    $     62.89B   $     59.52B         +5.66%
+AAL - active (PVFB - PVFNC)                    $    122.09B   $    128.36B         -4.89%
+AAL - current retirees                         $    133.20B   $    133.93B         -0.54%
+AAL - other (term + survivor + nonvested)      $     17.80B   $     10.81B        +64.75%
+AAL - total                                    $    273.10B   $    273.10B         +0.00%
+==========================================================================================
+```
+
+After calibration:
+
+- total AAL matches AV exactly (by construction)
+- funded ratios match AV: 77.8% AVA, 77.1% MVA against AV-published 77.8%
+- end-of-projection (2054) lands at 98.1% funded, consistent with the
+  AV's 28-year amortization period
+
+What calibration does NOT change at the per-bucket level:
+
+- active PVFB still under by 1.55%
+- active AAL still under by 4.89%
+- PVFNC still over by 5.66%
+- current-retiree AAL still under by 0.54%
+
+Calibration absorbs all per-bucket residuals into `pvfb_term_current`,
+which is rendered as `aal_term_current_est`. So the term-vested bucket
+shows $17.80B in the model versus $10.81B in the AV — a $7B overshoot
+that compensates for the active-AAL undershoot.
 
 ## Where the Gap Comes From
 

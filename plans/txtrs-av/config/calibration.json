@@ -1,0 +1,10 @@
+{
+  "description": "Calibration factors computed by pension-model calibrate",
+  "cal_factor": 1.0,
+  "classes": {
+    "all": {
+      "nc_cal": 1.031752727981497,
+      "pvfb_term_current": 17804966310.86209
+    }
+  }
+}

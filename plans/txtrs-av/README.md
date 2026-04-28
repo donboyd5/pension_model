@@ -19,9 +19,15 @@ Current state:
   artifact; runtime overrides `model`/`assumption` columns; recession
   scenarios mirror the legacy txtrs shape. See
   `prep/txtrs-av/reports/first_cut_av_data_batch_06_return_scenarios.md`.
-- end-to-end pipeline now runs (`pension-model run txtrs-av --no-test`).
-  Year-2024 AAL output is ~6.5% below the AV published value; that is the
-  gap `config/calibration.json` exists to close, which is the next batch.
+- end-to-end pipeline runs (`pension-model run txtrs-av --no-test`)
+- `config/calibration.json` produced by `pension-model calibrate txtrs-av`.
+  After calibration: total AAL matches AV exactly (was -6.52% before),
+  funded ratio matches AV 77.8%, and the 2054 projection reaches 98.1%
+  funded consistent with the AV's 28-year amortization period. The
+  per-bucket gaps remain (`pvfb_term_current` absorbs them as a single
+  plug — see issue #48). See
+  `prep/txtrs-av/reports/av_comparison_year0.md` for the pre/post
+  decomposition.
 - prep work should build source-supported artifacts here in later passes
 
 Rules:
