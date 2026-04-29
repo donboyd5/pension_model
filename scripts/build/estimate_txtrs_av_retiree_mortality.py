@@ -1,0 +1,653 @@
+#!/usr/bin/env python3
+"""
+First-cut estimator for TXTRS-AV healthy-retiree mortality when the actual
+2021 TRS healthy pensioner table is not available locally.
+
+This is intentionally a txtrs-av-specific prototype. It is not yet a shared
+prep method.
+
+Method summary:
+  1. Start from shared PubT-2010(B) healthy-retiree rates.
+  2. Project those rates to 2021 using the ultimate MP-2021 / UMP-2021 rates
+     immediately for all future years ("immediate convergence").
+  3. Smooth the projected teacher reference with a shape-preserving cubic
+     Hermite spline over decennial knot ages so local workbook discontinuities
+     do not dominate the TRS fit.
+  4. Fit the 2021 curve directly in log-qx space with a shape-preserving cubic
+     Hermite spline. The curve is anchored to the teacher reference at ages 20
+     and 30, then forced through the published 2021 healthy-retiree sample
+     checkpoints from the 2022 experience study. This keeps the reference
+     where TRS gives no checkpoint and uses the published TRS points where it
+     does.
+  6. Enforce monotone non-decreasing qx by age and cap at 1.0.
+  7. Validate projected rates against published 2021/2051 and 2023/2053
+     checkpoints from the experience study and the 2024 AV.
+
+Outputs:
+  - prep/txtrs-av/reference_tables/estimated_retiree_mortality_base_2021.csv
+  - prep/txtrs-av/reference_tables/estimated_retiree_mortality_validation.csv
+  - prep/txtrs-av/reference_tables/estimated_retiree_mortality_validation_summary.csv
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+import math
+import sys
+
+import numpy as np
+import pandas as pd
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+from pension_model.core.mortality_builder import (
+    _build_mp_final,
+    _read_base_mort_csv,
+    _read_base_mort_table,
+    _read_mp_csv,
+    _read_mp_table,
+)
+
+
+PUB_PATH = PROJECT_ROOT / "prep" / "common" / "sources" / "soa_pub2010_amount_mort_rates.xlsx"
+MP_PATH = PROJECT_ROOT / "prep" / "common" / "sources" / "soa_mp2021_rates.xlsx"
+CHECKPOINTS_PATH = (
+    PROJECT_ROOT / "prep" / "txtrs-av" / "reference_tables" / "retiree_mortality_sample_checkpoints.csv"
+)
+OUT_BASE = (
+    PROJECT_ROOT / "prep" / "txtrs-av" / "reference_tables" / "estimated_retiree_mortality_base_2021.csv"
+)
+OUT_VALIDATION = (
+    PROJECT_ROOT / "prep" / "txtrs-av" / "reference_tables" / "estimated_retiree_mortality_validation.csv"
+)
+OUT_SUMMARY = (
+    PROJECT_ROOT
+    / "prep"
+    / "txtrs-av"
+    / "reference_tables"
+    / "estimated_retiree_mortality_validation_summary.csv"
+)
+OUT_PLOT_2021 = (
+    PROJECT_ROOT / "prep" / "txtrs-av" / "reference_tables" / "estimated_retiree_mortality_fit_2021.svg"
+)
+OUT_PLOT_VALIDATION = (
+    PROJECT_ROOT / "prep" / "txtrs-av" / "reference_tables" / "estimated_retiree_mortality_validation.svg"
+)
+OUT_PLOT_TXTRS_COMPARE = (
+    PROJECT_ROOT
+    / "prep"
+    / "txtrs-av"
+    / "reference_tables"
+    / "estimated_retiree_mortality_vs_txtrs_runtime.svg"
+)
+TXTRS_BASE_RATES = PROJECT_ROOT / "plans" / "txtrs" / "data" / "mortality" / "base_rates.csv"
+TXTRS_IMPROVEMENT = PROJECT_ROOT / "plans" / "txtrs" / "data" / "mortality" / "improvement_scale.csv"
+
+
+@dataclass(frozen=True)
+class FitConfig:
+    min_age: int = 20
+    max_age: int = 120
+    base_year: int = 2010
+    target_base_year: int = 2021
+    anchor_floor: float = 1e-10
+    reference_knot_step: int = 10
+
+
+CFG = FitConfig()
+
+
+def _load_pub_teacher_retiree() -> pd.DataFrame:
+    df = _read_base_mort_table(PUB_PATH, "PubT-2010(B)")
+    out = pd.DataFrame(
+        {
+            "age": df["age"].astype(int),
+            "male_qx": df["healthy_retiree_male"].astype(float),
+            "female_qx": df["healthy_retiree_female"].astype(float),
+        }
+    )
+    return out[(out["age"] >= CFG.min_age) & (out["age"] <= CFG.max_age)].reset_index(drop=True)
+
+
+def _load_mp_ultimate() -> pd.DataFrame:
+    male = _read_mp_table(MP_PATH, "Male", min_age=CFG.min_age)
+    female = _read_mp_table(MP_PATH, "Female", min_age=CFG.min_age)
+    male_last = max(int(c) for c in male.columns if c != "age")
+    female_last = max(int(c) for c in female.columns if c != "age")
+    out = pd.DataFrame(
+        {
+            "age": male["age"].astype(int),
+            "male_improvement": male[str(male_last)].astype(float),
+            "female_improvement": female[str(female_last)].astype(float),
+        }
+    )
+    return out[(out["age"] >= CFG.min_age) & (out["age"] <= CFG.max_age)].reset_index(drop=True)
+
+
+def _project_with_immediate_convergence(base_qx: pd.Series, annual_improvement: pd.Series, years: int) -> pd.Series:
+    return base_qx * np.power(1.0 - annual_improvement, years)
+
+
+def _pchip_slopes(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    n = len(x)
+    h = np.diff(x)
+    delta = np.diff(y) / h
+    d = np.zeros(n, dtype=float)
+
+    if n == 2:
+        d[:] = delta[0]
+        return d
+
+    for k in range(1, n - 1):
+        if delta[k - 1] == 0.0 or delta[k] == 0.0 or np.sign(delta[k - 1]) != np.sign(delta[k]):
+            d[k] = 0.0
+        else:
+            w1 = 2.0 * h[k] + h[k - 1]
+            w2 = h[k] + 2.0 * h[k - 1]
+            d[k] = (w1 + w2) / (w1 / delta[k - 1] + w2 / delta[k])
+
+    d0 = ((2.0 * h[0] + h[1]) * delta[0] - h[0] * delta[1]) / (h[0] + h[1])
+    if np.sign(d0) != np.sign(delta[0]):
+        d0 = 0.0
+    elif np.sign(delta[0]) != np.sign(delta[1]) and abs(d0) > abs(3.0 * delta[0]):
+        d0 = 3.0 * delta[0]
+    d[0] = d0
+
+    dn = ((2.0 * h[-1] + h[-2]) * delta[-1] - h[-1] * delta[-2]) / (h[-1] + h[-2])
+    if np.sign(dn) != np.sign(delta[-1]):
+        dn = 0.0
+    elif np.sign(delta[-1]) != np.sign(delta[-2]) and abs(dn) > abs(3.0 * delta[-1]):
+        dn = 3.0 * delta[-1]
+    d[-1] = dn
+    return d
+
+
+def _pchip_interpolate(x: np.ndarray, y: np.ndarray, x_new: np.ndarray) -> np.ndarray:
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    x_new = np.asarray(x_new, dtype=float)
+    d = _pchip_slopes(x, y)
+
+    result = np.empty_like(x_new, dtype=float)
+    for i, xn in enumerate(x_new):
+        if xn <= x[0]:
+            j = 0
+        elif xn >= x[-1]:
+            j = len(x) - 2
+        else:
+            j = int(np.searchsorted(x, xn) - 1)
+        h = x[j + 1] - x[j]
+        t = (xn - x[j]) / h
+        h00 = 2 * t**3 - 3 * t**2 + 1
+        h10 = t**3 - 2 * t**2 + t
+        h01 = -2 * t**3 + 3 * t**2
+        h11 = t**3 - t**2
+        result[i] = (
+            h00 * y[j]
+            + h10 * h * d[j]
+            + h01 * y[j + 1]
+            + h11 * h * d[j + 1]
+        )
+    return result
+
+
+def _smooth_reference_curve(ages: np.ndarray, qx: np.ndarray) -> np.ndarray:
+    knot_ages = np.arange(CFG.min_age, CFG.max_age + 1, CFG.reference_knot_step, dtype=float)
+    if knot_ages[-1] != CFG.max_age:
+        knot_ages = np.append(knot_ages, float(CFG.max_age))
+    knot_idx = np.searchsorted(ages, knot_ages)
+    knot_idx = np.clip(knot_idx, 0, len(ages) - 1)
+    knot_qx = np.maximum(qx[knot_idx], CFG.anchor_floor)
+    smoothed_log = _pchip_interpolate(knot_ages, np.log(knot_qx), ages)
+    return np.exp(smoothed_log)
+
+
+def _monotone_cap(qx: np.ndarray) -> np.ndarray:
+    qx = np.maximum.accumulate(qx)
+    qx = np.clip(qx, 0.0, 1.0)
+    qx[-1] = 1.0
+    return qx
+
+
+def _build_base_2021_estimate() -> pd.DataFrame:
+    pub = _load_pub_teacher_retiree()
+    mp = _load_mp_ultimate()
+    checkpoints = pd.read_csv(CHECKPOINTS_PATH)
+    fit_points = checkpoints[
+        (checkpoints["member_state"] == "healthy_retiree")
+        & (checkpoints["source_id"] == "EXPSTUDY_2022")
+        & (checkpoints["rate_year"] == 2021)
+    ].copy()
+
+    merged = pub.merge(mp, on="age", how="inner")
+    years_forward = CFG.target_base_year - CFG.base_year
+    merged["ref_2021_male_qx"] = _project_with_immediate_convergence(
+        merged["male_qx"], merged["male_improvement"], years_forward
+    )
+    merged["ref_2021_female_qx"] = _project_with_immediate_convergence(
+        merged["female_qx"], merged["female_improvement"], years_forward
+    )
+    merged["ref_2021_male_qx_smoothed"] = _smooth_reference_curve(
+        merged["age"].to_numpy(dtype=float),
+        merged["ref_2021_male_qx"].to_numpy(dtype=float),
+    )
+    merged["ref_2021_female_qx_smoothed"] = _smooth_reference_curve(
+        merged["age"].to_numpy(dtype=float),
+        merged["ref_2021_female_qx"].to_numpy(dtype=float),
+    )
+
+    out = merged[
+        [
+            "age",
+            "male_improvement",
+            "female_improvement",
+            "ref_2021_male_qx",
+            "ref_2021_female_qx",
+            "ref_2021_male_qx_smoothed",
+            "ref_2021_female_qx_smoothed",
+        ]
+    ].copy()
+
+    for gender in ("male", "female"):
+        fit_gender = fit_points[fit_points["gender"] == gender].sort_values("age")
+        joined = fit_gender.merge(out, on="age", how="left")
+        ref_col = f"ref_2021_{gender}_qx_smoothed"
+        ages = out["age"].to_numpy(dtype=float)
+        anchor_ages = np.concatenate(
+            [
+                np.array([CFG.min_age, CFG.min_age + CFG.reference_knot_step], dtype=float),
+                joined["age"].to_numpy(dtype=float),
+            ]
+        )
+        anchor_qx = np.concatenate(
+            [
+                out.loc[out["age"] == CFG.min_age, ref_col].to_numpy(dtype=float),
+                out.loc[out["age"] == CFG.min_age + CFG.reference_knot_step, ref_col].to_numpy(dtype=float),
+                np.maximum(joined["qx"].to_numpy(dtype=float), CFG.anchor_floor),
+            ]
+        )
+        est = np.exp(_pchip_interpolate(anchor_ages, np.log(anchor_qx), ages))
+        est = _monotone_cap(est)
+        out[f"estimated_2021_{gender}_qx"] = est
+    return out
+
+
+def _project_from_estimated_2021(base_2021: pd.DataFrame, target_year: int) -> pd.DataFrame:
+    years_forward = target_year - CFG.target_base_year
+    out = base_2021[["age"]].copy()
+    out["male_qx"] = _project_with_immediate_convergence(
+        base_2021["estimated_2021_male_qx"], base_2021["male_improvement"], years_forward
+    )
+    out["female_qx"] = _project_with_immediate_convergence(
+        base_2021["estimated_2021_female_qx"], base_2021["female_improvement"], years_forward
+    )
+    out["male_qx"] = _monotone_cap(out["male_qx"].to_numpy(dtype=float))
+    out["female_qx"] = _monotone_cap(out["female_qx"].to_numpy(dtype=float))
+    return out
+
+
+def _build_validation(base_2021: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    checkpoints = pd.read_csv(CHECKPOINTS_PATH)
+    projection_years = sorted(checkpoints["rate_year"].unique())
+    projections = {}
+    for year in projection_years:
+        if year == 2021:
+            proj = base_2021[["age"]].copy()
+            proj["male_qx"] = base_2021["estimated_2021_male_qx"]
+            proj["female_qx"] = base_2021["estimated_2021_female_qx"]
+        else:
+            proj = _project_from_estimated_2021(base_2021, year)
+        projections[year] = proj
+
+    rows = []
+    for _, row in checkpoints.iterrows():
+        proj = projections[int(row["rate_year"])]
+        value = proj.loc[proj["age"] == int(row["age"]), f"{row['gender']}_qx"].iloc[0]
+        expected = float(row["qx"])
+        abs_diff = float(value - expected)
+        rel_diff = float(abs_diff / expected) if expected else math.nan
+        rows.append(
+            {
+                "source_id": row["source_id"],
+                "member_state": row["member_state"],
+                "rate_year": int(row["rate_year"]),
+                "age": int(row["age"]),
+                "gender": row["gender"],
+                "expected_qx": expected,
+                "estimated_qx": float(value),
+                "abs_diff": abs_diff,
+                "rel_diff": rel_diff,
+                "notes": row["notes"],
+            }
+        )
+
+    detail = pd.DataFrame(rows).sort_values(["source_id", "rate_year", "gender", "age"]).reset_index(drop=True)
+    summary = (
+        detail.groupby(["source_id", "rate_year", "gender"], as_index=False)
+        .agg(
+            max_abs_diff=("abs_diff", lambda s: float(np.max(np.abs(s)))),
+            mean_abs_diff=("abs_diff", lambda s: float(np.mean(np.abs(s)))),
+            max_rel_diff=("rel_diff", lambda s: float(np.max(np.abs(s)))),
+            mean_rel_diff=("rel_diff", lambda s: float(np.mean(np.abs(s)))),
+        )
+        .sort_values(["source_id", "rate_year", "gender"])
+        .reset_index(drop=True)
+    )
+    return detail, summary
+
+
+def _build_txtrs_runtime_curves(target_year: int) -> pd.DataFrame:
+    base = _read_base_mort_csv(TXTRS_BASE_RATES, "teacher_below_median")
+    male_mp = _read_mp_csv(TXTRS_IMPROVEMENT, "male", CFG.min_age)
+    female_mp = _read_mp_csv(TXTRS_IMPROVEMENT, "female", CFG.min_age)
+
+    male_shift = 2
+    year_cols = [c for c in male_mp.columns if c != "age"]
+    new_names = {c: str(int(c) - male_shift) for c in year_cols}
+    male_mp = male_mp.rename(columns=new_names)
+    last_year = max(int(c) for c in male_mp.columns if c != "age")
+    ultimate = male_mp[str(last_year)].values
+    for y in range(last_year + 1, last_year + 1 + male_shift):
+        male_mp[str(y)] = ultimate
+
+    male_final = _build_mp_final(
+        male_mp, "male", CFG.base_year, CFG.min_age, CFG.max_age, max(target_year, 2154)
+    )
+    female_final = _build_mp_final(
+        female_mp, "female", CFG.base_year, CFG.min_age, CFG.max_age, max(target_year, 2154)
+    )
+    male_factor = male_final[male_final["year"] == target_year][["age", "male_mp_cumprod_adj"]]
+    female_factor = female_final[female_final["year"] == target_year][["age", "female_mp_cumprod_adj"]]
+
+    out = base.merge(male_factor, on="age", how="left").merge(female_factor, on="age", how="left")
+    out = out[(out["age"] >= CFG.min_age) & (out["age"] <= CFG.max_age)].copy()
+    out["male_qx"] = out["healthy_retiree_male"] * out["male_mp_cumprod_adj"]
+    out["female_qx"] = out["healthy_retiree_female"] * out["female_mp_cumprod_adj"]
+    return out[["age", "male_qx", "female_qx"]].reset_index(drop=True)
+
+
+def _svg_line(points: list[tuple[float, float]], color: str, width: float = 2.0, dash: str | None = None) -> str:
+    coords = " ".join(f"{x:.2f},{y:.2f}" for x, y in points)
+    dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+    return (
+        f'<polyline fill="none" stroke="{color}" stroke-width="{width}"{dash_attr} '
+        f'points="{coords}" />'
+    )
+
+
+def _svg_circle(x: float, y: float, color: str, radius: float = 3.5) -> str:
+    return f'<circle cx="{x:.2f}" cy="{y:.2f}" r="{radius}" fill="{color}" />'
+
+
+def _map_age(age: float, x0: float, width: float) -> float:
+    return x0 + width * (age - CFG.min_age) / (CFG.max_age - CFG.min_age)
+
+
+def _map_qx(qx: float, y0: float, height: float, min_log: float, max_log: float) -> float:
+    qx = max(float(qx), 1e-6)
+    val = math.log10(qx)
+    return y0 + height * (max_log - val) / (max_log - min_log)
+
+
+def _write_svg(path: Path, body: str, width: int = 1200, height: int = 700) -> None:
+    text = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}">'
+        f'<rect x="0" y="0" width="{width}" height="{height}" fill="white" />'
+        f"{body}</svg>"
+    )
+    path.write_text(text, encoding="utf-8")
+
+
+def _plot_fit_2021(base_2021: pd.DataFrame) -> None:
+    checkpoints = pd.read_csv(CHECKPOINTS_PATH)
+    points_2021 = checkpoints[
+        (checkpoints["member_state"] == "healthy_retiree") & (checkpoints["rate_year"] == 2021)
+    ].copy()
+
+    width = 1200
+    height = 700
+    panel_w = 480
+    panel_h = 500
+    x_margin = 80
+    top = 80
+    min_log = -4.5
+    max_log = 0.0
+
+    body = ['<text x="40" y="35" font-size="24" font-family="monospace">TXTRS-AV healthy retiree mortality fit, 2021</text>']
+    body.append(
+        '<text x="40" y="58" font-size="14" font-family="monospace">Solid teal = exploratory txtrs-av estimate. Dashed gray = smoothed projected PubT-2010(B) teacher healthy-retiree reference. Orange points = published 2021 TRS checkpoints. Y-axis is log10(qx).</text>'
+    )
+
+    for i, gender in enumerate(("male", "female")):
+        x0 = x_margin + i * (panel_w + 80)
+        y0 = top
+        body.append(f'<rect x="{x0}" y="{y0}" width="{panel_w}" height="{panel_h}" fill="none" stroke="#333" stroke-width="1"/>')
+        body.append(
+            f'<text x="{x0}" y="{y0 - 15}" font-size="18" font-family="monospace">{gender.title()}</text>'
+        )
+
+        for age_tick in range(20, 121, 10):
+            x = _map_age(age_tick, x0, panel_w)
+            body.append(f'<line x1="{x:.2f}" y1="{y0}" x2="{x:.2f}" y2="{y0 + panel_h}" stroke="#eee" stroke-width="1"/>')
+            body.append(
+                f'<text x="{x - 10:.2f}" y="{y0 + panel_h + 20}" font-size="12" font-family="monospace">{age_tick}</text>'
+            )
+        for q_tick in (1e-4, 1e-3, 1e-2, 1e-1, 1.0):
+            y = _map_qx(q_tick, y0, panel_h, min_log, max_log)
+            body.append(f'<line x1="{x0}" y1="{y:.2f}" x2="{x0 + panel_w}" y2="{y:.2f}" stroke="#eee" stroke-width="1"/>')
+            body.append(
+                f'<text x="{x0 - 60}" y="{y + 4:.2f}" font-size="12" font-family="monospace">{q_tick:.0e}</text>'
+            )
+
+        ref_col = f"ref_2021_{gender}_qx_smoothed"
+        est_col = f"estimated_2021_{gender}_qx"
+        ref_pts = [(_map_age(a, x0, panel_w), _map_qx(q, y0, panel_h, min_log, max_log))
+                   for a, q in zip(base_2021["age"], base_2021[ref_col])]
+        est_pts = [(_map_age(a, x0, panel_w), _map_qx(q, y0, panel_h, min_log, max_log))
+                   for a, q in zip(base_2021["age"], base_2021[est_col])]
+        body.append(_svg_line(ref_pts, "#999999", width=2.0, dash="6 4"))
+        body.append(_svg_line(est_pts, "#005f73", width=2.5))
+
+        gpts = points_2021[points_2021["gender"] == gender]
+        for _, row in gpts.iterrows():
+            x = _map_age(float(row["age"]), x0, panel_w)
+            y = _map_qx(float(row["qx"]), y0, panel_h, min_log, max_log)
+            body.append(_svg_circle(x, y, "#bb3e03", radius=4.0))
+
+    legend_x = 80
+    legend_y = 630
+    body.append(_svg_line([(legend_x, legend_y), (legend_x + 35, legend_y)], "#005f73", width=2.5))
+    body.append('<text x="125" y="634" font-size="13" font-family="monospace">solid teal: exploratory txtrs-av estimated 2021 healthy-retiree curve</text>')
+    body.append(_svg_line([(legend_x, 658), (legend_x + 35, 658)], "#999999", width=2.0, dash="6 4"))
+    body.append('<text x="125" y="662" font-size="13" font-family="monospace">dashed gray: smoothed projected PubT-2010(B) teacher healthy-retiree reference</text>')
+    body.append(_svg_circle(760, legend_y, "#bb3e03", radius=4.0))
+    body.append('<text x="775" y="634" font-size="13" font-family="monospace">orange points: published 2021 TRS healthy-retiree checkpoints</text>')
+
+    _write_svg(OUT_PLOT_2021, "".join(body), width=width, height=height)
+
+
+def _plot_validation(base_2021: pd.DataFrame) -> None:
+    checkpoints = pd.read_csv(CHECKPOINTS_PATH)
+    projection_years = [2021, 2023, 2051, 2053]
+    projections = {year: (_project_from_estimated_2021(base_2021, year) if year != 2021 else pd.DataFrame({
+        "age": base_2021["age"],
+        "male_qx": base_2021["estimated_2021_male_qx"],
+        "female_qx": base_2021["estimated_2021_female_qx"],
+    })) for year in projection_years}
+
+    width = 1200
+    height = 900
+    panel_w = 480
+    panel_h = 320
+    lefts = [80, 640]
+    tops = [80, 460]
+    min_log = -4.5
+    max_log = 0.0
+
+    body = ['<text x="40" y="35" font-size="24" font-family="monospace">TXTRS-AV healthy retiree mortality validation</text>']
+    body.append(
+        '<text x="40" y="58" font-size="14" font-family="monospace">Each colored line is the projected txtrs-av estimate for that year. Matching colored points are the published TRS checkpoints. Y-axis is log10(qx).</text>'
+    )
+
+    colors = {2021: "#005f73", 2023: "#0a9396", 2051: "#ca6702", 2053: "#ee9b00"}
+
+    for idx, gender in enumerate(("male", "female")):
+        col = idx
+        x0 = lefts[col]
+        for row_idx, years_pair in enumerate(((2021, 2023), (2051, 2053))):
+            y0 = tops[row_idx]
+            body.append(f'<rect x="{x0}" y="{y0}" width="{panel_w}" height="{panel_h}" fill="none" stroke="#333" stroke-width="1"/>')
+            body.append(
+                f'<text x="{x0}" y="{y0 - 15}" font-size="18" font-family="monospace">{gender.title()} projected estimate and checkpoints: {" / ".join(str(y) for y in years_pair)}</text>'
+            )
+            for age_tick in range(20, 121, 10):
+                x = _map_age(age_tick, x0, panel_w)
+                body.append(f'<line x1="{x:.2f}" y1="{y0}" x2="{x:.2f}" y2="{y0 + panel_h}" stroke="#eee" stroke-width="1"/>')
+            for q_tick in (1e-4, 1e-3, 1e-2, 1e-1, 1.0):
+                y = _map_qx(q_tick, y0, panel_h, min_log, max_log)
+                body.append(f'<line x1="{x0}" y1="{y:.2f}" x2="{x0 + panel_w}" y2="{y:.2f}" stroke="#eee" stroke-width="1"/>')
+
+            for year in years_pair:
+                proj = projections[year]
+                pts = [(_map_age(a, x0, panel_w), _map_qx(q, y0, panel_h, min_log, max_log))
+                       for a, q in zip(proj["age"], proj[f"{gender}_qx"])]
+                body.append(_svg_line(pts, colors[year], width=2.3))
+                gpts = checkpoints[(checkpoints["gender"] == gender) & (checkpoints["rate_year"] == year)]
+                for _, pt in gpts.iterrows():
+                    body.append(
+                        _svg_circle(
+                            _map_age(float(pt["age"]), x0, panel_w),
+                            _map_qx(float(pt["qx"]), y0, panel_h, min_log, max_log),
+                            colors[year],
+                            radius=3.8,
+                        )
+                    )
+
+    legend_x = 80
+    legend_y = 860
+    offset = 0
+    for year in projection_years:
+        body.append(_svg_line([(legend_x + offset, legend_y), (legend_x + offset + 30, legend_y)], colors[year], width=2.5))
+        body.append(_svg_circle(legend_x + offset + 15, legend_y, colors[year], radius=3.8))
+        body.append(
+            f'<text x="{legend_x + offset + 40}" y="{legend_y + 4}" font-size="13" font-family="monospace">{year}: line = estimated curve, points = published checkpoints</text>'
+        )
+        offset += 260
+
+    _write_svg(OUT_PLOT_VALIDATION, "".join(body), width=width, height=height)
+
+
+def _plot_txtrs_comparison(base_2021: pd.DataFrame) -> None:
+    checkpoints = pd.read_csv(CHECKPOINTS_PATH)
+    years = (2021, 2023)
+    estimated = {
+        2021: pd.DataFrame(
+            {
+                "age": base_2021["age"],
+                "male_qx": base_2021["estimated_2021_male_qx"],
+                "female_qx": base_2021["estimated_2021_female_qx"],
+            }
+        ),
+        2023: _project_from_estimated_2021(base_2021, 2023),
+    }
+    txtrs_runtime = {year: _build_txtrs_runtime_curves(year) for year in years}
+
+    width = 1200
+    height = 900
+    panel_w = 480
+    panel_h = 320
+    lefts = [80, 640]
+    tops = [80, 460]
+    min_log = -4.5
+    max_log = 0.0
+
+    colors = {
+        "estimate": "#005f73",
+        "txtrs": "#ae2012",
+        2021: "#bb3e03",
+        2023: "#0a9396",
+    }
+
+    body = ['<text x="40" y="35" font-size="24" font-family="monospace">TXTRS-AV estimate vs current txtrs runtime retiree mortality</text>']
+    body.append(
+        '<text x="40" y="58" font-size="14" font-family="monospace">Solid teal = exploratory txtrs-av estimate. Dashed red = current txtrs runtime retiree mortality. Points = published TRS checkpoints for that year. Y-axis is log10(qx).</text>'
+    )
+
+    for gender_idx, gender in enumerate(("male", "female")):
+        x0 = lefts[gender_idx]
+        for row_idx, year in enumerate(years):
+            y0 = tops[row_idx]
+            body.append(f'<rect x="{x0}" y="{y0}" width="{panel_w}" height="{panel_h}" fill="none" stroke="#333" stroke-width="1"/>')
+            body.append(
+                f'<text x="{x0}" y="{y0 - 15}" font-size="18" font-family="monospace">{gender.title()} {year}</text>'
+            )
+            for age_tick in range(20, 121, 10):
+                x = _map_age(age_tick, x0, panel_w)
+                body.append(f'<line x1="{x:.2f}" y1="{y0}" x2="{x:.2f}" y2="{y0 + panel_h}" stroke="#eee" stroke-width="1"/>')
+            for q_tick in (1e-4, 1e-3, 1e-2, 1e-1, 1.0):
+                y = _map_qx(q_tick, y0, panel_h, min_log, max_log)
+                body.append(f'<line x1="{x0}" y1="{y:.2f}" x2="{x0 + panel_w}" y2="{y:.2f}" stroke="#eee" stroke-width="1"/>')
+
+            est = estimated[year]
+            tx = txtrs_runtime[year]
+            est_pts = [(_map_age(a, x0, panel_w), _map_qx(q, y0, panel_h, min_log, max_log))
+                       for a, q in zip(est["age"], est[f"{gender}_qx"])]
+            tx_pts = [(_map_age(a, x0, panel_w), _map_qx(q, y0, panel_h, min_log, max_log))
+                      for a, q in zip(tx["age"], tx[f"{gender}_qx"])]
+            body.append(_svg_line(est_pts, colors["estimate"], width=2.5))
+            body.append(_svg_line(tx_pts, colors["txtrs"], width=2.0, dash="7 4"))
+
+            pts = checkpoints[
+                (checkpoints["member_state"] == "healthy_retiree")
+                & (checkpoints["gender"] == gender)
+                & (checkpoints["rate_year"] == year)
+            ]
+            for _, pt in pts.iterrows():
+                body.append(
+                    _svg_circle(
+                        _map_age(float(pt["age"]), x0, panel_w),
+                        _map_qx(float(pt["qx"]), y0, panel_h, min_log, max_log),
+                        colors[year],
+                        radius=3.8,
+                    )
+                )
+
+    legend_y = 860
+    body.append(_svg_line([(80, legend_y), (110, legend_y)], colors["estimate"], width=2.5))
+    body.append('<text x="120" y="864" font-size="13" font-family="monospace">solid teal: exploratory txtrs-av estimate</text>')
+    body.append(_svg_line([(430, legend_y), (460, legend_y)], colors["txtrs"], width=2.0, dash="7 4"))
+    body.append('<text x="470" y="864" font-size="13" font-family="monospace">dashed red: current txtrs runtime retiree mortality</text>')
+    body.append(_svg_circle(820, legend_y, colors[2021], radius=3.8))
+    body.append('<text x="835" y="864" font-size="13" font-family="monospace">points: published 2021 checkpoint</text>')
+    body.append(_svg_circle(820, 888, colors[2023], radius=3.8))
+    body.append('<text x="835" y="892" font-size="13" font-family="monospace">points: published 2023 checkpoint</text>')
+
+    _write_svg(OUT_PLOT_TXTRS_COMPARE, "".join(body), width=width, height=height)
+
+
+def main() -> None:
+    OUT_BASE.parent.mkdir(parents=True, exist_ok=True)
+    base_2021 = _build_base_2021_estimate()
+    detail, summary = _build_validation(base_2021)
+
+    base_2021.to_csv(OUT_BASE, index=False)
+    detail.to_csv(OUT_VALIDATION, index=False)
+    summary.to_csv(OUT_SUMMARY, index=False)
+    _plot_fit_2021(base_2021)
+    _plot_validation(base_2021)
+    _plot_txtrs_comparison(base_2021)
+
+    print(f"Wrote {OUT_BASE}")
+    print(f"Wrote {OUT_VALIDATION}")
+    print(f"Wrote {OUT_SUMMARY}")
+    print(f"Wrote {OUT_PLOT_2021}")
+    print(f"Wrote {OUT_PLOT_VALIDATION}")
+    print(f"Wrote {OUT_PLOT_TXTRS_COMPARE}")
+    print(summary.to_string(index=False))
+
+
+if __name__ == "__main__":
+    main()
