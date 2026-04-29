@@ -44,6 +44,21 @@ sentence?
 | anchored to data meaning | (describe the actual constraint plainly) |
 | stage-3 inputs | model inputs |
 
+## Avoid developer shorthand
+
+These phrases are common in developer culture but read as insider talk
+to anyone outside it. Prefer the literal version.
+
+| Avoid | Use |
+|---|---|
+| Two things land here | This PR does two things |
+| this lands X | this adds X / this does X |
+| ship the feature | release the feature |
+| spin up a service | start a service |
+| stand up an environment | set up an environment |
+| kick off the run | start the run |
+| wire up | connect / hook up |
+
 ## When jargon is fine
 
 Identifiers — function names, configuration keys, column names, file
