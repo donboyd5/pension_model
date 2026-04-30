@@ -17,7 +17,6 @@ canonical scenario name for "no scenario overrides applied".
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -80,7 +79,6 @@ def print_summary(comparison: pd.DataFrame, a_label: str, b_label: str) -> None:
     print()
     summary_rows = []
     for metric, grp in comparison.groupby("metric", sort=False):
-        max_abs = grp["abs_diff"].abs().max()
         max_pct = grp["pct_diff"].abs().max()
         y0 = grp[grp["year"] == grp["year"].min()].iloc[0] if len(grp) else None
         ylast = grp[grp["year"] == grp["year"].max()].iloc[0] if len(grp) else None
