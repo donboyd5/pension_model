@@ -59,6 +59,31 @@ The `source_type` column says how strong the source link is. For partial or
 have rows, fill in `source_doc`, `printed_page`, `pdf_page`, and
 `table_or_section` so a reader can verify.
 
+## What `runtime-only` covers
+
+`runtime-only` is the source_type for items that are not statements about
+the plan and therefore have no AV (or other authoritative document)
+provenance. Inside this category there are two sub-flavors that the
+`notes` column should distinguish:
+
+1. **Modeling-engine choices that affect output** — e.g., cohort grid
+   bounds (`min_age`, `max_age`, `max_yos`), projection horizon
+   (`model_period`), engine structure choices (`class_groups`,
+   `plan_design.*`, `modeling.*`). These are real decisions the modeler
+   makes; different choices give different numbers. They get a row in
+   the checklist so reviewers can see them.
+2. **Metadata / wiring** — e.g., `plan_name`, `plan_description`,
+   `data_dir`. These are identifiers, human labels, and file-path
+   wiring. They are not subject to provenance review at all. They
+   appear in the checklist only so the row set stays complete and we
+   do not silently forget about them. The `notes` column should say
+   "Metadata / identifier — not subject to provenance review" or
+   similar.
+
+Don't use `runtime-only` as a parking spot for unverified plan facts.
+A value that should trace to the AV but hasn't been verified yet is
+`partial / source-unverified` (or `missing`), not `runtime-only`.
+
 ## Relationship to other prep artifacts
 
 This checklist is a **planning view**. It is complementary to:

@@ -37,9 +37,9 @@ Rows with status `missing` or `partial`.
 
 | item | required | status | source_type | source citation | notes |
 | --- | --- | --- | --- | --- | --- |
-| data_dir | required | have | runtime-only | — |  |
-| plan_description | required | have | runtime-only | — |  |
-| plan_name | required | have | runtime-only | — |  |
+| data_dir | required | have | runtime-only | — | Wiring / file path — not subject to provenance review. Typically derivable from plan_name. |
+| plan_description | required | have | runtime-only | — | Metadata / human label — not subject to provenance review. |
+| plan_name | required | have | runtime-only | — | Metadata / identifier — not subject to provenance review. |
 
 ### Economic assumptions
 
