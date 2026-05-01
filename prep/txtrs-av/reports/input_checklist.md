@@ -6,9 +6,9 @@ Plan-level view of every input the runtime needs to run `txtrs-av`, with status 
 
 | status | count |
 | --- | --- |
-| have | 69 |
+| have | 70 |
 | partial | 11 |
-| missing | 1 |
+| missing | 0 |
 | N/A | 14 |
 | **total** | **95** |
 
@@ -18,7 +18,6 @@ Rows with status `missing` or `partial`.
 
 | category | item | status | source_type | notes |
 | --- | --- | --- | --- | --- |
-| valuation_inputs | val_payroll | missing | — | Not currently in txtrs-av valuation_inputs; available from AV if needed |
 | decrements | retirement_rates | partial | AV-derived | Source publishes M/F separately; runtime accepts one schedule so M/F are averaged. Source-backed but with a known simplification. |
 | demographics | retiree_distribution | partial | AV-derived | Life annuities only (475891). Disabled annuities (Table 19) and survivors deferred — issue #71 |
 | funding_policy | ava_smoothing_recognition_period | partial | AV-derived | DIVERGENCE: AV specifies 5-year phase-in ("five-year phase-in...minimum rate of 20% per year"). Config has 4 and the model architecture is hardcoded for 4-year phasing (4 deferral buckets in src/pension_model/core/_funding_helpers.py with fractions 3/4, 2/3, 1/2 = 25%/year recognition over 4 years). Setting the config to 5 will not match the AV without model code changes (5th bucket + 1/5 fractions). See phase-anytime issue and phase-post-r generalization issue. |
@@ -109,13 +108,13 @@ Rows with status `missing` or `partial`.
 
 | item | required | status | source_type | source citation | notes |
 | --- | --- | --- | --- | --- | --- |
-| val_payroll | optional | missing | — | AV_2024; Table 3b covered payroll | Not currently in txtrs-av valuation_inputs; available from AV if needed |
 | ben_payment | required | have | AV-direct | AV_2024; printed p. 17 / PDF p. 24; Table 2 Summary of Cost Items | $15.258B |
 | er_dc_cont_rate | conditional | have | AV-direct | AV_2024; N/A — DB-only | 0.0 |
 | retiree_pop | required | have | AV-direct | AV_2024; printed p. 17 / PDF p. 24; Table 2 | 508701 |
 | total_active_member | required | have | AV-direct | AV_2024; printed p. 17 / PDF p. 24; Table 2 | 970872 |
 | val_aal | required | have | AV-direct | AV_2024; printed p. 17 / PDF p. 24; Table 2 | $273.095B |
 | val_norm_cost | required | have | AV-direct | AV_2024; printed p. 17 / PDF p. 24; Table 2 | 12.1% |
+| val_payroll | optional | have | AV-direct | AV_2024; printed p. 19 / PDF p. 26; Table 3b ESTIMATION OF COVERED PAYROLL AND EFFECTIVE EMPLOYER CONTRIBUTION RATES, row 1d | Verified 2026-05-01: "Projected Covered Payroll for Next Fiscal Year (1c increased by one year's payroll growth)" = $61,388,248,000. Matches init_funding.csv:total_payroll. Used as out-of-sample comparison target in calibration diagnostics (src/pension_model/core/calibration.py model_payroll vs val_payroll). |
 | headcount_group | optional | N/A | runtime-only | — | Single-class plan |
 
 ### Funding year-0 seed (init_funding.csv)
