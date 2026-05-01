@@ -27,8 +27,8 @@ Rows with status `missing` or `partial`.
 | funding_year0 | defer_y3_legacy | partial | AV-derived | Set to 0 — published aggregate not split by year |
 | funding_year0 | defer_y4_legacy | partial | AV-derived | Set to 0 — published aggregate not split by year |
 | mortality | base_rates | partial | estimated | Active half source-direct from PubT-2010(B). Retiree half is fallback estimator: AV-named 2021 TRS Healthy Pensioner table is not public. Issues #72 and #73. |
-| term_vested | avg_deferral_years | partial | estimated | First-cut default of 12; refine from valuation term-vested demographics. Plan_config note flags this as provisional. Issue #76 |
-| term_vested | avg_payout_years | partial | estimated | First-cut default of 25; refine from valuation term-vested demographics |
+| term_vested | avg_deferral_years | partial | estimated | Estimated D = distribution age (~62, weighted across tiers per Appendix 1 plan provisions) − avg current age (~50, inferred since AV does not publish inactive-vested age distribution). AV Table 15a publishes inactive vested counts (138,146) and contributions ($5.305B) but no age distribution. Working estimate D = 12; documented in prep/txtrs-av/methods/term_vested_deferred_annuity.md. Refinement requires inactive-vested age distribution from TRS member statistical reports or external data. |
+| term_vested | avg_payout_years | partial | estimated | Estimated L = approximate remaining life expectancy at distribution age 62 under the AV's post-retirement mortality basis (2021 TRS of Texas Healthy Pensioner Mortality Tables + Scale UMP 2021 immediate convergence). Typical life expectancy at age 62 under such a table is ~24-26 years; L = 25 is a midpoint estimate. Refinement: compute survival-weighted annuity factor at 62 directly from plans/txtrs-av/data/mortality/base_rates.csv. See phase-anytime issue. |
 
 ## Full checklist by category
 
@@ -154,8 +154,8 @@ Rows with status `missing` or `partial`.
 
 | item | required | status | source_type | source citation | notes |
 | --- | --- | --- | --- | --- | --- |
-| avg_deferral_years | required | partial | estimated | — | First-cut default of 12; refine from valuation term-vested demographics. Plan_config note flags this as provisional. Issue #76 |
-| avg_payout_years | required | partial | estimated | — | First-cut default of 25; refine from valuation term-vested demographics |
+| avg_deferral_years | required | partial | estimated | AV_2024; printed p. 66 / PDF p. 73; Appendix 2 §BENEFIT ELECTION OF VESTED TERMINATING MEMBERS (printed p. 66 / PDF p. 73); Appendix 1 §A.2 Normal Retirement (printed p. 46 / PDF p. 53); Table 15a (printed p. 38 / PDF p. 45) | Estimated D = distribution age (~62, weighted across tiers per Appendix 1 plan provisions) − avg current age (~50, inferred since AV does not publish inactive-vested age distribution). AV Table 15a publishes inactive vested counts (138,146) and contributions ($5.305B) but no age distribution. Working estimate D = 12; documented in prep/txtrs-av/methods/term_vested_deferred_annuity.md. Refinement requires inactive-vested age distribution from TRS member statistical reports or external data. |
+| avg_payout_years | required | partial | estimated | AV_2024; printed p. 64 / PDF p. 71; Appendix 2 §4 Post-retirement Mortality (printed p. 64 / PDF p. 71) | Estimated L = approximate remaining life expectancy at distribution age 62 under the AV's post-retirement mortality basis (2021 TRS of Texas Healthy Pensioner Mortality Tables + Scale UMP 2021 immediate convergence). Typical life expectancy at age 62 under such a table is ~24-26 years; L = 25 is a midpoint estimate. Refinement: compute survival-weighted annuity factor at 62 directly from plans/txtrs-av/data/mortality/base_rates.csv. See phase-anytime issue. |
 | method | required | have | runtime-only | — | deferred_annuity |
 
 ### Demographics
