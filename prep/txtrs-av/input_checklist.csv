@@ -1,7 +1,7 @@
 category,item,description,runtime_location,required,status,source_type,source_doc,printed_page,pdf_page,table_or_section,method_id,notes
-plan_meta,plan_name,Plan identifier,plan_config.json:plan_name,required,have,runtime-only,,,,,,
-plan_meta,plan_description,Human-readable plan name,plan_config.json:plan_description,required,have,runtime-only,,,,,,
-plan_meta,data_dir,Path to plan data directory,plan_config.json:data.data_dir,required,have,runtime-only,,,,,,
+plan_meta,plan_name,Plan identifier,plan_config.json:plan_name,required,have,runtime-only,,,,,,"Metadata / identifier — not subject to provenance review."
+plan_meta,plan_description,Human-readable plan name,plan_config.json:plan_description,required,have,runtime-only,,,,,,"Metadata / human label — not subject to provenance review."
+plan_meta,data_dir,Path to plan data directory,plan_config.json:data.data_dir,required,have,runtime-only,,,,,,"Wiring / file path — not subject to provenance review. Typically derivable from plan_name."
 economic,dr_current,Discount rate for current/legacy members,plan_config.json:economic.dr_current,required,have,AV-direct,AV_2024,60,67,"Appendix 2 §1 Investment Return Rate",,"Verified 2026-05-01: ""Investment Return Rate 7.00% per annum, compounded annually, composed of an assumed 2.30% inflation rate and a 4.70% real rate of return, net of investment expenses."""
 economic,dr_new,Discount rate for new entrants,plan_config.json:economic.dr_new,required,have,AV-direct,AV_2024,60,67,"Appendix 2 §1 Investment Return Rate",,"Verified 2026-05-01: AV cites a single 7.00% investment return rate; we apply the same rate to new entrants as a modeling default consistent with US public-pension convention."
 economic,dr_old,Legacy discount rate,plan_config.json:economic.dr_old,required,have,AV-direct,AV_2024,60,67,"Appendix 2 §1 Investment Return Rate",,"Verified 2026-05-01: 7.00% AV investment return rate. Used by the cashflow-estimation pathway anchored to the published-rate quantity."

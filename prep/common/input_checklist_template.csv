@@ -1,7 +1,7 @@
 category,item,description,runtime_location,required,status,source_type,source_doc,printed_page,pdf_page,table_or_section,method_id,notes
-plan_meta,plan_name,Plan identifier,plan_config.json:plan_name,required,,,,,,,,
-plan_meta,plan_description,Human-readable plan name,plan_config.json:plan_description,required,,,,,,,,
-plan_meta,data_dir,Path to plan data directory,plan_config.json:data.data_dir,required,,,runtime-only,,,,,
+plan_meta,plan_name,Plan identifier,plan_config.json:plan_name,required,,,runtime-only,,,,,"Metadata / identifier — not subject to provenance review."
+plan_meta,plan_description,Human-readable plan name,plan_config.json:plan_description,required,,,runtime-only,,,,,"Metadata / human label — not subject to provenance review."
+plan_meta,data_dir,Path to plan data directory,plan_config.json:data.data_dir,required,,,runtime-only,,,,,"Wiring / file path — not subject to provenance review. Typically derivable from plan_name."
 economic,dr_current,Discount rate for current/legacy members,plan_config.json:economic.dr_current,required,,,,,,,,
 economic,dr_new,Discount rate for new entrants,plan_config.json:economic.dr_new,required,,,,,,,,
 economic,dr_old,Legacy discount rate (often equal to dr_current),plan_config.json:economic.dr_old,required,,,,,,,,
