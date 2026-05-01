@@ -1,0 +1,234 @@
+# Scenario Building Plan
+
+## Purpose
+
+This plan defines the new scenarios that will be applied to both the R model and
+the Python model before cross-model reconciliation.
+
+The scenarios are:
+
+- `asset_shock`
+- `high_inflation`
+- `high_inflation_linked`
+
+Each scenario definition should be implemented once in the R workflow and once
+in the Python workflow using the same timing, assumption values, and affected
+inputs. The same definitions should be usable for both FRS and TXTRS.
+
+## Scenario Construction Principles
+
+Scenario definitions should be explicit and mechanical. The R and Python
+implementations should not need to infer how a scenario is intended to work.
+
+For each scenario, document:
+
+- canonical scenario name
+- affected input fields
+- year-by-year assumption values
+- whether the scenario is temporary or permanent
+- whether assumptions revert to baseline
+- whether the scenario changes policy assumptions, economic assumptions, or both
+- whether plan-specific inputs are allowed or the same definition applies to all
+  plans
+
+## Scenario 1: `asset_shock`
+
+The `asset_shock` scenario changes the annual asset return path.
+
+Return path:
+
+1. Year 1: current plan investment return assumption
+2. Year 2: `3%`
+3. Year 3: `-24%`
+4. Year 4: `12%`
+5. Year 5: `12%`
+6. Year 6: `12%`
+7. Year 7 and later: current plan investment return assumption annually
+
+Implementation notes:
+
+- Apply this return path to the model's asset return assumption.
+- Use the same scenario timing in FRS and TXTRS.
+- Use the same scenario timing in the R and Python workflows.
+- Treat Year 1 as the first projected year after the valuation date unless the
+  model workflow uses a different explicit scenario-year convention.
+- Use each plan's current investment return assumption for Year 1 and for Year
+  7 and later. For example, FRS uses its FRS baseline investment return and
+  TXTRS uses its TXTRS baseline investment return.
+- Preserve baseline assumptions for all inputs not directly affected by the
+  asset return path.
+
+Open modeling choices to confirm before implementation:
+
+- whether the return path applies to market value of assets, actuarial value of
+  assets, or both
+- whether existing asset smoothing remains active
+- whether the `-24%` loss is smoothed according to the normal asset smoothing
+  method or recognized immediately
+- whether contribution policy reacts to the asset shock immediately or according
+  to the normal model timing
+
+Acceptance criteria:
+
+- The R workflow has an `asset_shock` scenario with the exact return pattern
+  above.
+- The Python workflow has an `asset_shock` scenario with the exact return
+  pattern above.
+- FRS and TXTRS use the same `asset_shock` timing, while plan-specific current
+  investment return assumptions fill Year 1 and Year 7 onward.
+- Any asset smoothing or contribution timing choice is documented before
+  reconciliation.
+
+## Scenario 2: `high_inflation`
+
+The `high_inflation` scenario increases the current high inflation assumption by
+`3%` for all remaining projection years.
+
+Definition:
+
+- high inflation rate = current high inflation rate + `3%`
+- the increase applies for the rest of the projection period
+
+Implementation notes:
+
+- Identify the current high inflation assumption used by each workflow.
+- Add `3%` to that assumption for every remaining projected year.
+- Use the same inflation path in the R and Python workflows.
+- Preserve baseline assumptions for inputs not directly affected by the high
+  inflation scenario.
+- If FRS and TXTRS have different current high inflation assumptions, apply the
+  same formula to each plan's current assumption rather than forcing the same
+  absolute inflation rate across plans.
+
+Open modeling choices to confirm before implementation:
+
+- which input field is the authoritative current high inflation assumption
+- whether high inflation affects only inflation or also linked assumptions such
+  as payroll growth, salary growth, COLA, discount rate, asset return, or
+  amortization inputs
+- whether the scenario affects active members, retirees, or both
+- whether the increase begins in Year 1 or after an existing high inflation
+  period already defined in the model
+
+Acceptance criteria:
+
+- The R workflow has a `high_inflation` scenario that applies current high
+  inflation plus `3%` for the rest of the projection period.
+- The Python workflow has a `high_inflation` scenario that applies current high
+  inflation plus `3%` for the rest of the projection period.
+- FRS and TXTRS use the same formula for constructing the high inflation path.
+- Any linked-assumption behavior is documented before reconciliation.
+
+## Scenario 3: `high_inflation_linked`
+
+The `high_inflation_linked` scenario models high inflation as a coherent
+economic environment rather than only as a real-dollar reporting deflator.
+
+Definition:
+
+- inflation rate = baseline inflation rate + `3%`
+- payroll growth = baseline payroll growth + `3%`
+- salary growth = baseline salary growth + `3%` for every affected salary
+  growth rate
+- amortization payroll growth = baseline amortization payroll growth + `3%`,
+  if the plan has a separate amortization growth assumption
+- nominal asset return = baseline nominal asset return + `3%`, if the scenario
+  is intended to preserve baseline real investment returns
+- nominal discount rate = baseline discount rate + `3%`, if the discount rate is
+  being modeled as a nominal expected-return assumption
+- statutory or fixed COLA rates do not change unless the plan rule explicitly
+  links COLA to inflation
+
+Implementation notes:
+
+- Apply the scenario beginning in Year 1 and continue it for the rest of the
+  projection period.
+- Use each plan's own baseline assumptions as the starting point. For example,
+  if FRS and TXTRS have different baseline inflation or payroll growth
+  assumptions, add `3%` to each plan's own baseline value.
+- Preserve real growth assumptions where possible. The intent is to increase
+  nominal assumptions because inflation is higher, not to change real wage
+  growth, real payroll growth, or real investment return unless explicitly
+  documented.
+- Keep COLA policy separate from inflation. If COLA is fixed by statute or is
+  zero under current policy, do not increase it automatically.
+- If a model cannot separate inflation from real salary scale components, apply
+  the `3%` increase mechanically to the existing salary growth table and
+  document that limitation.
+
+Inputs expected to change:
+
+- `economic.inflation`
+- `economic.payroll_growth`
+- salary growth tables or salary growth assumptions
+- amortization payroll growth, where separate from payroll growth
+- `economic.model_return`, if preserving real investment return
+- current and new-member discount rates, if preserving real discount rates
+
+Inputs expected not to change unless explicitly approved:
+
+- COLA rates that are statutory, fixed, or currently zero
+- benefit multipliers
+- retirement eligibility
+- termination, retirement, disability, or mortality rates
+- employee contribution rates
+- asset smoothing method
+- funding policy timing
+
+Open modeling choices to confirm before implementation:
+
+- whether nominal asset return should increase by `3%` or stay fixed as a
+  stress assumption
+- whether discount rates should increase by `3%` or stay fixed as a stress
+  assumption
+- whether amortization payroll growth is linked directly to payroll growth in
+  each workflow
+- how to apply the `3%` increase to salary growth tables that already include
+  service-based merit or seniority components
+
+Acceptance criteria:
+
+- The R workflow has a `high_inflation_linked` scenario that applies the linked
+  economic assumption changes above.
+- The Python workflow has a `high_inflation_linked` scenario that applies the
+  same linked economic assumption changes.
+- FRS and TXTRS use the same formula: each affected baseline nominal assumption
+  plus `3%`.
+- Any deliberate choice to hold asset returns or discount rates fixed is
+  documented as a stress-test variant rather than treated as the default linked
+  high-inflation scenario.
+
+## Final Scenario Specification Checklist
+
+Before moving to implementation, confirm:
+
+- `asset_shock` return path is final.
+- `high_inflation` formula is final.
+- `high_inflation_linked` formula is final.
+- All scenarios have canonical names.
+- All scenarios identify all changed inputs.
+- All scenarios identify all unchanged baseline inputs.
+- Year numbering is consistent between R and Python.
+- Year numbering is consistent between FRS and TXTRS.
+- Scenario output locations are defined for both workflows.
+
+## Implementation Decisions
+
+- `asset_shock` changes only the annual asset return path used by the funding
+  model. It does not change discount rates, payroll growth, COLA, contribution
+  policy, or other economic assumptions.
+- `asset_shock` uses the normal plan asset-smoothing method. The `-24%` loss is
+  therefore recognized through the existing smoothing logic rather than as a
+  separate immediate-recognition override.
+- `asset_shock` uses the normal contribution timing already implemented by each
+  plan workflow.
+- `high_inflation` changes only the `economic.inflation` assumption, adding
+  `3%` to the plan's baseline inflation rate for the full projection period.
+  It does not automatically change payroll growth, salary growth, COLA,
+  discount rate, asset return, or amortization growth.
+- `high_inflation_linked` changes inflation and linked nominal economic
+  assumptions. By default, payroll growth, salary growth, and amortization
+  payroll growth increase by `3%`; nominal asset return and discount rates also
+  increase by `3%` when the scenario is intended to preserve real investment
+  return and real discount-rate assumptions. Fixed or statutory COLA assumptions
+  do not change automatically.
