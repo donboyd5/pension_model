@@ -10,13 +10,90 @@ sourcing.
 
 | parameter | value | source |
 |---|---|---|
-| `term_vested.avg_deferral_years` (`D`) | 12 | First-cut default; gap between average current age of term-vested members and assumed distribution age. |
-| `term_vested.avg_payout_years` (`L`) | 25 | First-cut default; approximate remaining life expectancy at distribution age 60. |
+| `term_vested.avg_deferral_years` (`D`) | 12 | Estimated. See **D rationale** below. |
+| `term_vested.avg_payout_years` (`L`) | 25 | Estimated. See **L rationale** below. |
 | `economic.dr_current` (`r`) | 0.07 | TXTRS-AV plan_config.json — used as the baseline rate the stream is calibrated against. |
 | `benefit.cola.current_retire` (`cola`) | 0.0 | TXTRS-AV plan_config.json. |
 
 These parameters live in `plans/txtrs-av/config/plan_config.json` under
 the `term_vested` section and `economic` / `benefit.cola` sections.
+
+## D rationale (avg_deferral_years = 12)
+
+`D` is the gap between the average current age of inactive vested members
+and the assumed distribution age (the age at which deferred-annuity
+payments begin).
+
+**Distribution age.** AV 2024 Appendix 2 §BENEFIT ELECTION OF VESTED
+TERMINATING MEMBERS (printed p. 66 / PDF p. 73) states:
+
+> "the deferred benefit is assumed to commence at the earliest age the
+> member is eligible for unreduced retirement."
+
+Plan provisions (AV Appendix 1 §A.2 Normal Retirement, printed p. 46 /
+PDF p. 53) define earliest unreduced retirement as the earliest of:
+
+- age 65 with 5 YOS (any tier),
+- Rule of 80 (any tier),
+- For pre-2007 hires: Rule of 80, no age minimum.
+- For post-2007 hires vested by 2014: Rule of 80 with **min age 60**.
+- For post-2007 not vested by 2014, or post-2014 hires: Rule of 80 with
+  **min age 62**.
+
+A weighted distribution age across tiers is approximately **62**, the
+binding minimum age for the post-2007 majority.
+
+**Current age.** AV Table 15a (printed p. 38 / PDF p. 45) publishes
+inactive vested counts (138,146) and accumulated contributions
+($5,304,999,288) but **does not publish their age distribution**. The
+average is approximated from active-cohort dynamics: avg active age is
+44.7 with 10.2 YOS, and inactive vested members had to accumulate at
+least 5 YOS before terminating, so their age distribution skews older
+than active. A working estimate of **~50** for the average current
+age of inactive vested members is consistent with mid-career
+termination plus elapsed deferral time.
+
+**Implied D = 62 − 50 = 12.**
+
+**Data gap.** The AV does not publish inactive-vested age distribution,
+so this estimate cannot be tightened from AV data alone. Refinement
+paths: TRS member statistical reports (if they publish inactive vested
+age bands), or external data such as actuarial experience studies that
+break down by status.
+
+## L rationale (avg_payout_years = 25)
+
+`L` is the average duration of payments once the deferred annuity
+begins.
+
+`L` approximates remaining life expectancy at the assumed distribution
+age (62), under the AV's post-retirement mortality basis. AV Appendix
+2 §4 Post-retirement Mortality (printed p. 64 / PDF p. 71) cites the
+2021 TRS of Texas Healthy Pensioner Mortality Tables, projected on a
+fully generational basis by Scale UMP 2021 with immediate convergence.
+
+A typical life expectancy at age 62 under such a table is roughly
+24–26 years; **25** is a midpoint estimate.
+
+**Refinement path.** L can be computed rigorously from
+`plans/txtrs-av/data/mortality/base_rates.csv` as a survival-weighted
+annuity factor at age 62 with the configured COLA (currently 0). This
+is a planned phase-anytime refinement — see GitHub issue (filed with
+this prep work).
+
+## Why these defaults are kept
+
+After AV review, the first-cut defaults `D = 12` and `L = 25` happen
+to land within the plausible range supported by the AV's plan
+provisions and mortality basis. They are **not** changed in this
+pass; they are **upgraded in documentation** from "first-cut default"
+to "estimated with AV-supported reasoning, with documented data gaps."
+
+The values produce a cashflow stream with realistic deferral-then-
+payout shape and an NPV that recovers `pvfb_term_current` by
+construction. Sensitivity to small refinements in `D` and `L` is
+modest in absolute dollar terms because the calibration step rescales
+the first-payment scalar.
 
 ## Build artifact
 
@@ -39,10 +116,9 @@ The verifier confirms NPV at `dr_current` equals
 
 ## Open refinements
 
-- `D` and `L` are first-cut defaults. Once the AV's term-vested age
-  distribution and assumed retirement-eligibility age are reviewed,
-  refine these values and update this file.
-- Replacing `L` with a true survival-weighted annuity factor at the
-  distribution age (using mortality and COLA) is the next refinement;
-  it would still satisfy the NPV identity that the consuming runtime
-  relies on.
+- Compute `L` rigorously from
+  `plans/txtrs-av/data/mortality/base_rates.csv` as a
+  survival-weighted annuity factor at the distribution age. Filed as a
+  phase-anytime issue.
+- Refine `D` if inactive-vested age distribution becomes available
+  from a TRS member statistical report or external data source.
