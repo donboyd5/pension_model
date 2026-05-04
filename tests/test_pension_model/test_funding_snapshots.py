@@ -52,14 +52,11 @@ def _run_funding(plan_name: str) -> dict:
     """Run the full pipeline and return the funding dict for ``plan_name``."""
     from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import load_funding_inputs, run_funding_model
-    from pension_model.plan_config import load_frs_config, load_txtrs_config
+    from pension_model.plan_config import load_plan_config_by_name
 
-    if plan_name == "frs":
-        constants = load_frs_config()
-    elif plan_name == "txtrs":
-        constants = load_txtrs_config()
-    else:
+    if plan_name not in ("frs", "txtrs"):
         raise ValueError(f"Unknown plan: {plan_name}")
+    constants = load_plan_config_by_name(plan_name)
 
     liability = run_plan_pipeline(constants)
     funding_inputs = load_funding_inputs(constants.resolve_data_dir() / "funding")

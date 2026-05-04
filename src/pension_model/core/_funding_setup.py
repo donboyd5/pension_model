@@ -162,8 +162,8 @@ def resolve_er_rate_components(stat_rates: dict) -> list:
     if components is None:
         raise ValueError(
             "funding.statutory_rates.er_rate_components is required when "
-            "using the statutory contribution strategy. See "
-            "plans/txtrs/config/plan_config.json for an example schema."
+            "using the statutory contribution strategy. See an existing "
+            "plan's plan_config.json for an example schema."
         )
     return [RateComponent.from_config(c) for c in components]
 

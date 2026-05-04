@@ -209,13 +209,3 @@ def load_plan_config_by_name(
     else:
         cal_path = calibration_path
     return load_plan_config(config_path, cal_path)
-
-
-def load_frs_config(calibration_path: Optional[Path] = None) -> PlanConfig:
-    """Convenience: load the FRS plan config (debug/tests only)."""
-    return load_plan_config_by_name("frs", calibration_path)
-
-
-def load_txtrs_config(calibration_path: Optional[Path] = None) -> PlanConfig:
-    """Convenience: load the TRS plan config (debug/tests only)."""
-    return load_plan_config_by_name("txtrs", calibration_path)

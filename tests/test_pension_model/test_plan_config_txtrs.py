@@ -4,11 +4,11 @@ import pytest
 
 pytestmark = [pytest.mark.unit]
 
-from pension_model.plan_config import load_txtrs_config
+from pension_model.plan_config import load_plan_config_by_name
 
 
 def test_txtrs_loads():
-    config = load_txtrs_config()
+    config = load_plan_config_by_name("txtrs")
     assert config.plan_name == "txtrs"
     assert len(config.classes) == 1
     assert config.classes[0] == "all"

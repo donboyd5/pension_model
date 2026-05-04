@@ -9,7 +9,7 @@ from pension_model.plan_config import (
     get_ben_mult,
     get_reduce_factor,
     get_tier,
-    load_txtrs_config,
+    load_plan_config_by_name,
     resolve_ben_mult_vec,
     resolve_cola_vec,
     resolve_reduce_factor_vec,
@@ -25,7 +25,7 @@ from ._vectorized_resolver_test_support import (
 
 
 def test_resolve_tiers_vec_matches_scalar_txtrs():
-    config = load_txtrs_config()
+    config = load_plan_config_by_name("txtrs")
     rows = build_txtrs_grid()
     cn, ey, age, yos = rows_to_arrays(rows)
 
@@ -48,7 +48,7 @@ def test_resolve_tiers_vec_matches_scalar_txtrs():
 
 
 def test_resolve_cola_vec_matches_scalar_txtrs():
-    config = load_txtrs_config()
+    config = load_plan_config_by_name("txtrs")
     rows = build_txtrs_grid()
     cn, ey, age, yos = rows_to_arrays(rows)
 
@@ -67,7 +67,7 @@ def test_resolve_cola_vec_matches_scalar_txtrs():
 
 
 def test_resolve_ben_mult_vec_matches_scalar_txtrs():
-    config = load_txtrs_config()
+    config = load_plan_config_by_name("txtrs")
     rows = build_txtrs_grid()
     cn, ey, age, yos = rows_to_arrays(rows)
 
@@ -88,7 +88,7 @@ def test_resolve_ben_mult_vec_matches_scalar_txtrs():
 
 
 def test_resolve_reduce_factor_vec_matches_scalar_txtrs():
-    config = load_txtrs_config()
+    config = load_plan_config_by_name("txtrs")
     rows = build_txtrs_grid()
     cn, ey, age, yos = rows_to_arrays(rows)
 

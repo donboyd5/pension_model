@@ -10,7 +10,7 @@ from pension_model.plan_config import (
     get_ben_mult,
     get_reduce_factor,
     get_tier,
-    load_frs_config,
+    load_plan_config_by_name,
     resolve_ben_mult_vec,
     resolve_cola_vec,
     resolve_reduce_factor_vec,
@@ -26,7 +26,7 @@ from ._vectorized_resolver_test_support import (
 
 
 def test_resolve_tiers_vec_matches_scalar_frs():
-    config = load_frs_config()
+    config = load_plan_config_by_name("frs")
     rows = build_frs_grid()
     cn, ey, age, yos = rows_to_arrays(rows)
 
@@ -49,7 +49,7 @@ def test_resolve_tiers_vec_matches_scalar_frs():
 
 
 def test_resolve_tiers_vec_accepts_categorical_class_name():
-    config = load_frs_config()
+    config = load_plan_config_by_name("frs")
     rows = build_frs_grid()[:500]
     cn, ey, age, yos = rows_to_arrays(rows)
 
@@ -63,7 +63,7 @@ def test_resolve_tiers_vec_accepts_categorical_class_name():
 
 
 def test_resolve_tiers_vec_entry_age_override_frs():
-    config = load_frs_config()
+    config = load_plan_config_by_name("frs")
     cn = np.array(["regular", "regular"], dtype=object)
     ey = np.array([2000, 2000], dtype=np.int64)
     age = np.array([40, 40], dtype=np.int64)
@@ -79,7 +79,7 @@ def test_resolve_tiers_vec_entry_age_override_frs():
 
 
 def test_resolve_cola_vec_matches_scalar_frs():
-    config = load_frs_config()
+    config = load_plan_config_by_name("frs")
     rows = build_frs_grid()
     cn, ey, age, yos = rows_to_arrays(rows)
 
@@ -98,7 +98,7 @@ def test_resolve_cola_vec_matches_scalar_frs():
 
 
 def test_resolve_ben_mult_vec_matches_scalar_frs():
-    config = load_frs_config()
+    config = load_plan_config_by_name("frs")
     rows = build_frs_grid()
     cn, ey, age, yos = rows_to_arrays(rows)
 
@@ -119,7 +119,7 @@ def test_resolve_ben_mult_vec_matches_scalar_frs():
 
 
 def test_resolve_ben_mult_vec_accepts_categorical_class_name():
-    config = load_frs_config()
+    config = load_plan_config_by_name("frs")
     rows = build_frs_grid()[:500]
     cn, ey, age, yos = rows_to_arrays(rows)
     tier_id, ret_status = resolve_tiers_vec(config, cn, ey, age, yos)
@@ -136,7 +136,7 @@ def test_resolve_ben_mult_vec_accepts_categorical_class_name():
 
 
 def test_resolve_reduce_factor_vec_matches_scalar_frs():
-    config = load_frs_config()
+    config = load_plan_config_by_name("frs")
     rows = build_frs_grid()
     cn, ey, age, yos = rows_to_arrays(rows)
 
@@ -167,7 +167,7 @@ def test_resolve_reduce_factor_vec_matches_scalar_frs():
 
 
 def test_resolve_reduce_factor_vec_accepts_categorical_class_name():
-    config = load_frs_config()
+    config = load_plan_config_by_name("frs")
     rows = build_frs_grid()[:500]
     cn, ey, age, yos = rows_to_arrays(rows)
     tier_id, ret_status = resolve_tiers_vec(config, cn, ey, age, yos)

@@ -255,8 +255,8 @@ def _resolve_age_group_breaks(constants: PlanConfig) -> list:
     if not groups_cfg:
         raise ValueError(
             "modeling.age_groups is required in plan config when the "
-            "plan uses YOS-only termination rate tables. See "
-            "plans/frs/config/plan_config.json for an example schema."
+            "plan uses YOS-only termination rate tables. See an existing "
+            "plan's plan_config.json for an example schema."
         )
     breaks = []
     for g in groups_cfg:

@@ -48,9 +48,9 @@ def rundown_results():
     """
     from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import load_funding_inputs, run_funding_model
-    from pension_model.plan_config import load_frs_config
+    from pension_model.plan_config import load_plan_config_by_name
 
-    constants = load_frs_config()
+    constants = load_plan_config_by_name("frs")
     # PlanConfig stores model_period as a top-level field; ranges is a derived
     # property, so we override the field directly.
     constants = replace(constants, model_period=RUNDOWN_PERIOD)
