@@ -243,7 +243,7 @@ A decoder ring for the short names you’ll see on screen. Python code leans on 
 | Section | What lives there |
 |------------------------------------|------------------------------------|
 | `data` | Path to the plan’s data directory. |
-| `economic` | Discount rates (`dr_current`, `dr_new`, `dr_old`), `model_return`, payroll / population growth, inflation. |
+| `economic` | Discount rates (`dr_current`, `dr_new`, `dr_old`), `model_return`, payroll / population growth. |
 | `benefit` | Employee contribution rate, FAS averaging window, benefit types, COLA schedules. |
 | `funding` | DROP flag, amortization method and period, funding lag, AVA smoothing parameters. |
 | `ranges` | Age/year bounds, projection length, max YOS. |

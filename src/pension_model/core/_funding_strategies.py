@@ -156,7 +156,6 @@ class CorridorSmoothing:
     pins_first_projection_year_to_baseline: ClassVar[bool] = True
     # Corridor does not emit the gainloss-only output columns.
     emits_liability_gain_loss_sum: ClassVar[bool] = False
-    emits_real_cost_metrics: ClassVar[bool] = False
 
     def smooth(
         self,
@@ -235,12 +234,9 @@ class GainLossSmoothing:
     # every projection year, including year 1. Matches the R reference
     # model.
     pins_first_projection_year_to_baseline: ClassVar[bool] = False
-    # Gainloss emits two extra output-column packages:
-    #   * ``liability_gain_loss`` (sum of legacy + new liability GL).
-    #   * Real-cost metrics (``total_er_cont_real``, ``cum_er_cont_real``,
-    #     ``total_ual_mva_real``, ``all_in_cost_real``).
+    # Gainloss emits a summed ``liability_gain_loss`` output column
+    # (legacy + new) that the corridor strategy does not emit.
     emits_liability_gain_loss_sum: ClassVar[bool] = True
-    emits_real_cost_metrics: ClassVar[bool] = True
 
     def smooth(
         self,

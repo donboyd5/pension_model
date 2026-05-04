@@ -37,7 +37,6 @@ from pension_model.core._funding_phases import (
     _phase_mva,
     _phase_normal_cost,
     _phase_payroll,
-    _phase_real_cost_metrics,
     _phase_ual_and_funded_ratios,
 )
 from pension_model.core._funding_setup import (
@@ -224,11 +223,9 @@ def _run_phase2_for_class(
 def _run_phase3_for_class(
     cn: str,
     i: int,
-    year: int,
     funding: dict,
     agg: pd.DataFrame,
     ctx: FundingContext,
-    start_year: int,
 ) -> None:
     """Execute phase 3 for one class or DROP frame."""
     f = funding[cn]
@@ -241,8 +238,6 @@ def _run_phase3_for_class(
     _maybe_accumulate(ctx, agg, f, i, ["total_er_cont"])
 
     _set_total_contribution_rate(f, i)
-    if ctx.ava_strategy.emits_real_cost_metrics:
-        _phase_real_cost_metrics(f, i, year, start_year, ctx.inflation)
 
     funding[cn] = f
 def _compute_funding(
@@ -306,7 +301,7 @@ def _compute_funding(
 
         # --- Phase 3: UAL / funded ratios / contribution totals ---
         for cn in ctx.all_classes:
-            _run_phase3_for_class(cn, i, year, funding, agg, ctx, start_year)
+            _run_phase3_for_class(cn, i, funding, agg, ctx)
 
         if ctx.is_multi_class:
             _finalize_aggregate_row(agg, i)

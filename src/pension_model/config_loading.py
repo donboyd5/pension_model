@@ -134,7 +134,6 @@ def load_plan_config(
         baseline_model_return=baseline_model_return,
         payroll_growth=eco["payroll_growth"],
         pop_growth=eco.get("pop_growth", 0.0),
-        inflation=eco["inflation"],
         model_return=eco.get("model_return", eco["dr_current"]),
         db_ee_cont_rate=ben["db_ee_cont_rate"],
         db_ee_interest_rate=ben.get("db_ee_interest_rate", 0.0),

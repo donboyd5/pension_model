@@ -34,7 +34,6 @@ class PlanConfig:
     baseline_model_return: float
     payroll_growth: float
     pop_growth: float
-    inflation: float
     model_return: float
     db_ee_cont_rate: float
     db_ee_interest_rate: float

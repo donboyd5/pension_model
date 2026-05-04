@@ -171,7 +171,6 @@ def print_parameters(constants):
     print(f"    Discount rate:          {ec.dr_current:.1%}")
     print(f"    Investment return:      {ec.model_return:.1%}")
     print(f"    Payroll growth:         {ec.payroll_growth:.2%}")
-    print(f"    Inflation:              {ec.inflation:.1%}")
     print(f"    COLA (retirees):        {bn.cola_current_retire:.0%}")
     print(f"    Funding policy:         {fn.funding_policy}")
     print(f"    Amortization:           {fn.amo_method}, {fn.amo_period_new}-year period")
