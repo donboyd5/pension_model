@@ -140,6 +140,7 @@ def load_plan_config(
         payroll_growth=eco["payroll_growth"],
         pop_growth=eco.get("pop_growth", 0.0),
         model_return=eco.get("model_return", eco["dr_current"]),
+        asset_return_path=eco.get("asset_return_path"),
         db_ee_cont_rate=ben["db_ee_cont_rate"],
         db_ee_interest_rate=ben.get("db_ee_interest_rate", 0.0),
         cal_factor=ben.get("cal_factor", 1.0),
