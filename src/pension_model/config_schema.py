@@ -194,8 +194,8 @@ class PlanConfig:
         result = {}
         for bt in self.benefit_types:
             if bt == "db":
-                before = ratios.get("before_2018", ratios.get("before_new_year", 1.0))
-                after = ratios.get("after_2018", ratios.get("after_new_year", before))
+                before = ratios.get("before_cutoff", 1.0)
+                after = ratios.get("after_cutoff", before)
                 new = ratios.get("new", ratios.get("new_db", 1.0))
                 result["db"] = (before, after, new)
             elif bt == "cb":

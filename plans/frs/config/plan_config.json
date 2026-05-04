@@ -230,13 +230,13 @@
   "plan_design": {
     "cutoff_year": 2018,
     "special_group": {
-      "before_2018": 0.95,
-      "after_2018": 0.85,
+      "before_cutoff": 0.95,
+      "after_cutoff": 0.85,
       "new": 0.75
     },
     "regular_group": {
-      "before_2018": 0.75,
-      "after_2018": 0.25,
+      "before_cutoff": 0.75,
+      "after_cutoff": 0.25,
       "new": 0.25
     }
   },

@@ -220,7 +220,7 @@
   "plan_design": {
     "cutoff_year": null,
     "default": {
-      "before_new_year": 1.0,
+      "before_cutoff": 1.0,
       "new_db": 1.0,
       "new_cb": 0.0
     }
