@@ -26,6 +26,7 @@ def build_economic_namespace(config) -> SimpleNamespace:
         dr_new=config.dr_new,
         dr_old=config.dr_old,
         baseline_dr_current=config.baseline_dr_current,
+        baseline_model_return=config.baseline_model_return,
         payroll_growth=config.payroll_growth,
         pop_growth=config.pop_growth,
         inflation=config.inflation,

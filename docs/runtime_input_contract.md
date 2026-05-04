@@ -236,7 +236,6 @@ These are always required under the current runtime contract.
 Required contents:
 
 - `init_funding.csv`
-- `return_scenarios.csv`
 
 Optional contents:
 
@@ -310,7 +309,6 @@ The runtime currently treats these as required:
 - `mortality/base_rates.csv`
 - `mortality/improvement_scale.csv`
 - `funding/init_funding.csv`
-- `funding/return_scenarios.csv`
 
 These are optional under the current runtime:
 

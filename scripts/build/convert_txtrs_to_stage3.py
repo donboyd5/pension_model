@@ -292,11 +292,6 @@ def convert_funding():
         print(f"  WARNING: Could not load funding data: {e}")
         return
 
-    if "return_scenarios" in funding:
-        rs = funding["return_scenarios"]
-        rs.to_csv(OUT / "funding" / "return_scenarios.csv", index=False)
-        print(f"  return_scenarios.csv: {len(rs)} rows")
-
     if "init_funding" in funding:
         init = funding["init_funding"]
         init.to_csv(OUT / "funding" / "init_funding.csv", index=False)

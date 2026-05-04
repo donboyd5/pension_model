@@ -104,7 +104,7 @@ plan_config.json + calibration.json
       -> compute liability components   ->  yearly AAL, NC, payroll
         |
         v
-  load_funding_inputs()  ───────────────>  init_funding, return_scenarios
+  load_funding_inputs()  ───────────────>  init_funding (+ optional amort_layers)
         |
         v
   run_funding_model()  ─────────────────>  year-by-year funding projection
@@ -167,7 +167,7 @@ The function returns four DataFrames: `wf_active`, `wf_term`, `wf_retire`, `wf_r
 
 ### 5. Funding Projection
 
-**`load_funding_inputs()`** (`core/funding_model.py`) reads `init_funding.csv` (initial assets and liabilities), `return_scenarios.csv` (investment returns by year), and `amort_layers.csv` (existing UAL amortization schedules).
+**`load_funding_inputs()`** (`core/funding_model.py`) reads `init_funding.csv` (initial assets and liabilities) and, if present, `amort_layers.csv` (existing UAL amortization schedules). The annual investment-return stream used for the asset roll-forward and cash-balance crediting is built once in memory by `core/returns.py::build_return_stream()` from `economic.model_return`.
 
 **`run_funding_model()`** (`core/funding_model.py`) is the public entry point. It is a thin wrapper over the unified `_compute_funding()` driver in `core/_funding_core.py`. Setup/context resolution lives in `_funding_setup.py`, year-loop phases live in `_funding_phases.py`, strategy objects live in `_funding_strategies.py`, and low-level helpers live in `_funding_helpers.py`. For each year the funding model:
 
@@ -216,7 +216,6 @@ plans/{plan}/
       improvement_scale.csv      Mortality improvement factors by age, gender, and year
     funding/
       init_funding.csv           Initial assets, liabilities, contribution rates
-      return_scenarios.csv       Investment return paths by year and scenario
       amort_layers.csv           Existing UAL amortization layers (optional)
   baselines/
     *.csv                        Reference outputs for validation tests (optional)
@@ -228,7 +227,7 @@ plans/{plan}/
 
 The FRS config (`plans/frs/config/plan_config.json`) is the canonical reference. Key sections:
 
-- **`economic`** — discount rates (`dr_current`, `dr_new`), payroll growth, inflation, model return, `return_scen` (which return column funding uses)
+- **`economic`** — discount rates (`dr_current`, `dr_new`), payroll growth, inflation, `model_return` (assumed annual investment return — drives DB asset growth and cash-balance crediting)
 - **`benefit`** — employee contribution rates, `cal_factor` (global benefit calibration, typically ~0.9-1.0), FAS years, benefit types (`["db", "dc"]` or `["db", "cb", "dc"]`), COLA parameters
 - **`funding`** — funding model (`"frs"` or `"trs"`), amortization method/period, asset smoothing parameters (corridor or gain-loss method)
 - **`ranges`** — min/max age, start year, `new_year` (plan design cutoff for legacy vs new hires), model period (typically 30)
@@ -385,7 +384,6 @@ You need at minimum these CSV files (replace `{class}` with your class name, e.g
 | mortality/ | `base_rates.csv` | Base mortality rates by age, gender, status |
 | mortality/ | `improvement_scale.csv` | Mortality improvement rates by age, gender, year |
 | funding/ | `init_funding.csv` | Initial assets, liabilities, contribution rates |
-| funding/ | `return_scenarios.csv` | Investment return scenarios by year |
 
 Use the FRS data files (`plans/frs/data/`) as format templates. Salary and headcount can be wide format (age rows, YOS columns) or long format (age, yos, value columns).
 
@@ -464,8 +462,7 @@ A scenario file is a JSON document with `name`, `description`, and `overrides`:
   "description": "Pessimistic investment return: 5%",
   "overrides": {
     "economic": {
-      "model_return": 0.05,
-      "return_scen": "model"
+      "model_return": 0.05
     }
   }
 }

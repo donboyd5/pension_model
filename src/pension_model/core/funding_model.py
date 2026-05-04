@@ -31,7 +31,6 @@ def load_funding_inputs(funding_dir: Path) -> dict:
 
     Files:
       - ``init_funding.csv``  (required)
-      - ``return_scenarios.csv`` (required)
       - ``amort_layers.csv`` (optional — plans with layered amortization)
 
     Also accepts the legacy filenames ``init_funding_data.csv`` and
@@ -45,10 +44,7 @@ def load_funding_inputs(funding_dir: Path) -> dict:
     # Normalize column names (strip leading/trailing whitespace)
     init_funding.columns = [c.strip() for c in init_funding.columns]
 
-    result = {
-        "init_funding": init_funding,
-        "return_scenarios": pd.read_csv(funding_dir / "return_scenarios.csv"),
-    }
+    result = {"init_funding": init_funding}
 
     # Amort layers (plans with layered amortization)
     amort_path = funding_dir / "amort_layers.csv"

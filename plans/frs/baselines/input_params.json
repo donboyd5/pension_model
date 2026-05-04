@@ -27,7 +27,6 @@
   "amo_period_new": [20],
   "amo_method": ["level %"],
   "funding_lag": [1],
-  "return_scen": ["assumption"],
   "model_return": [0.067],
   "return_2023": [0.067],
   "special_db_legacy_before_2018_ratio": [0.95],

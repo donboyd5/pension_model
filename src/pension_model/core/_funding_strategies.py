@@ -141,10 +141,12 @@ class CorridorSmoothing:
     """
 
     aggregation_level: ClassVar[Literal["plan", "class"]] = "plan"
-    # Corridor keeps the first two rows of return_scenarios at their CSV values
-    # (actual realized returns for the most recent historical years) and only
-    # overrides years >= start_year + 2 with projection defaults.
-    ret_scen_gates_projection: ClassVar[bool] = True
+    # Corridor pins the first projection year's investment return to the
+    # baseline ``model_return`` (the value before any scenario override),
+    # so a scenario's return change does not take effect until year 2.
+    # Mirrors the R reference model. See GH #93 — a follow-up PR will
+    # generalize this once year-varying returns return.
+    pins_first_projection_year_to_baseline: ClassVar[bool] = True
     # Corridor does not emit the gainloss-only output columns.
     emits_liability_gain_loss_sum: ClassVar[bool] = False
     emits_real_cost_metrics: ClassVar[bool] = False
@@ -222,10 +224,9 @@ class GainLossSmoothing:
     """
 
     aggregation_level: ClassVar[Literal["plan", "class"]] = "class"
-    # Gainloss overrides every row of return_scenarios unconditionally,
-    # including historical rows. Bit-identity risk: do not change without
-    # regenerating baselines.
-    ret_scen_gates_projection: ClassVar[bool] = False
+    # Gain/loss applies the scenario return to every projection year,
+    # including year 1. Matches the R reference model.
+    pins_first_projection_year_to_baseline: ClassVar[bool] = False
     # Gainloss emits two extra output-column packages:
     #   * ``liability_gain_loss`` (sum of legacy + new liability GL).
     #   * Real-cost metrics (``total_er_cont_real``, ``cum_er_cont_real``,

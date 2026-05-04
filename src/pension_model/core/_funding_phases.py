@@ -47,19 +47,6 @@ def _phase_benefits_refunds(f: pd.DataFrame, liab: pd.DataFrame, i: int, ctx: Fu
     f.loc[i, "refund_new"] = refund_new
 
 
-def _prepare_return_scenarios(ctx: FundingContext, dr_current: float) -> pd.DataFrame:
-    rs = ctx.ret_scen
-    if ctx.ava_strategy.ret_scen_gates_projection:
-        first_proj_year = ctx.start_year + 2
-        mask = rs["year"] >= first_proj_year
-        rs.loc[mask, "model"] = ctx.model_return
-        rs.loc[mask, "assumption"] = dr_current
-    else:
-        rs["model"] = ctx.model_return
-        rs["assumption"] = dr_current
-    return rs
-
-
 def _nc_rate_agg(agg: pd.DataFrame, i: int, ctx: FundingContext) -> None:
     denom = agg.loc[i, "payroll_db_legacy"] + agg.loc[i, "payroll_db_new"]
     if ctx.has_cb:

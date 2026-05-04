@@ -31,6 +31,7 @@ class PlanConfig:
     dr_new: float
     dr_old: float
     baseline_dr_current: float
+    baseline_model_return: float
     payroll_growth: float
     pop_growth: float
     inflation: float
@@ -139,10 +140,6 @@ class PlanConfig:
     @property
     def amo_period_current(self) -> Optional[int]:
         return self.raw.get("funding", {}).get("amo_period_current")
-
-    @property
-    def return_scen_col(self) -> str:
-        return self.raw.get("economic", {}).get("return_scen", "assumption")
 
     @property
     def design_ratio_group_map(self) -> Dict[str, str]:

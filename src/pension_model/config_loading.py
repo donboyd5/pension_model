@@ -84,6 +84,9 @@ def load_plan_config(
         raw = json.load(f)
 
     baseline_dr_current = raw["economic"]["dr_current"]
+    baseline_model_return = raw["economic"].get(
+        "model_return", baseline_dr_current
+    )
 
     scenario_name = None
     if scenario_path is not None:
@@ -128,6 +131,7 @@ def load_plan_config(
         dr_new=eco["dr_new"],
         dr_old=eco.get("dr_old", eco["dr_current"]),
         baseline_dr_current=baseline_dr_current,
+        baseline_model_return=baseline_model_return,
         payroll_growth=eco["payroll_growth"],
         pop_growth=eco.get("pop_growth", 0.0),
         inflation=eco["inflation"],

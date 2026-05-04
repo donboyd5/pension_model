@@ -101,7 +101,7 @@ Create a JSON file with an `overrides` dict that deep-merges into the plan confi
   "name": "low_return",
   "description": "Pessimistic investment return: 5%",
   "overrides": {
-    "economic": { "model_return": 0.05, "return_scen": "model" }
+    "economic": { "model_return": 0.05 }
   }
 }
 ```
@@ -110,9 +110,10 @@ See `scenarios/` for examples. Overridable sections: `economic` (discount rate,
 investment return, inflation, payroll growth), `benefit.cola`, `funding`
 (amortization method/period, asset smoothing), `ranges` (model_period).
 
-Note: when overriding `model_return` separately from `dr_current`, set
-`"return_scen": "model"` so the funding model uses the model return column
-instead of the assumption (discount rate) column.
+`model_return` is the assumed annual investment return. The model uses it to
+grow plan assets year by year and to credit cash-balance accounts. Override it
+directly in a scenario to change asset returns without touching the discount
+rate.
 
 ## Calibration
 
