@@ -196,16 +196,6 @@ def _phase_ava_gainloss_smoothing(f: pd.DataFrame, i: int, ava_strategy, dr_curr
                 f.loc[i, f"{k}_{leg}"] = v
 
 
-def _phase_real_cost_metrics(f: pd.DataFrame, i: int, year: int, start_year: int, inflation: float) -> None:
-    deflator = (1 + inflation) ** (year - start_year)
-    f.loc[i, "total_er_cont_real"] = f.loc[i, "total_er_cont"] / deflator
-    f.loc[i, "cum_er_cont_real"] = (
-        f.loc[i, "total_er_cont_real"] if i == 1 else f.loc[i - 1, "cum_er_cont_real"] + f.loc[i, "total_er_cont_real"]
-    )
-    f.loc[i, "total_ual_mva_real"] = f.loc[i, "total_ual_mva"] / deflator
-    f.loc[i, "all_in_cost_real"] = f.loc[i, "cum_er_cont_real"] + f.loc[i, "total_ual_mva_real"]
-
-
 def _phase_amort_rolling(funding: dict, amort_state: dict, i: int, ctx: FundingContext) -> None:
     if amort_state["mode"] == "per_class":
         for cn in ctx.all_classes:

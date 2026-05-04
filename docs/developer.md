@@ -227,7 +227,7 @@ plans/{plan}/
 
 The FRS config (`plans/frs/config/plan_config.json`) is the canonical reference. Key sections:
 
-- **`economic`** — discount rates (`dr_current`, `dr_new`), payroll growth, inflation, `model_return` (assumed annual investment return — drives DB asset growth and cash-balance crediting)
+- **`economic`** — discount rates (`dr_current`, `dr_new`), payroll growth, `model_return` (assumed annual investment return — drives DB asset growth and cash-balance crediting)
 - **`benefit`** — employee contribution rates, `cal_factor` (global benefit calibration, typically ~0.9-1.0), FAS years, benefit types (`["db", "dc"]` or `["db", "cb", "dc"]`), COLA parameters
 - **`funding`** — funding model (`"frs"` or `"trs"`), amortization method/period, asset smoothing parameters (corridor or gain-loss method)
 - **`ranges`** — min/max age, start year, `new_year` (plan design cutoff for legacy vs new hires), model period (typically 30)
@@ -392,7 +392,7 @@ Use the FRS data files (`plans/frs/data/`) as format templates. Salary and headc
 Start by copying `plans/frs/config/plan_config.json` and customizing each section:
 
 1. **Identity:** set `plan_name` and `plan_description`
-2. **`economic`:** discount rates, payroll growth, inflation, expected return
+2. **`economic`:** discount rates, payroll growth, expected return
 3. **`benefit`:** employee contribution rate, FAS years, benefit types, COLA rules, `cal_factor` (start with 1.0)
 4. **`funding`:** set `model` to `"frs"` (multi-class aggregation) or `"trs"` (single-class), amortization method and period, asset smoothing
 5. **`ranges`:** start year, model period, `new_year` (plan design cutoff)

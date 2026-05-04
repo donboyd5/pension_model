@@ -30,7 +30,6 @@ class FundingContext:
     dr_new: float
     dr_old: Optional[float]
     payroll_growth: float
-    inflation: float
     amo_pay_growth: float
     amo_period_new: int
     funding_lag: int
@@ -110,7 +109,6 @@ def resolve_funding_context(
         dr_new=econ.dr_new,
         dr_old=econ.dr_old,
         payroll_growth=econ.payroll_growth,
-        inflation=econ.inflation,
         amo_pay_growth=amo_pay_growth,
         amo_period_new=fund.amo_period_new,
         funding_lag=fund.funding_lag,

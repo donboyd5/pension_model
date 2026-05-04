@@ -107,7 +107,7 @@ Create a JSON file with an `overrides` dict that deep-merges into the plan confi
 ```
 
 See `scenarios/` for examples. Overridable sections: `economic` (discount rate,
-investment return, inflation, payroll growth), `benefit.cola`, `funding`
+investment return, payroll growth), `benefit.cola`, `funding`
 (amortization method/period, asset smoothing), `ranges` (model_period).
 
 `model_return` is the assumed annual investment return. The model uses it to
