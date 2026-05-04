@@ -25,8 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from pension_model.truth_table import (  # noqa: E402
-    build_r_truth_table_frs,
-    build_r_truth_table_txtrs,
+    build_r_truth_table,
     upsert_sheet_to_excel,
     format_truth_table_for_log,
     write_diff_sheet_with_formulas,
@@ -34,20 +33,20 @@ from pension_model.truth_table import (  # noqa: E402
 
 
 def main():
-    baseline_dir = ROOT / "baseline_outputs"
-    trs_r_dir = ROOT / "R_model" / "R_model_txtrs"
+    frs_baseline_dir = ROOT / "plans" / "frs" / "baselines"
+    txtrs_baseline_dir = ROOT / "R_model" / "R_model_txtrs"
     out_path = ROOT / "output" / "truth_tables.xlsx"
 
     print("Building frozen R truth tables")
     print("=" * 60)
 
-    print(f"\n[1/2] FRS from {baseline_dir.relative_to(ROOT)}/")
-    frs_r = build_r_truth_table_frs(baseline_dir)
+    print(f"\n[1/2] FRS from {frs_baseline_dir.relative_to(ROOT)}/")
+    frs_r = build_r_truth_table("frs", frs_baseline_dir)
     print(format_truth_table_for_log(frs_r, max_rows=6))
     print(f"  ... ({len(frs_r)} rows total)")
 
-    print(f"\n[2/2] TRS from {trs_r_dir.relative_to(ROOT)}/")
-    txtrs_r = build_r_truth_table_txtrs(trs_r_dir)
+    print(f"\n[2/2] TXTRS from {txtrs_baseline_dir.relative_to(ROOT)}/")
+    txtrs_r = build_r_truth_table("txtrs", txtrs_baseline_dir)
     print(format_truth_table_for_log(txtrs_r, max_rows=6))
     print(f"  ... ({len(txtrs_r)} rows total)")
 
