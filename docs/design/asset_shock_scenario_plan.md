@@ -72,16 +72,7 @@ The code already has a shared `build_return_stream()` helper used by DB funding 
 
    Add an optional `asset_return_path` field to `PlanConfig` in `src/pension_model/config_schema.py`, populated from `raw["economic"].get("asset_return_path")` in `src/pension_model/config_loading.py`.
 
-2. Validate the mapping.
-
-   Add config validation that rejects malformed paths:
-
-   - keys must be positive integer strings or `"default"`
-   - values must be numeric returns or the token `"model_return"`
-   - `"default"` is optional and defaults to `"model_return"` if omitted
-   - unknown string tokens should raise a clear validation error
-
-3. Update `build_return_stream`.
+2. Update `build_return_stream`.
 
    Modify `src/pension_model/core/returns.py` so:
 
@@ -91,7 +82,7 @@ The code already has a shared `build_return_stream()` helper used by DB funding 
    - numeric values are used directly
    - every year in `min_entry_year..max_year` receives a value
 
-4. Use one resolved stream for both consumers.
+3. Use one resolved stream for both consumers.
 
    Keep `src/pension_model/core/returns.py::build_return_stream()` as the single place that translates scenario/config return assumptions into an annual `pd.Series`. Then make both current consumers use the same resolved stream:
 
@@ -100,17 +91,16 @@ The code already has a shared `build_return_stream()` helper used by DB funding 
 
    Both paths should call the same helper and therefore get identical values.
 
-5. Preserve the existing funding seed rule.
+4. Preserve the existing funding seed rule.
 
    Leave `_build_return_stream_for_funding()` in `src/pension_model/core/_funding_setup.py` responsible for the first-projection-year smoothing pin. For this asset shock path, year 1 is already `"model_return"`, so the rule should not change the scenario's intended shock timing.
 
-6. Add focused unit tests.
+5. Add focused unit tests.
 
    Add or extend tests for `build_return_stream` to verify:
 
    - flat behavior remains unchanged when no path is configured
    - the `asset_shock` mapping produces model return, 3%, -24%, 12%, 12%, 12%, then model return at calendar years `start_year + 1` through `start_year + 7`
-   - invalid tokens or invalid year keys fail during config validation/loading
 
 ## Bounded Asset-Return Cleanup
 
