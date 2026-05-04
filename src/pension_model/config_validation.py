@@ -97,8 +97,7 @@ def validate_data_files(config) -> list[str]:
             missing.append(str(mortality_dir / filename))
 
     funding_dir = data_dir / "funding"
-    for filename in ("init_funding.csv", "return_scenarios.csv"):
-        if not (funding_dir / filename).exists():
-            missing.append(str(funding_dir / filename))
+    if not (funding_dir / "init_funding.csv").exists():
+        missing.append(str(funding_dir / "init_funding.csv"))
 
     return missing

@@ -141,10 +141,19 @@ class CorridorSmoothing:
     """
 
     aggregation_level: ClassVar[Literal["plan", "class"]] = "plan"
-    # Corridor keeps the first two rows of return_scenarios at their CSV values
-    # (actual realized returns for the most recent historical years) and only
-    # overrides years >= start_year + 2 with projection defaults.
-    ret_scen_gates_projection: ClassVar[bool] = True
+    # Year 1 of the projection is treated as a "seed" year that should
+    # reflect what the plan actually earned in the year just ended,
+    # which is typically known but not yet captured in the most recent
+    # actuarial valuation (AV reports lag by 6-12 months). A scenario
+    # is forward-looking and should not overwrite that already-realized
+    # year, so we pin year 1 to the baseline ``model_return`` and only
+    # apply the scenario from year 2 onward. Mirrors the R reference
+    # model, where the first row of return_scenarios.csv was reserved
+    # for the realized seed and only rows 2+ were overwritten by
+    # scenario assumptions. See GH #93. A follow-up PR (year-varying
+    # scenario returns) will replace this pin with proper realized-
+    # return seeding at the config level.
+    pins_first_projection_year_to_baseline: ClassVar[bool] = True
     # Corridor does not emit the gainloss-only output columns.
     emits_liability_gain_loss_sum: ClassVar[bool] = False
     emits_real_cost_metrics: ClassVar[bool] = False
@@ -222,10 +231,10 @@ class GainLossSmoothing:
     """
 
     aggregation_level: ClassVar[Literal["plan", "class"]] = "class"
-    # Gainloss overrides every row of return_scenarios unconditionally,
-    # including historical rows. Bit-identity risk: do not change without
-    # regenerating baselines.
-    ret_scen_gates_projection: ClassVar[bool] = False
+    # No year-1 seed pin: gain/loss applies the scenario return to
+    # every projection year, including year 1. Matches the R reference
+    # model.
+    pins_first_projection_year_to_baseline: ClassVar[bool] = False
     # Gainloss emits two extra output-column packages:
     #   * ``liability_gain_loss`` (sum of legacy + new liability GL).
     #   * Real-cost metrics (``total_er_cont_real``, ``cum_er_cont_real``,

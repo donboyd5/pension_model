@@ -266,12 +266,12 @@ Scenarios use the existing flat `economic` shape and override only the three rea
   "name": "low_return",
   "description": "Pessimistic investment return; discount rate unchanged",
   "overrides": {
-    "economic": { "model_return": 0.05, "return_scen": "model" }
+    "economic": { "model_return": 0.05 }
   }
 }
 ```
 
-This is a what-if about asset performance only — the discount rate stays at baseline so liabilities don't move. (The `return_scen` switch tells the funding model to use the model-return column rather than the assumption column.)
+This is a what-if about asset performance only — the discount rate stays at baseline so liabilities don't move. The model uses `model_return` directly to grow assets year by year.
 
 No role-namespaced override blocks. No `valuation` / `cashflow_projection` / `asset_return` keys. The three real assumptions are what the actuarial model has, and the scenario file overrides them directly.
 

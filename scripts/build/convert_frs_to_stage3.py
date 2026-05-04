@@ -312,12 +312,6 @@ def convert_funding():
         out.to_csv(OUT / "funding" / "amort_layers.csv", index=False)
         print(f"  amort_layers.csv: {len(out)} rows")
 
-    # Return scenarios - FRS uses constant return, but check if file exists
-    # For FRS, the return is defined in config (model_return = 0.067)
-    # Create a minimal return scenarios file
-    print("  return_scenarios.csv: using config-defined constant return (no file needed)")
-
-
 def main():
     print(f"Converting FRS data to stage 3 format")
     print(f"  Source: {BASELINE}")

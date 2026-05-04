@@ -19,6 +19,7 @@ import pandas as pd
 import numpy as np
 
 from pension_model.config_schema import PlanConfig
+from pension_model.core.returns import build_return_stream
 
 
 def _load_retiree_distribution(path: Path) -> pd.DataFrame:
@@ -499,6 +500,12 @@ def load_plan_inputs(constants: PlanConfig) -> tuple[PlanConfig, dict]:
             break
 
     constants = replace(constants, reduce_tables=reduction_tables)
+
+    # Build the shared annual return stream once. Used by the CB
+    # crediting path here and by the funding model's asset roll-forward.
+    return_stream = build_return_stream(constants)
+    for cn in classes:
+        raw_inputs_by_class[cn]["_return_scenario"] = return_stream
 
     # Pre-compute per-class headcount adjustment ratios so the core
     # pipeline no longer needs to read demographic CSVs mid-computation.

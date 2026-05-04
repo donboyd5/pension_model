@@ -125,8 +125,7 @@ Example — [scenarios/low_return.json](../scenarios/low_return.json):
   "description": "Pessimistic investment return: 5% (vs baseline 6.7% FRS / 7% TRS)",
   "overrides": {
     "economic": {
-      "model_return": 0.05,
-      "return_scen": "model"
+      "model_return": 0.05
     }
   }
 }

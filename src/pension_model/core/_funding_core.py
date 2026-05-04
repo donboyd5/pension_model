@@ -39,7 +39,6 @@ from pension_model.core._funding_phases import (
     _phase_payroll,
     _phase_real_cost_metrics,
     _phase_ual_and_funded_ratios,
-    _prepare_return_scenarios,
 )
 from pension_model.core._funding_setup import (
     FundingContext,
@@ -101,10 +100,9 @@ def _accumulate_db_contributions(ctx: FundingContext, agg: pd.DataFrame, f: pd.D
         _maybe_accumulate(ctx, agg, f, i, ["total_er_db_cont"])
 
 
-def _resolve_roa(ret_scen: pd.DataFrame, year: int, return_scen_col: str, dr_current: float) -> float:
+def _resolve_roa(ret_scen: pd.Series, year: int, dr_current: float) -> float:
     """Return the realized rate of return for a projection year."""
-    roa_row = ret_scen[ret_scen["year"] == year]
-    return roa_row[return_scen_col].iloc[0] if len(roa_row) > 0 else dr_current
+    return float(ret_scen.loc[year]) if year in ret_scen.index else dr_current
 
 
 def _set_plan_level_ava_bases(f: pd.DataFrame, i: int) -> None:
@@ -177,8 +175,7 @@ def _run_phase2_for_class(
     ctx: FundingContext,
     constants,
     cont_strategy,
-    ret_scen: pd.DataFrame,
-    return_scen_col: str,
+    ret_scen: pd.Series,
     dr_current: float,
     dr_new: float,
 ) -> None:
@@ -205,7 +202,7 @@ def _run_phase2_for_class(
         _phase_dc_contributions(f, i)
         _maybe_accumulate(ctx, agg, f, i, ["er_dc_cont_legacy", "er_dc_cont_new", "total_er_dc_cont"])
 
-    roa = _resolve_roa(ret_scen, year, return_scen_col, dr_current)
+    roa = _resolve_roa(ret_scen, year, dr_current)
     f.loc[i, "roa"] = roa
     if ctx.is_multi_class:
         agg.loc[i, "roa"] = roa
@@ -276,8 +273,7 @@ def _compute_funding(
     start_year = ctx.start_year
     n_years = ctx.n_years
     agg_name = ctx.agg_name
-    return_scen_col = ctx.return_scen_col
-    ret_scen = _prepare_return_scenarios(ctx, dr_current)
+    ret_scen = ctx.ret_scen
 
     funding = setup_funding_frames(ctx)
     calibrate_funding_frames(funding, liability_results, ctx, constants)
@@ -300,7 +296,7 @@ def _compute_funding(
         for cn in ctx.all_classes:
             _run_phase2_for_class(
                 cn, i, year, funding, agg, amort_state, ctx, constants,
-                ctx.cont_strategy, ret_scen, return_scen_col, dr_current, dr_new,
+                ctx.cont_strategy, ret_scen, dr_current, dr_new,
             )
 
         if ctx.ava_strategy.aggregation_level == "plan":

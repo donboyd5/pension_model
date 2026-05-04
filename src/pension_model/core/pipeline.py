@@ -134,13 +134,10 @@ def _compute_cb_icr_series(inputs: dict, constants: PlanConfig) -> tuple[float, 
         cash_balance["icr_upside_share"],
     )
     years = range(constants.min_entry_year, constants.max_year + 1)
-    ret_scenario = inputs.get("_return_scenario")
-    if ret_scenario is None:
-        ret_scenario = pd.Series(constants.model_return, index=list(years))
     actual_icr_series = compute_actual_icr_series(
         years,
         constants.start_year,
-        ret_scenario,
+        inputs["_return_scenario"],
         cash_balance["icr_smooth_period"],
         cash_balance["icr_floor"],
         cash_balance["icr_cap"],

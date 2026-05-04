@@ -19,6 +19,7 @@ from pension_model.core._funding_strategies import (
     RateComponent,
     StatutoryContributions,
 )
+from pension_model.core.returns import build_return_stream
 
 
 @dataclass
@@ -48,10 +49,9 @@ class FundingContext:
     has_cb: bool
     has_dc: bool
     funding_policy: str
-    return_scen_col: str
     init_funding: pd.DataFrame
     amort_layers: Optional[pd.DataFrame]
-    ret_scen: pd.DataFrame = field(default_factory=pd.DataFrame)
+    ret_scen: pd.Series = field(default_factory=lambda: pd.Series(dtype=float))
 
 
 def resolve_funding_context(
@@ -129,11 +129,33 @@ def resolve_funding_context(
         has_cb=has_cb,
         has_dc=has_dc,
         funding_policy=fund.funding_policy,
-        return_scen_col=constants.return_scen_col,
         init_funding=funding_inputs["init_funding"],
         amort_layers=funding_inputs.get("amort_layers"),
-        ret_scen=funding_inputs["return_scenarios"].copy(),
+        ret_scen=_build_return_stream_for_funding(constants, ava_strategy),
     )
+
+
+def _build_return_stream_for_funding(
+    constants: PlanConfig, ava_strategy
+) -> pd.Series:
+    """Return stream for the funding model.
+
+    Same as :func:`build_return_stream`, except: when the smoothing
+    strategy treats year 1 as a "seed" year (corridor smoothing today),
+    that year's value is pinned to the baseline ``model_return`` —
+    i.e. the value before any scenario override. The intent is that
+    year 1 represents what the plan actually earned in the year just
+    ended, which is typically already realized but not yet rolled into
+    the AV. Scenarios are forward-looking and should not overwrite
+    that. Year 2+ uses the (possibly scenario-overridden)
+    ``model_return``. See GH #93.
+    """
+    stream = build_return_stream(constants).copy()
+    if ava_strategy.pins_first_projection_year_to_baseline:
+        first_year = constants.start_year + 1
+        if first_year in stream.index:
+            stream.loc[first_year] = constants.baseline_model_return
+    return stream
 
 
 def resolve_er_rate_components(stat_rates: dict) -> list:
