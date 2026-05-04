@@ -1364,8 +1364,12 @@ def build_benefit_val_table(
 
     ret_status_arr = sbt["ret_status"].to_numpy(dtype=np.int8, copy=False)
     sep_kind_arr = _resolve_sep_kind_vec(ret_status_arr)
-    tier_3_id = constants._tier_name_to_id.get("tier_3", -1)
-    dr_arr = np.where(sbt["tier_id"] == tier_3_id, econ.dr_new, econ.dr_current)
+    dr_by_tier_id = np.array(
+        [econ.dr_new if k == "dr_new" else econ.dr_current
+         for k in constants._tier_id_to_dr_key],
+        dtype=np.float64,
+    )
+    dr_arr = dr_by_tier_id[sbt["tier_id"].to_numpy()]
 
     # PVFB at termination: mix of annuity and refund based on sep_type.
     # Retirees get full annuity PV; vested get retire_refund_ratio-weighted
