@@ -1,0 +1,26 @@
+{
+  "plan_name": "frs",
+  "funding_csv": "frs_funding.csv",
+  "year_column": "year",
+  "n_active": {
+    "source": "per_class",
+    "csv_pattern": "{class}_liability.csv",
+    "column": "total_n_active",
+    "classes": ["regular", "special", "admin", "eco", "eso", "judges", "senior_management"]
+  },
+  "metrics": {
+    "mva":           "total_mva",
+    "aal":           "total_aal",
+    "ava":           "total_ava",
+    "fr_mva":        "fr_mva",
+    "fr_ava":        "fr_ava",
+    "payroll":       "total_payroll",
+    "er_cont_total": "total_er_cont",
+    "er_db_cont":    "total_er_db_cont",
+    "ee_cont":       {"sum_with_fillna": ["ee_nc_cont_legacy", "ee_nc_cont_new"]},
+    "benefits":      "total_ben_payment",
+    "refunds":       "total_refund",
+    "admin_exp":     {"sum_with_fillna": ["admin_exp_legacy", "admin_exp_new"]},
+    "net_cf":        {"sum_with_fillna": ["net_cf_legacy", "net_cf_new"]}
+  }
+}

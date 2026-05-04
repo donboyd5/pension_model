@@ -116,104 +116,91 @@ def _actual_invest_income(mva, net_cf):
 
 
 # ---------------------------------------------------------------------------
-# R-side builders — read from R output CSVs, produce a truth table
+# R-side builder — read from R output CSVs, produce a truth table
 # ---------------------------------------------------------------------------
 
-def build_r_truth_table_frs(baseline_dir: Path) -> pd.DataFrame:
-    """Build the frozen FRS R truth table from the R model's output CSVs.
+def _read_metric(funding_df: pd.DataFrame, spec) -> np.ndarray:
+    """Resolve a metric spec from the manifest into a numeric array.
 
-    Sources:
-      - `frs_funding.csv`: plan-wide aggregate of 7 classes + DROP (payroll,
-        AAL, MVA, AVA, contributions, benefits, investment income, funded ratios)
-      - `{class}_liability.csv` × 7: per-class total_n_active, summed for
-        plan-wide n_active
+    A spec is either a string (single column name in the funding CSV) or a
+    dict ``{"sum_with_fillna": ["col_a", "col_b"]}`` (sum the listed columns,
+    treating NaN as zero).
+    """
+    if isinstance(spec, str):
+        return funding_df[spec].values
+    if isinstance(spec, dict) and "sum_with_fillna" in spec:
+        cols = spec["sum_with_fillna"]
+        total = None
+        for c in cols:
+            vals = funding_df[c].fillna(0).values
+            total = vals if total is None else total + vals
+        return total
+    raise ValueError(f"Unsupported metric spec: {spec!r}")
+
+
+def _read_n_active(spec: dict, baseline_dir: Path) -> np.ndarray:
+    """Resolve the n_active spec from the manifest into a numeric array."""
+    source = spec["source"]
+    if source == "csv":
+        df = pd.read_csv(baseline_dir / spec["csv"])
+        return df[spec["column"]].values
+    if source == "per_class":
+        column = spec["column"]
+        classes = spec["classes"]
+        pattern = spec["csv_pattern"]
+        total = None
+        for cn in classes:
+            df = pd.read_csv(baseline_dir / pattern.format(**{"class": cn}))
+            vals = df[column].values
+            total = vals if total is None else total + vals
+        return total
+    raise ValueError(f"Unsupported n_active source: {source!r}")
+
+
+def build_r_truth_table(plan_name: str, baseline_dir: Path) -> pd.DataFrame:
+    """Build the frozen R truth table for a plan from its manifest.
+
+    The manifest at ``plans/<plan>/baselines/r_truth_table_manifest.json``
+    declares the funding CSV, year column, n_active source, and column-name
+    mapping for the unified truth-table schema. This lets a new plan ship a
+    manifest alongside its R baseline without any Python changes.
 
     Not reported (NA) because R does not emit them:
       - n_retired_boy, n_inactive_boy
     """
-    f = pd.read_csv(baseline_dir / "frs_funding.csv")
+    import json
 
-    # Sum active headcount across all 7 FRS classes (per-year)
-    frs_classes = ["regular", "special", "admin", "eco", "eso",
-                   "judges", "senior_management"]
-    n_active = None
-    for cn in frs_classes:
-        liab = pd.read_csv(baseline_dir / f"{cn}_liability.csv")
-        col = liab["total_n_active"].values
-        n_active = col if n_active is None else n_active + col
+    repo_root = Path(__file__).resolve().parents[2]
+    manifest_path = repo_root / "plans" / plan_name / "baselines" / "r_truth_table_manifest.json"
+    with manifest_path.open() as fh:
+        manifest = json.load(fh)
 
-    net_cf = f["net_cf_legacy"].values + f["net_cf_new"].values
-    mva = f["total_mva"].values
+    f = pd.read_csv(baseline_dir / manifest["funding_csv"])
+    metrics = manifest["metrics"]
+
+    mva = _read_metric(f, metrics["mva"])
+    net_cf = _read_metric(f, metrics["net_cf"])
     invest_income = _actual_invest_income(mva, net_cf)
-    ee = f["ee_nc_cont_legacy"].values + f["ee_nc_cont_new"].values
-    er_db = f["total_er_db_cont"].values
-    benefits = f["total_ben_payment"].values
-    refunds = f["total_refund"].values
-    admin = f["admin_exp_legacy"].values + f["admin_exp_new"].values
+    n_active = _read_n_active(manifest["n_active"], baseline_dir)
 
     df = pd.DataFrame({
-        "plan": "frs",
-        "year": f["year"].astype(int).values,
+        "plan": plan_name,
+        "year": f[manifest["year_column"]].astype(int).values,
         "mva_boy": mva,
-        "er_db_cont": er_db,
-        "ee_cont": ee,
+        "er_db_cont": _read_metric(f, metrics["er_db_cont"]),
+        "ee_cont": _read_metric(f, metrics["ee_cont"]),
         "invest_income": invest_income,
-        "benefits": benefits,
-        "refunds": refunds,
-        "admin_exp": admin,
+        "benefits": _read_metric(f, metrics["benefits"]),
+        "refunds": _read_metric(f, metrics["refunds"]),
+        "admin_exp": _read_metric(f, metrics["admin_exp"]),
         "mva_eoy": mva + net_cf + invest_income,
-        "aal_boy": f["total_aal"].values,
-        "ava_boy": f["total_ava"].values,
-        "fr_mva_boy": f["fr_mva"].values,
-        "fr_ava_boy": f["fr_ava"].values,
+        "aal_boy": _read_metric(f, metrics["aal"]),
+        "ava_boy": _read_metric(f, metrics["ava"]),
+        "fr_mva_boy": _read_metric(f, metrics["fr_mva"]),
+        "fr_ava_boy": _read_metric(f, metrics["fr_ava"]),
         "n_active_boy": n_active,
-        "payroll": f["total_payroll"].values,
-        "er_cont_total": f["total_er_cont"].values,
-    })
-    return df[TRUTH_TABLE_COLUMNS]
-
-
-def build_r_truth_table_txtrs(trs_r_dir: Path) -> pd.DataFrame:
-    """Build the frozen TRS R truth table from the R model's output CSVs.
-
-    Sources:
-      - `baseline_fresh.csv`: liability output (n.active)
-      - `funding_fresh.csv`: funding output (payroll, AAL, MVA, AVA,
-        contributions, benefits, investment income, funded ratios)
-
-    Not reported (NA) because R does not emit them:
-      - n_retired_boy, n_inactive_boy
-    """
-    liab = pd.read_csv(trs_r_dir / "baseline_fresh.csv")
-    f = pd.read_csv(trs_r_dir / "funding_fresh.csv")
-
-    net_cf = f["net_cf_legacy"].fillna(0).values + f["net_cf_new"].fillna(0).values
-    mva = f["MVA"].values
-    invest_income = _actual_invest_income(mva, net_cf)
-    er_db = f["er_cont"].values  # TRS has no DC plan
-    ee = f["ee_nc_cont_legacy"].fillna(0).values + f["ee_nc_cont_new"].fillna(0).values
-    benefits = f["ben_payment_legacy"].fillna(0).values + f["ben_payment_new"].fillna(0).values
-    refunds = f["refund_legacy"].fillna(0).values + f["refund_new"].fillna(0).values
-    admin = f["admin_exp_legacy"].fillna(0).values + f["admin_exp_new"].fillna(0).values
-
-    df = pd.DataFrame({
-        "plan": "txtrs",
-        "year": f["fy"].astype(int).values,
-        "mva_boy": mva,
-        "er_db_cont": er_db,
-        "ee_cont": ee,
-        "invest_income": invest_income,
-        "benefits": benefits,
-        "refunds": refunds,
-        "admin_exp": admin,
-        "mva_eoy": mva + net_cf + invest_income,
-        "aal_boy": f["AAL"].values,
-        "ava_boy": f["AVA"].values,
-        "fr_mva_boy": f["FR_MVA"].values,
-        "fr_ava_boy": f["FR_AVA"].values,
-        "n_active_boy": liab["n.active"].values,
-        "payroll": f["payroll"].values,
-        "er_cont_total": er_db,  # same as er_db for TRS (no DC)
+        "payroll": _read_metric(f, metrics["payroll"]),
+        "er_cont_total": _read_metric(f, metrics["er_cont_total"]),
     })
     return df[TRUTH_TABLE_COLUMNS]
 

@@ -1,0 +1,25 @@
+{
+  "plan_name": "txtrs",
+  "funding_csv": "funding_fresh.csv",
+  "year_column": "fy",
+  "n_active": {
+    "source": "csv",
+    "csv": "baseline_fresh.csv",
+    "column": "n.active"
+  },
+  "metrics": {
+    "mva":           "MVA",
+    "aal":           "AAL",
+    "ava":           "AVA",
+    "fr_mva":        "FR_MVA",
+    "fr_ava":        "FR_AVA",
+    "payroll":       "payroll",
+    "er_cont_total": "er_cont",
+    "er_db_cont":    "er_cont",
+    "ee_cont":       {"sum_with_fillna": ["ee_nc_cont_legacy", "ee_nc_cont_new"]},
+    "benefits":      {"sum_with_fillna": ["ben_payment_legacy", "ben_payment_new"]},
+    "refunds":       {"sum_with_fillna": ["refund_legacy", "refund_new"]},
+    "admin_exp":     {"sum_with_fillna": ["admin_exp_legacy", "admin_exp_new"]},
+    "net_cf":        {"sum_with_fillna": ["net_cf_legacy", "net_cf_new"]}
+  }
+}
