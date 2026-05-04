@@ -27,9 +27,6 @@ class TestPlanConfigLoad:
         assert frs_config.class_group("regular") == "regular_group"
         assert frs_config.class_group("special") == "special_group"
         assert frs_config.class_group("admin") == "special_group"
-        assert frs_config.is_special("special")
-        assert frs_config.is_special("admin")
-        assert not frs_config.is_special("regular")
 
     def test_frs_acfr(self, frs_config):
         acfr = frs_config.get_class_inputs("regular")

@@ -10,7 +10,6 @@ from pension_model.config_compat import (
     build_class_data_namespace,
     build_economic_namespace,
     build_funding_namespace,
-    build_plan_design_namespace,
     build_ranges_namespace,
 )
 from pension_model.config_validation import validate_config, validate_data_files
@@ -185,10 +184,6 @@ class PlanConfig:
     def class_data(self) -> dict:
         return build_class_data_namespace(self)
 
-    @property
-    def plan_design(self) -> SimpleNamespace:
-        return build_plan_design_namespace(self)
-
     def get_design_ratios(self, class_name: str) -> Dict[str, Tuple[float, float, float]]:
         group = self.design_ratio_group_map.get(class_name, self.class_group(class_name))
         ratios = self.plan_design_defs.get(group, self.plan_design_defs.get("default", {}))
@@ -217,9 +212,6 @@ class PlanConfig:
 
     def class_group(self, class_name: str) -> str:
         return self._class_to_group.get(class_name, "default")
-
-    def is_special(self, class_name: str) -> bool:
-        return self.class_group(class_name) == "special_group"
 
     def get_fas_years(self, tier_name: str) -> int:
         tier_base = tier_name.split("_")[0]
