@@ -386,7 +386,7 @@ def build_salary_benefit_table(
     if cb_cfg is not None and actual_icr_series is not None:
         ee_credit = cb_cfg["ee_pay_credit"]
         er_credit = cb_cfg["er_pay_credit"]
-        cb_vesting = cb_cfg.get("vesting_yos", 5)
+        cb_vesting = cb_cfg["vesting_yos"]
 
         df["cb_ee_cont"] = ee_credit * df["salary"]
         df["cb_er_cont"] = er_credit * df["salary"]
@@ -980,7 +980,7 @@ def build_benefit_table(
         cb_vesting = 5
         cb_cfg = constants.cash_balance
         if cb_cfg is not None:
-            cb_vesting = cb_cfg.get("vesting_yos", 5)
+            cb_vesting = cb_cfg["vesting_yos"]
         is_vested = (df["yos"] >= cb_vesting).astype(float)
         df["pv_cb_benefit"] = (
             is_vested * df["cb_benefit"] * df["ann_factor_term"]
@@ -1336,7 +1336,7 @@ def build_benefit_val_table(
     if has_cb:
         cb_cfg = constants.cash_balance
         if cb_cfg is not None:
-            cb_vesting = cb_cfg.get("vesting_yos", 5)
+            cb_vesting = cb_cfg["vesting_yos"]
 
     # Start from salary_benefit_table
     sbt = salary_benefit_table.copy()

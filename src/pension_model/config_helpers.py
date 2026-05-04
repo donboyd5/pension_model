@@ -94,7 +94,7 @@ def extract_normal_retirement_params(
                 nra_yos = rule["min_yos"]
 
     if nra_yos is None:
-        nra_yos = eligibility.get("vesting_yos", 5)
+        nra_yos = eligibility["vesting_yos"]
 
     return nra, nra_yos, yos_threshold
 
