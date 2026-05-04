@@ -30,9 +30,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 def two_class_gainloss_outputs():
     from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import load_funding_inputs, run_funding_model
-    from pension_model.plan_config import load_txtrs_config
+    from pension_model.plan_config import load_plan_config_by_name
 
-    constants = load_txtrs_config()
+    constants = load_plan_config_by_name("txtrs")
     liability = run_plan_pipeline(constants)
     funding_inputs = load_funding_inputs(constants.resolve_data_dir() / "funding")
 

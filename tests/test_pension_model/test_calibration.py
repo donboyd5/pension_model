@@ -25,7 +25,7 @@ CLASSES = ["regular", "special", "admin", "eco", "eso", "judges", "senior_manage
 def calibration_results():
     """Run calibration and return (results, targets, constants)."""
     from pension_model.core.pipeline import run_plan_pipeline
-    from pension_model.plan_config import load_frs_config
+    from pension_model.plan_config import load_plan_config_by_name
     from pension_model.core.calibration import (
         build_targets_from_config, run_calibration,
     )
@@ -33,7 +33,7 @@ def calibration_results():
     # Load with calibration file to get cal_factor (a calibration parameter,
     # not plan design), but neutralize nc_cal and pvfb_term_current so the
     # calibration module re-derives them from scratch.
-    constants = load_frs_config()
+    constants = load_plan_config_by_name("frs")
     # Reset per-class calibration values to neutral in the underlying dict
     for cn in constants.calibration:
         constants.calibration[cn]["nc_cal"] = 1.0

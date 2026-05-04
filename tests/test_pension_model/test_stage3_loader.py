@@ -52,8 +52,8 @@ FRS_BASELINES = Path(__file__).parent.parent.parent / "plans" / "frs" / "baselin
 
 @pytest.fixture(scope="module")
 def frs_config():
-    from pension_model.plan_config import load_frs_config
-    return load_frs_config()
+    from pension_model.plan_config import load_plan_config_by_name
+    return load_plan_config_by_name("frs")
 
 
 @pytest.fixture(scope="module")

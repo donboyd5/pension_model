@@ -10,12 +10,12 @@ pytestmark = [pytest.mark.regression]
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from pension_model.core.pipeline import prepare_plan_run
-from pension_model.plan_config import load_frs_config, load_txtrs_config
+from pension_model.plan_config import load_plan_config_by_name
 
 
-@pytest.fixture(scope="module", params=[load_frs_config, load_txtrs_config], ids=["frs", "txtrs"])
+@pytest.fixture(scope="module", params=["frs", "txtrs"], ids=["frs", "txtrs"])
 def prepared_plan_tables(request):
-    constants = request.param()
+    constants = load_plan_config_by_name(request.param)
     prepared = prepare_plan_run(constants, research_mode=True)
     return prepared.constants.plan_name, prepared.retained_plan_tables
 

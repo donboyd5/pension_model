@@ -42,8 +42,8 @@ class TestSalaryHeadcountTable:
 
     def _get_adjustment_ratio(self, class_name):
         """Compute headcount adjustment ratio matching R model."""
-        from pension_model.plan_config import load_frs_config
-        c = load_frs_config()
+        from pension_model.plan_config import load_plan_config_by_name
+        c = load_plan_config_by_name("frs")
 
         if class_name in ("eco", "eso", "judges"):
             # R uses a shared ratio: combined_total / combined_raw_count
@@ -65,7 +65,7 @@ class TestSalaryHeadcountTable:
     def test_salary_headcount_matches_r(self, class_name, salary_growth):
         """Verify Python salary_headcount_table matches R for each class."""
         from pension_model.core.benefit_tables import build_salary_headcount_table
-        from pension_model.plan_config import load_frs_config
+        from pension_model.plan_config import load_plan_config_by_name
 
         sal, hc = self._load_raw(class_name)
         adj_ratio = self._get_adjustment_ratio(class_name)
@@ -77,7 +77,7 @@ class TestSalaryHeadcountTable:
             class_name=class_name,
             adjustment_ratio=adj_ratio,
             start_year=2022,
-            constants=load_frs_config(),
+            constants=load_plan_config_by_name("frs"),
         )
 
         r = self._load_r_result(class_name)
@@ -132,9 +132,9 @@ class TestSeparationRateTable:
             build_entrant_profile,
             build_separation_rate_table,
         )
-        from pension_model.plan_config import load_frs_config
+        from pension_model.plan_config import load_plan_config_by_name
 
-        constants = load_frs_config()
+        constants = load_plan_config_by_name("frs")
         sg = pd.read_csv(FRS_BASELINES / "salary_growth_table.csv")
 
         # ESO uses Regular's separation table (R line 588)
@@ -196,9 +196,9 @@ class TestAnnFactorTable:
             build_entrant_profile, build_salary_benefit_table,
         )
         from pension_model.core.mortality_builder import build_compact_mortality_from_excel
-        from pension_model.plan_config import load_frs_config
+        from pension_model.plan_config import load_plan_config_by_name
 
-        constants = load_frs_config()
+        constants = load_plan_config_by_name("frs")
         cm = build_compact_mortality_from_excel(
             self.RAW_DIR / "pub-2010-headcount-mort-rates.xlsx",
             self.RAW_DIR / "mortality-improvement-scale-mp-2018-rates.xlsx",
@@ -272,9 +272,9 @@ class TestSalaryBenefitTable:
             build_entrant_profile,
             build_salary_benefit_table,
         )
-        from pension_model.plan_config import load_frs_config
+        from pension_model.plan_config import load_plan_config_by_name
 
-        constants = load_frs_config()
+        constants = load_plan_config_by_name("frs")
         salary_growth = pd.read_csv(FRS_BASELINES / "salary_growth_table.csv")
         sal = pd.read_csv(FRS_BASELINES / f"{class_name}_salary.csv")
         hc = pd.read_csv(FRS_BASELINES / f"{class_name}_headcount.csv")

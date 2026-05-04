@@ -7,12 +7,12 @@ import pytest
 pytestmark = [pytest.mark.unit]
 
 from pension_model.config_loading import load_plan_config
-from pension_model.plan_config import load_frs_config
+from pension_model.plan_config import load_plan_config_by_name
 
 
 @pytest.fixture(scope="module")
 def frs_config():
-    return load_frs_config()
+    return load_plan_config_by_name("frs")
 
 
 class TestPlanConfigLoad:

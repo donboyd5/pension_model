@@ -13,10 +13,8 @@ from pension_model.config_helpers import (
 )
 from pension_model.config_loading import (
     discover_plans,
-    load_frs_config,
     load_plan_config,
     load_plan_config_by_name,
-    load_txtrs_config,
 )
 from pension_model.config_resolvers import (
     get_ben_mult,
@@ -46,10 +44,8 @@ __all__ = [
     "get_sep_type",
     "get_tier",
     "get_tier_vectorized",
-    "load_frs_config",
     "load_plan_config",
     "load_plan_config_by_name",
-    "load_txtrs_config",
     "resolve_ben_mult_vec",
     "resolve_cola_scalar",
     "resolve_cola_vec",

@@ -25,12 +25,12 @@ from pension_model.core.profiling import (
     write_runtime_baseline,
 )
 from pension_model.core.runtime_contracts import ClassRuntimeTables
-from pension_model.plan_config import load_txtrs_config
+from pension_model.plan_config import load_plan_config_by_name
 
 
 @pytest.fixture(scope="module")
 def txtrs_constants():
-    return load_txtrs_config()
+    return load_plan_config_by_name("txtrs")
 
 
 @pytest.fixture(scope="module")
