@@ -1,0 +1,9 @@
+{
+  "tests": [
+    "tests/test_pension_model/test_cli_txtrs.py",
+    "tests/test_pension_model/test_plan_config_txtrs.py",
+    "tests/test_pension_model/test_vectorized_resolvers_txtrs.py",
+    "tests/test_pension_model/test_truth_table_txtrs.py",
+    "tests/test_pension_model/test_multi_class_gainloss.py"
+  ]
+}
