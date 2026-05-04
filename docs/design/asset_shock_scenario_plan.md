@@ -66,7 +66,7 @@ Keep the mapping under `overrides.economic` so all rate and return assumptions r
 
 ## Python Incorporation Plan
 
-The code already has a shared `build_return_stream()` helper used by DB funding and cash-balance crediting. This work extends that helper so it can resolve both the existing flat `model_return` assumption and the new year-keyed `asset_return_path`, then verifies DB funding and cash-balance crediting use the same resolved return values.
+The code already has a shared `build_return_stream()` helper used by DB funding and cash-balance crediting. This work extends that helper so it can resolve both the existing flat `model_return` assumption and the new year-keyed `asset_return_path`. The full R-vs-Python truth-table regression verifies the resulting model behavior.
 
 1. Extend the config contract.
 
@@ -95,13 +95,6 @@ The code already has a shared `build_return_stream()` helper used by DB funding 
 
    Leave `_build_return_stream_for_funding()` in `src/pension_model/core/_funding_setup.py` responsible for the first-projection-year smoothing pin. For this asset shock path, year 1 is already `"model_return"`, so the rule should not change the scenario's intended shock timing.
 
-5. Add focused unit tests.
-
-   Add or extend tests for `build_return_stream` to verify:
-
-   - flat behavior remains unchanged when no path is configured
-   - the `asset_shock` mapping produces model return, 3%, -24%, 12%, 12%, 12%, then model return at calendar years `start_year + 1` through `start_year + 7`
-
 ## Bounded Asset-Return Cleanup
 
 As part of this plan, finish the asset-return cleanup that directly supports `asset_shock`:
@@ -109,7 +102,7 @@ As part of this plan, finish the asset-return cleanup that directly supports `as
 - `build_return_stream()` remains the only translation layer from config/scenario return assumptions to year-indexed returns.
 - Flat `economic.model_return` scenarios keep their current behavior.
 - Year-keyed `economic.asset_return_path` scenarios use the same stream consumed by DB assets and cash-balance actual ICR.
-- Add tests that prove DB funding and cash-balance setup see the same return values for an `asset_return_path` scenario.
+- Use the full R-vs-Python truth-table regression to verify `asset_shock` behavior.
 
 ## R Baseline Plan
 
@@ -159,8 +152,6 @@ After implementation and R baseline generation:
 python -m pytest tests/test_pension_model/test_truth_table_scenarios.py -v
 python -m pytest tests/test_pension_model/test_plan_config_frs.py tests/test_pension_model/test_plan_config_txtrs.py -v
 ```
-
-If a dedicated return-stream test is added, include that exact file in the verification set.
 
 ## Acceptance Criteria
 
