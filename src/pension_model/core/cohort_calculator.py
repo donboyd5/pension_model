@@ -23,6 +23,18 @@ from pension_model.config_helpers import (
 from pension_model.core.compact_mortality import CompactMortality
 
 
+def _dr_key_for_tier(tier: str, constants) -> str:
+    """Look up the discount-rate key for a tier+status string.
+
+    ``get_tier`` returns names like ``"tier_3_norm"`` or ``"current_vested"``;
+    match the leading portion against the configured tier base names.
+    """
+    for name, tid in constants._tier_name_to_id.items():
+        if tier == name or tier.startswith(name + "_"):
+            return constants._tier_id_to_dr_key[tid]
+    return "dr_current"
+
+
 def compute_cohort_salary(
     entry_age: int,
     entry_year: int,
@@ -124,7 +136,7 @@ def compute_cohort_annuity_factors(
 
         term_year = entry_year + yos
         tier = get_tier(class_name, entry_year, term_age, yos, r.new_year)
-        dr = dr_new if "tier_3" in tier else dr_current
+        dr = dr_new if _dr_key_for_tier(tier, constants) == "dr_new" else dr_current
 
         # Determine distribution age
         # Vested: defer to earliest normal retirement age
@@ -281,7 +293,7 @@ def compute_cohort_benefits(
     dr_vec = np.full(n, econ.dr_current)
     for yos in range(n):
         tier = get_tier(class_name, entry_year, entry_age + yos, yos, r.new_year)
-        if "tier_3" in tier:
+        if _dr_key_for_tier(tier, constants) == "dr_new":
             dr_vec[yos] = econ.dr_new
 
     pvfb_current = _get_pvfb(sep_rates, dr_vec, pvfb_wealth_at_term)

@@ -59,17 +59,21 @@ def _build_tier_metadata(
     tier_defs_raw: list[dict],
     *,
     fas_default: int,
-) -> tuple[dict[str, int], tuple[str, ...], tuple[str, ...], tuple[int, ...]]:
+) -> tuple[dict[str, int], tuple[str, ...], tuple[str, ...], tuple[int, ...], tuple[str, ...]]:
     """Build tier lookup tables cached on ``PlanConfig``."""
     tier_name_to_id = {td["name"]: i for i, td in enumerate(tier_defs_raw)}
     tier_id_to_name = tuple(td["name"] for td in tier_defs_raw)
     tier_id_to_cola_key = tuple(td["cola_key"] for td in tier_defs_raw)
     tier_id_to_fas_years = tuple(td.get("fas_years", fas_default) for td in tier_defs_raw)
+    tier_id_to_dr_key = tuple(
+        td.get("discount_rate_key", "dr_current") for td in tier_defs_raw
+    )
     return (
         tier_name_to_id,
         tier_id_to_name,
         tier_id_to_cola_key,
         tier_id_to_fas_years,
+        tier_id_to_dr_key,
     )
 
 
@@ -118,6 +122,7 @@ def load_plan_config(
         tier_id_to_name,
         tier_id_to_cola_key,
         tier_id_to_fas_years,
+        tier_id_to_dr_key,
     ) = _build_tier_metadata(
         tier_defs_raw,
         fas_default=ben.get("fas_years_default", 5),
@@ -170,6 +175,7 @@ def load_plan_config(
         _tier_id_to_name=tier_id_to_name,
         _tier_id_to_cola_key=tier_id_to_cola_key,
         _tier_id_to_fas_years=tier_id_to_fas_years,
+        _tier_id_to_dr_key=tier_id_to_dr_key,
     )
 
     for warning in config.validate():

@@ -155,7 +155,8 @@
       "entry_year_max": null,
       "eligibility_same_as": "tier_2",
       "early_retire_reduction_same_as": "tier_2",
-      "cola_key": "tier_3_active"
+      "cola_key": "tier_3_active",
+      "discount_rate_key": "dr_new"
     }
   ],
 
