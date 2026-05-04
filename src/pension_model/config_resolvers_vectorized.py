@@ -175,7 +175,7 @@ def resolve_tiers_vec(
             sub_yos = yos[combo_mask]
             norm_mask = _matches_any_vec(eligibility.get("normal", []), sub_age, sub_yos)
             early_mask = _matches_any_vec(eligibility.get("early", []), sub_age, sub_yos) & ~norm_mask
-            vested_mask = (sub_yos >= eligibility.get("vesting_yos", 5)) & ~norm_mask & ~early_mask
+            vested_mask = (sub_yos >= eligibility["vesting_yos"]) & ~norm_mask & ~early_mask
 
             sub_status = np.full(combo_mask.sum(), NON_VESTED, dtype=np.int8)
             sub_status[norm_mask] = NORM

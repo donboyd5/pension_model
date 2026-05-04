@@ -79,7 +79,7 @@ def get_tier(
     if _matches_any(eligibility.get("early", []), age, yos, entry_year, entry_age):
         return f"{tier_name}_early"
 
-    vesting_yos = eligibility.get("vesting_yos", 5)
+    vesting_yos = eligibility["vesting_yos"]
     if yos >= vesting_yos:
         return f"{tier_name}_vested"
 

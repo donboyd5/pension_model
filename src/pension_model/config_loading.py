@@ -125,7 +125,7 @@ def load_plan_config(
         tier_id_to_dr_key,
     ) = _build_tier_metadata(
         tier_defs_raw,
-        fas_default=ben.get("fas_years_default", 5),
+        fas_default=ben["fas_years_default"],
     )
 
     config = PlanConfig(
@@ -144,7 +144,7 @@ def load_plan_config(
         db_ee_interest_rate=ben.get("db_ee_interest_rate", 0.0),
         cal_factor=ben.get("cal_factor", 1.0),
         retire_refund_ratio=ben.get("retire_refund_ratio", 1.0),
-        fas_years_default=ben.get("fas_years_default", 5),
+        fas_years_default=ben["fas_years_default"],
         benefit_types=tuple(ben.get("benefit_types", ["db"])),
         cola=ben.get("cola", {}),
         cash_balance=ben.get("cash_balance"),
