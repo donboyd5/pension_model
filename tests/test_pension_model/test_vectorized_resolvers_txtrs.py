@@ -88,7 +88,11 @@ def test_resolve_ben_mult_vec_matches_scalar_txtrs():
 
 
 def test_resolve_reduce_factor_vec_matches_scalar_txtrs():
+    from dataclasses import replace
+    from pension_model.core.data_loader import load_reduction_tables
+
     config = load_plan_config_by_name("txtrs")
+    config = replace(config, reduce_tables=load_reduction_tables(config))
     rows = build_txtrs_grid()
     cn, ey, age, yos = rows_to_arrays(rows)
 
