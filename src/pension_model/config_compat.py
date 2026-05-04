@@ -30,6 +30,7 @@ def build_economic_namespace(config) -> SimpleNamespace:
         payroll_growth=config.payroll_growth,
         pop_growth=config.pop_growth,
         model_return=config.model_return,
+        asset_return_path=config.asset_return_path,
     )
 
 

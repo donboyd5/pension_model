@@ -1,0 +1,17 @@
+{
+  "name": "asset_shock",
+  "description": "Asset return shock: model return in year 1, 3% in year 2, -24% in year 3, 12% recovery in years 4-6, then model return.",
+  "overrides": {
+    "economic": {
+      "asset_return_path": {
+        "1": "model_return",
+        "2": 0.03,
+        "3": -0.24,
+        "4": 0.12,
+        "5": 0.12,
+        "6": 0.12,
+        "default": "model_return"
+      }
+    }
+  }
+}

@@ -35,6 +35,7 @@ class PlanConfig:
     payroll_growth: float
     pop_growth: float
     model_return: float
+    asset_return_path: Optional[dict]
     db_ee_cont_rate: float
     db_ee_interest_rate: float
     cal_factor: float

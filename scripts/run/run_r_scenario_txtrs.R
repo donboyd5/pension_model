@@ -56,6 +56,16 @@ if (scenario_name == "high_discount") {
     return_scen = "model",
     model_return = 0.05
   )
+} else if (scenario_name == "asset_shock") {
+  cat("Running asset_shock scenario: year-keyed asset return path\n")
+  return_scenarios$asset_shock <- model_return_
+  return_scenarios$asset_shock[return_scenarios$year == YearStart + 1] <- model_return_
+  return_scenarios$asset_shock[return_scenarios$year == YearStart + 2] <- 0.03
+  return_scenarios$asset_shock[return_scenarios$year == YearStart + 3] <- -0.24
+  return_scenarios$asset_shock[return_scenarios$year %in% (YearStart + 4):(YearStart + 6)] <- 0.12
+  funding <- get_funding_data(
+    return_scen = "asset_shock"
+  )
 } else if (scenario_name == "no_cola") {
   cat("Running no_cola scenario: all COLA = 0\n")
   funding <- get_funding_data(
