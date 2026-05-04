@@ -75,13 +75,3 @@ def build_class_data_namespace(config) -> dict:
     return result
 
 
-def build_plan_design_namespace(config) -> SimpleNamespace:
-    def _get_ratios(is_special: bool) -> tuple:
-        group = "special_group" if is_special else "default"
-        ratios = config.plan_design_defs.get(group, config.plan_design_defs.get("default", {}))
-        before = ratios.get("before_cutoff", 1.0)
-        after = ratios.get("after_cutoff", before)
-        new = ratios.get("new", ratios.get("new_db", 1.0))
-        return before, after, new
-
-    return SimpleNamespace(get_ratios=_get_ratios)
