@@ -1,0 +1,15 @@
+{
+  "tests": [
+    "tests/test_pension_model/test_cli_frs.py",
+    "tests/test_pension_model/test_plan_config_frs.py",
+    "tests/test_pension_model/test_vectorized_resolvers_frs.py",
+    "tests/test_pension_model/test_data_integrity.py",
+    "tests/test_pension_model/test_consistency.py",
+    "tests/test_pension_model/test_calibration.py",
+    "tests/test_pension_model/test_funding_baseline.py",
+    "tests/test_pension_model/test_benefit_tables.py",
+    "tests/test_pension_model/test_stage3_loader.py",
+    "tests/test_pension_model/test_truth_table_frs.py",
+    "tests/test_pension_model/test_rundown.py"
+  ]
+}

@@ -452,35 +452,33 @@ DEFAULT_CORE_TEST_FILES = [
     "tests/test_pension_model/test_cli_shared.py",
 ]
 
-PLAN_TEST_FILES = {
-    "frs": [
-        "tests/test_pension_model/test_cli_frs.py",
-        "tests/test_pension_model/test_plan_config_frs.py",
-        "tests/test_pension_model/test_vectorized_resolvers_frs.py",
-        "tests/test_pension_model/test_data_integrity.py",
-        "tests/test_pension_model/test_consistency.py",
-        "tests/test_pension_model/test_calibration.py",
-        "tests/test_pension_model/test_funding_baseline.py",
-        "tests/test_pension_model/test_benefit_tables.py",
-        "tests/test_pension_model/test_stage3_loader.py",
-        "tests/test_pension_model/test_truth_table_frs.py",
-        "tests/test_pension_model/test_rundown.py",
-    ],
-    "txtrs": [
-        "tests/test_pension_model/test_cli_txtrs.py",
-        "tests/test_pension_model/test_plan_config_txtrs.py",
-        "tests/test_pension_model/test_vectorized_resolvers_txtrs.py",
-        "tests/test_pension_model/test_truth_table_txtrs.py",
-        "tests/test_pension_model/test_multi_class_gainloss.py",
-    ],
-}
+
+def _load_plan_test_manifest(plan_name: str) -> list[str]:
+    """Read a plan's CLI-test list from plans/<plan>/test_manifest.json.
+
+    The manifest schema is ``{"tests": [<repo-relative test paths>]}``.
+    A plan with no manifest contributes no plan-specific tests; the CLI
+    will run only ``DEFAULT_CORE_TEST_FILES`` for that plan.
+    """
+    import json
+    from pension_model.config_loading import discover_plans
+
+    plans = discover_plans()
+    if plan_name not in plans:
+        return []
+    manifest_path = plans[plan_name].parent.parent / "test_manifest.json"
+    if not manifest_path.exists():
+        return []
+    with manifest_path.open() as f:
+        manifest = json.load(f)
+    return list(manifest.get("tests", []))
 
 
 def _get_test_targets(plan_name: str | None = None) -> list[str]:
     """Return the pytest targets for a full-suite or plan-scoped CLI run."""
     if plan_name is None:
         return ["tests/test_pension_model/"]
-    return [*DEFAULT_CORE_TEST_FILES, *PLAN_TEST_FILES.get(plan_name, [])]
+    return [*DEFAULT_CORE_TEST_FILES, *_load_plan_test_manifest(plan_name)]
 
 
 def run_tests(plan_name: str | None = None):
