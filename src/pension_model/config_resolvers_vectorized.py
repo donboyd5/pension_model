@@ -12,7 +12,6 @@ from pension_model.config_resolver_common import (
     NORM,
     VESTED,
     _STATUS_SUFFIX,
-    _default_reduce_factor,
     _entry_year_in_tier_vec,
     _get_eligibility,
     _is_grandfathered_vec,
@@ -369,16 +368,19 @@ def resolve_reduce_factor_vec(
                     assigned |= cond_mask
                 elif formula == "table":
                     table_key = rule.get("table_key", "")
+                    if not (config.reduce_tables and table_key in config.reduce_tables):
+                        raise ValueError(
+                            f"early-retire reduction rule references table_key={table_key!r} "
+                            f"but no matching reduction table is loaded for plan {config.plan_name!r}. "
+                            f"Provide the table CSV under the plan's data directory."
+                        )
                     for local_index in np.where(cond_mask)[0]:
-                        if config.reduce_tables and table_key in config.reduce_tables:
-                            sub_vals[local_index] = _lookup_reduce_table(
-                                config.reduce_tables[table_key],
-                                table_key,
-                                int(sub_age[local_index]),
-                                int(sub_yos[local_index]),
-                            )
-                        else:
-                            sub_vals[local_index] = _default_reduce_factor(int(sub_age[local_index]))
+                        sub_vals[local_index] = _lookup_reduce_table(
+                            config.reduce_tables[table_key],
+                            table_key,
+                            int(sub_age[local_index]),
+                            int(sub_yos[local_index]),
+                        )
                     assigned |= cond_mask
             result[idx_arr] = sub_vals
 

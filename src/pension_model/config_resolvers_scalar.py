@@ -8,7 +8,6 @@ import numpy as np
 
 from pension_model.config_resolver_common import (
     _check_reduce_condition,
-    _default_reduce_factor,
     _entry_year_in_tier,
     _get_eligibility,
     _is_grandfathered,
@@ -201,7 +200,11 @@ def get_reduce_factor(
                 table_key = rule.get("table_key", "")
                 if config.reduce_tables and table_key in config.reduce_tables:
                     return _lookup_reduce_table(config.reduce_tables[table_key], table_key, dist_age, yos)
-                return _default_reduce_factor(dist_age)
+                raise ValueError(
+                    f"early-retire reduction rule references table_key={table_key!r} "
+                    f"but no matching reduction table is loaded for plan {config.plan_name!r}. "
+                    f"Provide the table CSV under the plan's data directory."
+                )
         return float("nan")
 
     return float("nan")

@@ -141,23 +141,6 @@ def _lookup_reduce_table(table, table_key: str, dist_age: int, yos: int) -> floa
     return float(row.iloc[0][col])
 
 
-def _default_reduce_factor(dist_age: int) -> float:
-    factors = {
-        55: 0.43,
-        56: 0.46,
-        57: 0.50,
-        58: 0.55,
-        59: 0.59,
-        60: 0.64,
-        61: 0.70,
-        62: 0.76,
-        63: 0.84,
-        64: 0.91,
-        65: 1.00,
-    }
-    return factors.get(dist_age, 1.0 if dist_age >= 65 else float("nan"))
-
-
 def _entry_year_in_tier_vec(entry_year: np.ndarray, tier_def: dict, new_year: int) -> np.ndarray:
     if tier_def.get("assignment") == "grandfathered_rule":
         return np.zeros(len(entry_year), dtype=bool)

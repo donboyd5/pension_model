@@ -22,6 +22,26 @@ from pension_model.config_schema import PlanConfig
 from pension_model.core.returns import build_return_stream
 
 
+def load_reduction_tables(constants: PlanConfig) -> dict | None:
+    """Load early-retire reduction tables from a plan's decrements directory.
+
+    Returns ``{"reduced_gft": <wide DataFrame>, "reduced_others": <DataFrame>}``
+    if both reduction CSVs exist, otherwise ``None``. The keys match the
+    ``table_key`` strings expected by tier ``early_retire_reduction.rules``.
+    """
+    decr_dir = constants.resolve_data_dir() / "decrements"
+    gft_path = decr_dir / "reduction_gft.csv"
+    others_path = decr_dir / "reduction_others.csv"
+    if not (gft_path.exists() and others_path.exists()):
+        return None
+    gft = pd.read_csv(gft_path)
+    gft_wide = gft.pivot(index="yos", columns="age", values="reduce_factor").reset_index()
+    gft_wide.columns = ["yos"] + [int(c) for c in gft_wide.columns[1:]]
+    others = pd.read_csv(others_path)
+    others = others[["age", "reduce_factor"]]
+    return {"reduced_gft": gft_wide, "reduced_others": others}
+
+
 def _load_retiree_distribution(path: Path) -> pd.DataFrame:
     """Load retiree distribution with computed ratio columns.
 
@@ -443,17 +463,9 @@ def _build_years_from_nr_decrements(
     ].reset_index(drop=True)
 
     # Load reduction tables if they exist
-    gft_path = decr_dir / "reduction_gft.csv"
-    others_path = decr_dir / "reduction_others.csv"
-    if gft_path.exists() and others_path.exists():
-        gft = pd.read_csv(gft_path)
-        # Pivot back to wide format expected by get_reduce_factor
-        gft_wide = gft.pivot(index="yos", columns="age", values="reduce_factor").reset_index()
-        gft_wide.columns = ["yos"] + [int(c) for c in gft_wide.columns[1:]]
-
-        others = pd.read_csv(others_path)
-        others = others[["age", "reduce_factor"]]
-        inputs["_reduction_tables"] = {"reduced_gft": gft_wide, "reduced_others": others}
+    reduction_tables = load_reduction_tables(constants)
+    if reduction_tables is not None:
+        inputs["_reduction_tables"] = reduction_tables
 
 
 # ---------------------------------------------------------------------------
