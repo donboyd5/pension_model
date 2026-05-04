@@ -141,11 +141,18 @@ class CorridorSmoothing:
     """
 
     aggregation_level: ClassVar[Literal["plan", "class"]] = "plan"
-    # Corridor pins the first projection year's investment return to the
-    # baseline ``model_return`` (the value before any scenario override),
-    # so a scenario's return change does not take effect until year 2.
-    # Mirrors the R reference model. See GH #93 — a follow-up PR will
-    # generalize this once year-varying returns return.
+    # Year 1 of the projection is treated as a "seed" year that should
+    # reflect what the plan actually earned in the year just ended,
+    # which is typically known but not yet captured in the most recent
+    # actuarial valuation (AV reports lag by 6-12 months). A scenario
+    # is forward-looking and should not overwrite that already-realized
+    # year, so we pin year 1 to the baseline ``model_return`` and only
+    # apply the scenario from year 2 onward. Mirrors the R reference
+    # model, where the first row of return_scenarios.csv was reserved
+    # for the realized seed and only rows 2+ were overwritten by
+    # scenario assumptions. See GH #93. A follow-up PR (year-varying
+    # scenario returns) will replace this pin with proper realized-
+    # return seeding at the config level.
     pins_first_projection_year_to_baseline: ClassVar[bool] = True
     # Corridor does not emit the gainloss-only output columns.
     emits_liability_gain_loss_sum: ClassVar[bool] = False
@@ -224,8 +231,9 @@ class GainLossSmoothing:
     """
 
     aggregation_level: ClassVar[Literal["plan", "class"]] = "class"
-    # Gain/loss applies the scenario return to every projection year,
-    # including year 1. Matches the R reference model.
+    # No year-1 seed pin: gain/loss applies the scenario return to
+    # every projection year, including year 1. Matches the R reference
+    # model.
     pins_first_projection_year_to_baseline: ClassVar[bool] = False
     # Gainloss emits two extra output-column packages:
     #   * ``liability_gain_loss`` (sum of legacy + new liability GL).

@@ -1,6 +1,5 @@
 """Year-loop phase helpers for the funding model."""
 
-import numpy as np
 import pandas as pd
 
 from pension_model.core._funding_helpers import (

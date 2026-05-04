@@ -140,9 +140,15 @@ def _build_return_stream_for_funding(
 ) -> pd.Series:
     """Return stream for the funding model.
 
-    Same as :func:`build_return_stream`, except the corridor strategy
-    pins year 1 of the projection to the baseline ``model_return`` to
-    match the R reference model. See GH #93.
+    Same as :func:`build_return_stream`, except: when the smoothing
+    strategy treats year 1 as a "seed" year (corridor smoothing today),
+    that year's value is pinned to the baseline ``model_return`` —
+    i.e. the value before any scenario override. The intent is that
+    year 1 represents what the plan actually earned in the year just
+    ended, which is typically already realized but not yet rolled into
+    the AV. Scenarios are forward-looking and should not overwrite
+    that. Year 2+ uses the (possibly scenario-overridden)
+    ``model_return``. See GH #93.
     """
     stream = build_return_stream(constants).copy()
     if ava_strategy.pins_first_projection_year_to_baseline:
