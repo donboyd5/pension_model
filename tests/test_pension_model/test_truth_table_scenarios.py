@@ -6,8 +6,8 @@ reference baseline. Tolerance is set tight enough to catch any non-FP
 divergence (max relative diff < 1e-10).
 
 Coverage today:
-  - frs x {baseline, low_return, high_discount}
-  - txtrs x {baseline, low_return, high_discount}
+  - frs x {baseline, low_return, high_discount, asset_shock}
+  - txtrs x {baseline, low_return, high_discount, asset_shock}
 
 Cells without an R baseline yet (frs x no_cola; txtrs x no_cola is
 non-applicable because TXTRS uses a different COLA structure than FRS)
@@ -65,17 +65,21 @@ def _build_python_truth_table(plan: str, scenario: str | None) -> pd.DataFrame:
         ("frs", None),
         ("frs", "low_return"),
         ("frs", "high_discount"),
+        ("frs", "asset_shock"),
         ("txtrs", None),
         ("txtrs", "low_return"),
         ("txtrs", "high_discount"),
+        ("txtrs", "asset_shock"),
     ],
     ids=[
         "frs-baseline",
         "frs-low_return",
         "frs-high_discount",
+        "frs-asset_shock",
         "txtrs-baseline",
         "txtrs-low_return",
         "txtrs-high_discount",
+        "txtrs-asset_shock",
     ],
 )
 def test_truth_table_matches_r_baseline(plan, scenario):

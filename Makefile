@@ -11,7 +11,7 @@
 PYTHON ?= python
 
 PLANS ?= frs txtrs txtrs-av
-SCENARIOS ?= baseline low_return high_discount
+SCENARIOS ?= baseline low_return high_discount asset_shock
 
 # Default scenario for `make run` if user omits scenario= argument.
 scenario ?= baseline
