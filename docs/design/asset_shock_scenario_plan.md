@@ -28,8 +28,8 @@ This is the right shape for this repo because it is explicit, stable in diffs, a
 - `src/pension_model/core/returns.py` currently builds a flat return stream from `constants.model_return`; its module docstring already identifies year-by-year paths as the intended follow-up.
 - `src/pension_model/core/_funding_setup.py` consumes `build_return_stream(constants)` and applies the existing first-projection-year seed rule for smoothing.
 - `tests/test_pension_model/test_truth_table_scenarios.py` compares Python truth tables to R baseline CSVs for `baseline`, `low_return`, and `high_discount` across FRS and TXTRS.
-- R scenario runners are `scripts/run/run_r_scenario.R` for FRS and `scripts/run/run_r_scenario_txtrs.R` for TXTRS. They do not yet know `asset_shock`.
-- There are no `r_truth_table_asset_shock.csv` baselines in `plans/frs/baselines/` or `plans/txtrs/baselines/`.
+- R scenario runners are `scripts/run/run_r_scenario.R` for FRS and `scripts/run/run_r_scenario_txtrs.R` for TXTRS.
+- Scenario R baselines live in `plans/<plan>/baselines/r_truth_table_<scenario>.csv`.
 
 ## Scenario JSON Change
 
@@ -121,10 +121,26 @@ As part of this plan, finish the asset-return cleanup that directly supports `as
    - years 4-6: `0.12`
    - later years: model return
 
-3. Generate and commit these R truth tables:
+3. Generate and commit these R truth tables in the same way as `low_return` and `high_discount`:
 
    - `plans/frs/baselines/r_truth_table_asset_shock.csv`
    - `plans/txtrs/baselines/r_truth_table_asset_shock.csv`
+
+   FRS:
+
+   ```powershell
+   Push-Location R_model\R_model_frs
+   Rscript ..\..\scripts\run\run_r_scenario.R asset_shock
+   Pop-Location
+   ```
+
+   TXTRS:
+
+   ```powershell
+   Push-Location R_model\R_model_txtrs
+   Rscript ..\..\scripts\run\run_r_scenario_txtrs.R asset_shock
+   Pop-Location
+   ```
 
 ## Regression Test Plan
 
