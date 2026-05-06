@@ -296,12 +296,16 @@ def _build_yos_only_decrements(
 
     The existing build_separation_rate_table() expects:
       - term_rate_avg: yos × age_group wide format
-      - normal_retire_rate_by_tier / early_retire_rate_by_tier:
-        ``{csv_tier_key: DataFrame[age, rate]}`` dicts, one entry per
-        unique tier value in the retirement-rate CSV.
+      - normal_retire_rate_by_set / early_retire_rate_by_set:
+        ``{rate_set_name: DataFrame[age, rate]}`` dicts, one entry per
+        unique value in the retirement-rate CSV's ``rate_set`` column.
 
     Age group bands are read from ``modeling.age_groups`` in plan config
     via ``_resolve_age_group_breaks``.
+
+    Raises:
+        ValueError: if any tier's declared ``retirement_rate_set``
+        is not present in the CSV's ``rate_set`` column.
     """
     # Convert termination rates: (lookup_type=yos, age, lookup_value, term_rate) → wide format
     yos_rates = term_df[term_df["lookup_type"] == "yos"].copy()
@@ -335,20 +339,30 @@ def _build_yos_only_decrements(
 
     inputs["term_rate_avg"] = term_wide
 
-    # Convert retirement rates to dicts keyed by the CSV's tier values.
-    # Each plan tier maps to one of these via retirement_rate_tier_key
-    # in plan_config.json (defaults to the plan-tier's own name).
-    csv_tier_keys = list(ret_df["tier"].unique())
-    normal_by_tier: dict[str, pd.DataFrame] = {}
-    early_by_tier: dict[str, pd.DataFrame] = {}
-    for tier_key in csv_tier_keys:
-        for ret_type, target in [("normal", normal_by_tier), ("early", early_by_tier)]:
-            mask = (ret_df["tier"] == tier_key) & (ret_df["retire_type"] == ret_type)
+    # Convert retirement rates to dicts keyed by the CSV's rate_set
+    # values. Each plan tier maps to one of these via
+    # retirement_rate_set in plan_config.json (defaults to the tier's
+    # own name).
+    csv_rate_sets = list(ret_df["rate_set"].unique())
+    declared_sets = set(constants._tier_id_to_retire_rate_set)
+    missing = declared_sets - set(csv_rate_sets)
+    if missing:
+        raise ValueError(
+            f"Plan {constants.plan_name!r} declares retirement_rate_set "
+            f"value(s) {sorted(missing)} not present in the rate_set "
+            f"column of the retirement-rate CSV. Available rate sets: "
+            f"{sorted(csv_rate_sets)}."
+        )
+    normal_by_set: dict[str, pd.DataFrame] = {}
+    early_by_set: dict[str, pd.DataFrame] = {}
+    for set_name in csv_rate_sets:
+        for ret_type, target in [("normal", normal_by_set), ("early", early_by_set)]:
+            mask = (ret_df["rate_set"] == set_name) & (ret_df["retire_type"] == ret_type)
             subset = ret_df[mask][["age", "retire_rate"]].copy()
             rate_col = f"{ret_type}_retire_rate"
-            target[tier_key] = subset.rename(columns={"retire_rate": rate_col})
-    inputs["normal_retire_rate_by_tier"] = normal_by_tier
-    inputs["early_retire_rate_by_tier"] = early_by_tier
+            target[set_name] = subset.rename(columns={"retire_rate": rate_col})
+    inputs["normal_retire_rate_by_set"] = normal_by_set
+    inputs["early_retire_rate_by_set"] = early_by_set
 
 
 def _build_years_from_nr_decrements(

@@ -432,8 +432,8 @@ def build_salary_benefit_table(
 
 def build_separation_rate_table(
     term_rate_avg: pd.DataFrame,
-    normal_retire_rate_by_tier: dict,
-    early_retire_rate_by_tier: dict,
+    normal_retire_rate_by_set: dict,
+    early_retire_rate_by_set: dict,
     entrant_profile: pd.DataFrame,
     class_name: str,
     constants,
@@ -447,10 +447,10 @@ def build_separation_rate_table(
 
     Args:
         term_rate_avg: Gender-averaged withdrawal rates (yos × age_group).
-        normal_retire_rate_by_tier: Mapping {csv_tier_key: DataFrame[age, normal_retire_rate]}.
-        early_retire_rate_by_tier: Mapping {csv_tier_key: DataFrame[age, early_retire_rate]}.
+        normal_retire_rate_by_set: Mapping {rate_set_name: DataFrame[age, normal_retire_rate]}.
+        early_retire_rate_by_set: Mapping {rate_set_name: DataFrame[age, early_retire_rate]}.
             Each plan tier resolves to one of these keys via
-            ``constants._tier_id_to_retire_rate_key``.
+            ``constants._tier_id_to_retire_rate_set``.
         entrant_profile: Entrant profile with entry_age column.
         class_name: Membership class name.
         constants: PlanConfig.
@@ -506,16 +506,16 @@ def build_separation_rate_table(
     # Join withdrawal rates
     df = df.merge(term_long, on=["yos", "age_group"], how="left")
 
-    # Join retirement rates by term_age — one column per CSV tier key
+    # Join retirement rates by term_age — one column per rate set
     # for each ret_type. Source "age" column renamed to "_ret_age" to
     # avoid left/right collision on the join. Merge order: all normals
     # first, then all earlies (preserved from the original four-arg
     # version for bit-identity).
     merge_specs: list[tuple[pd.DataFrame, str]] = []
-    for tier_key, tbl in normal_retire_rate_by_tier.items():
-        merge_specs.append((tbl, f"normal_retire_rate_{tier_key}"))
-    for tier_key, tbl in early_retire_rate_by_tier.items():
-        merge_specs.append((tbl, f"early_retire_rate_{tier_key}"))
+    for set_name, tbl in normal_retire_rate_by_set.items():
+        merge_specs.append((tbl, f"normal_retire_rate_{set_name}"))
+    for set_name, tbl in early_retire_rate_by_set.items():
+        merge_specs.append((tbl, f"early_retire_rate_{set_name}"))
     for tbl, col_name in merge_specs:
         rate_col = [c for c in tbl.columns if c != "age"][0]
         sub = tbl[["age", rate_col]].rename(
@@ -549,22 +549,22 @@ def build_separation_rate_table(
     df["ret_status"] = rs_arr
 
     # Separation rate depends on tier_id and ret_status. Each plan
-    # tier maps to a CSV retirement-rate tier key via
-    # _tier_id_to_retire_rate_key (e.g., FRS tier_3 → "tier_2"). Vested
-    # and non-vested rows fall through to the withdrawal rate.
+    # tier maps to a named rate set via _tier_id_to_retire_rate_set
+    # (e.g., FRS tier_3 → "2011_or_later"). Vested and non-vested rows
+    # fall through to the withdrawal rate.
     is_norm = rs_arr == NORM
     is_early = rs_arr == EARLY
-    retire_key_by_tid = np.array(
-        constants._tier_id_to_retire_rate_key, dtype=object
+    rate_set_by_tid = np.array(
+        constants._tier_id_to_retire_rate_set, dtype=object
     )
-    retire_keys_per_row = retire_key_by_tid[tid_arr]
+    rate_set_per_row = rate_set_by_tid[tid_arr]
     sep_rate = df["term_rate"].values.copy()
-    for tier_key in normal_retire_rate_by_tier:
-        mask_key = retire_keys_per_row == tier_key
-        norm_col = f"normal_retire_rate_{tier_key}"
-        early_col = f"early_retire_rate_{tier_key}"
-        sep_rate = np.where(mask_key & is_norm, df[norm_col].values, sep_rate)
-        sep_rate = np.where(mask_key & is_early, df[early_col].values, sep_rate)
+    for set_name in normal_retire_rate_by_set:
+        mask_set = rate_set_per_row == set_name
+        norm_col = f"normal_retire_rate_{set_name}"
+        early_col = f"early_retire_rate_{set_name}"
+        sep_rate = np.where(mask_set & is_norm, df[norm_col].values, sep_rate)
+        sep_rate = np.where(mask_set & is_early, df[early_col].values, sep_rate)
     df["separation_rate"] = sep_rate
 
     # Compute remaining_prob = cumprod(1 - lag(separation_rate, default=0))
