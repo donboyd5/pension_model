@@ -161,7 +161,18 @@ def get_reduce_factor(
     if "nra" in reduction:
         nra_map = reduction["nra"]
         rate = reduction["rate_per_year"]
-        nra = nra_map.get(class_name, nra_map.get("default", 65))
+        if class_name in nra_map:
+            nra = nra_map[class_name]
+        elif "default" in nra_map:
+            nra = nra_map["default"]
+        else:
+            raise ValueError(
+                f"Plan {config.plan_name!r}: NRA map for tier "
+                f"{tier_name!r} has no entry for class {class_name!r} "
+                f"and no 'default' fallback. Add either an explicit "
+                f"per-class NRA or a 'default' key to "
+                f"early_retire_reduction.nra."
+            )
         return 1.0 - rate * (nra - dist_age)
 
     if "rules" in reduction:
@@ -172,7 +183,14 @@ def get_reduce_factor(
             formula = rule.get("formula", "linear")
             if formula == "linear":
                 rate = rule["rate_per_year"]
-                nra = rule.get("nra", 65)
+                if "nra" not in rule:
+                    raise ValueError(
+                        f"Plan {config.plan_name!r}: tier {tier_name!r} "
+                        f"has a linear early-retire reduction rule "
+                        f"without an 'nra' field. Every linear rule "
+                        f"must declare its NRA."
+                    )
+                nra = rule["nra"]
                 return max(0.0, 1.0 - rate * (nra - dist_age))
             if formula == "table":
                 table_key = rule.get("table_key", "")
