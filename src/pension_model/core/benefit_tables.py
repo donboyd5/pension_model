@@ -432,10 +432,8 @@ def build_salary_benefit_table(
 
 def build_separation_rate_table(
     term_rate_avg: pd.DataFrame,
-    normal_retire_rate_tier1: pd.DataFrame,
-    normal_retire_rate_tier2: pd.DataFrame,
-    early_retire_rate_tier1: pd.DataFrame,
-    early_retire_rate_tier2: pd.DataFrame,
+    normal_retire_rate_by_tier: dict,
+    early_retire_rate_by_tier: dict,
     entrant_profile: pd.DataFrame,
     class_name: str,
     constants,
@@ -449,8 +447,10 @@ def build_separation_rate_table(
 
     Args:
         term_rate_avg: Gender-averaged withdrawal rates (yos × age_group).
-        normal_retire_rate_tier1/2: Normal retirement rates by age.
-        early_retire_rate_tier1/2: Early retirement rates by age.
+        normal_retire_rate_by_tier: Mapping {csv_tier_key: DataFrame[age, normal_retire_rate]}.
+        early_retire_rate_by_tier: Mapping {csv_tier_key: DataFrame[age, early_retire_rate]}.
+            Each plan tier resolves to one of these keys via
+            ``constants._tier_id_to_retire_rate_key``.
         entrant_profile: Entrant profile with entry_age column.
         class_name: Membership class name.
         constants: PlanConfig.
@@ -506,14 +506,17 @@ def build_separation_rate_table(
     # Join withdrawal rates
     df = df.merge(term_long, on=["yos", "age_group"], how="left")
 
-    # Join retirement rates by term_age — rename the source "age" column
-    # to "_ret_age" to avoid left/right collision on the join.
-    for tbl, col_name in [
-        (normal_retire_rate_tier1, "normal_retire_rate_tier_1"),
-        (normal_retire_rate_tier2, "normal_retire_rate_tier_2"),
-        (early_retire_rate_tier1, "early_retire_rate_tier_1"),
-        (early_retire_rate_tier2, "early_retire_rate_tier_2"),
-    ]:
+    # Join retirement rates by term_age — one column per CSV tier key
+    # for each ret_type. Source "age" column renamed to "_ret_age" to
+    # avoid left/right collision on the join. Merge order: all normals
+    # first, then all earlies (preserved from the original four-arg
+    # version for bit-identity).
+    merge_specs: list[tuple[pd.DataFrame, str]] = []
+    for tier_key, tbl in normal_retire_rate_by_tier.items():
+        merge_specs.append((tbl, f"normal_retire_rate_{tier_key}"))
+    for tier_key, tbl in early_retire_rate_by_tier.items():
+        merge_specs.append((tbl, f"early_retire_rate_{tier_key}"))
+    for tbl, col_name in merge_specs:
         rate_col = [c for c in tbl.columns if c != "age"][0]
         sub = tbl[["age", rate_col]].rename(
             columns={"age": "_ret_age", rate_col: col_name}
@@ -545,25 +548,24 @@ def build_separation_rate_table(
     df["tier_id"] = tid_arr
     df["ret_status"] = rs_arr
 
-    # Separation rate depends on tier_id and ret_status
-    t1_id = constants._tier_name_to_id.get("tier_1", -1)
-    is_tier_1 = tid_arr == t1_id
-    is_tier_23 = ~is_tier_1
+    # Separation rate depends on tier_id and ret_status. Each plan
+    # tier maps to a CSV retirement-rate tier key via
+    # _tier_id_to_retire_rate_key (e.g., FRS tier_3 → "tier_2"). Vested
+    # and non-vested rows fall through to the withdrawal rate.
     is_norm = rs_arr == NORM
     is_early = rs_arr == EARLY
-    df["separation_rate"] = np.where(
-        is_tier_23 & is_norm, df["normal_retire_rate_tier_2"],
-        np.where(
-            is_tier_23 & is_early, df["early_retire_rate_tier_2"],
-            np.where(
-                is_tier_1 & is_norm, df["normal_retire_rate_tier_1"],
-                np.where(
-                    is_tier_1 & is_early, df["early_retire_rate_tier_1"],
-                    df["term_rate"],  # vested or non_vested
-                ),
-            ),
-        ),
+    retire_key_by_tid = np.array(
+        constants._tier_id_to_retire_rate_key, dtype=object
     )
+    retire_keys_per_row = retire_key_by_tid[tid_arr]
+    sep_rate = df["term_rate"].values.copy()
+    for tier_key in normal_retire_rate_by_tier:
+        mask_key = retire_keys_per_row == tier_key
+        norm_col = f"normal_retire_rate_{tier_key}"
+        early_col = f"early_retire_rate_{tier_key}"
+        sep_rate = np.where(mask_key & is_norm, df[norm_col].values, sep_rate)
+        sep_rate = np.where(mask_key & is_early, df[early_col].values, sep_rate)
+    df["separation_rate"] = sep_rate
 
     # Compute remaining_prob = cumprod(1 - lag(separation_rate, default=0))
     df = df.sort_values(["entry_year", "entry_age", "yos"]).reset_index(drop=True)

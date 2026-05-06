@@ -296,8 +296,9 @@ def _build_yos_only_decrements(
 
     The existing build_separation_rate_table() expects:
       - term_rate_avg: yos × age_group wide format
-      - normal_retire_tier1/2: age × rate
-      - early_retire_tier1/2: age × rate
+      - normal_retire_rate_by_tier / early_retire_rate_by_tier:
+        ``{csv_tier_key: DataFrame[age, rate]}`` dicts, one entry per
+        unique tier value in the retirement-rate CSV.
 
     Age group bands are read from ``modeling.age_groups`` in plan config
     via ``_resolve_age_group_breaks``.
@@ -334,15 +335,20 @@ def _build_yos_only_decrements(
 
     inputs["term_rate_avg"] = term_wide
 
-    # Convert retirement rates: (age, tier, retire_type, retire_rate) → per-tier DataFrames
-    for tier_name, tier_key in [("tier_1", "tier1"), ("tier_2", "tier2")]:
-        for ret_type, input_key in [("normal", f"normal_retire_{tier_key}"),
-                                     ("early", f"early_retire_{tier_key}")]:
-            mask = (ret_df["tier"] == tier_name) & (ret_df["retire_type"] == ret_type)
+    # Convert retirement rates to dicts keyed by the CSV's tier values.
+    # Each plan tier maps to one of these via retirement_rate_tier_key
+    # in plan_config.json (defaults to the plan-tier's own name).
+    csv_tier_keys = list(ret_df["tier"].unique())
+    normal_by_tier: dict[str, pd.DataFrame] = {}
+    early_by_tier: dict[str, pd.DataFrame] = {}
+    for tier_key in csv_tier_keys:
+        for ret_type, target in [("normal", normal_by_tier), ("early", early_by_tier)]:
+            mask = (ret_df["tier"] == tier_key) & (ret_df["retire_type"] == ret_type)
             subset = ret_df[mask][["age", "retire_rate"]].copy()
             rate_col = f"{ret_type}_retire_rate"
-            subset = subset.rename(columns={"retire_rate": rate_col})
-            inputs[input_key] = subset
+            target[tier_key] = subset.rename(columns={"retire_rate": rate_col})
+    inputs["normal_retire_rate_by_tier"] = normal_by_tier
+    inputs["early_retire_rate_by_tier"] = early_by_tier
 
 
 def _build_years_from_nr_decrements(

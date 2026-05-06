@@ -59,7 +59,14 @@ def _build_tier_metadata(
     tier_defs_raw: list[dict],
     *,
     fas_default: int,
-) -> tuple[dict[str, int], tuple[str, ...], tuple[str, ...], tuple[int, ...], tuple[str, ...]]:
+) -> tuple[
+    dict[str, int],
+    tuple[str, ...],
+    tuple[str, ...],
+    tuple[int, ...],
+    tuple[str, ...],
+    tuple[str, ...],
+]:
     """Build tier lookup tables cached on ``PlanConfig``."""
     tier_name_to_id = {td["name"]: i for i, td in enumerate(tier_defs_raw)}
     tier_id_to_name = tuple(td["name"] for td in tier_defs_raw)
@@ -68,12 +75,19 @@ def _build_tier_metadata(
     tier_id_to_dr_key = tuple(
         td.get("discount_rate_key", "dr_current") for td in tier_defs_raw
     )
+    # Default: each tier maps to a CSV tier key with its own name. FRS
+    # tier_3 declares "tier_2" explicitly so the implicit fallback in
+    # the old boolean-cascade dispatch becomes a config-driven choice.
+    tier_id_to_retire_rate_key = tuple(
+        td.get("retirement_rate_tier_key", td["name"]) for td in tier_defs_raw
+    )
     return (
         tier_name_to_id,
         tier_id_to_name,
         tier_id_to_cola_key,
         tier_id_to_fas_years,
         tier_id_to_dr_key,
+        tier_id_to_retire_rate_key,
     )
 
 
@@ -123,6 +137,7 @@ def load_plan_config(
         tier_id_to_cola_key,
         tier_id_to_fas_years,
         tier_id_to_dr_key,
+        tier_id_to_retire_rate_key,
     ) = _build_tier_metadata(
         tier_defs_raw,
         fas_default=ben["fas_years_default"],
@@ -177,6 +192,7 @@ def load_plan_config(
         _tier_id_to_cola_key=tier_id_to_cola_key,
         _tier_id_to_fas_years=tier_id_to_fas_years,
         _tier_id_to_dr_key=tier_id_to_dr_key,
+        _tier_id_to_retire_rate_key=tier_id_to_retire_rate_key,
     )
 
     for warning in config.validate():
