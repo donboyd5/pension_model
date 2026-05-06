@@ -126,7 +126,6 @@ def compute_active_liability(wf_active: pd.DataFrame, active_benefit_lookup: pd.
         if cols["nc"] is None or cols["nc"] not in wf.columns:
             continue
 
-        nc_col = cols["nc"]
         for period in ["legacy", "new"]:
             pay_col = f"payroll_{bt}_{period}_est"
             if pay_col not in result.columns:

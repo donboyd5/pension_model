@@ -1,7 +1,5 @@
 """Validation helpers for loaded plan configs."""
 
-from pathlib import Path
-
 
 def validate_funding_legs(config) -> None:
     """Fatal check: funding legs are non-overlapping and cover the full

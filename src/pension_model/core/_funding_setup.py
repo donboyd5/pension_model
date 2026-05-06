@@ -79,13 +79,8 @@ def resolve_funding_context(
     smoothing_cfg = fund.ava_smoothing or {}
     method = smoothing_cfg.get("method")
     if method == "corridor":
-        # ``gain_loss_recognition`` is the historical name for the
-        # corridor's recognition fraction (the share of the gap to MVA
-        # recognized each year). The name is misleading — it has
-        # nothing to do with the gain/loss smoothing strategy — but
-        # renaming it touches plan_config.json; deferred.
         ava_strategy = CorridorSmoothing(
-            recognition_fraction=smoothing_cfg.get("gain_loss_recognition", 0.2),
+            recognition_fraction=smoothing_cfg.get("recognition_fraction", 0.2),
             corridor_low=smoothing_cfg.get("corridor_low", 0.8),
             corridor_high=smoothing_cfg.get("corridor_high", 1.2),
         )
