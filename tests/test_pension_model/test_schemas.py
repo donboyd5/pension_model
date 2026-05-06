@@ -13,10 +13,19 @@ from pydantic import ValidationError
 
 from pension_model.schemas import (
     AgeGroup,
+    AvaSmoothing,
+    CorridorAvaSmoothing,
     Decrements,
     Economic,
+    Funding,
+    GainLossAvaSmoothing,
+    LegDef,
     Modeling,
+    RampSpec,
     Ranges,
+    RateComponentSpec,
+    RateScheduleEntry,
+    StatutoryRates,
 )
 
 
@@ -176,3 +185,156 @@ class TestModeling:
     def test_extra_top_level_field_raises(self):
         with pytest.raises(ValidationError, match="bogus"):
             Modeling.model_validate({"bogus": True})
+
+
+# ---------------------------------------------------------------------------
+# AvaSmoothing (discriminated union)
+# ---------------------------------------------------------------------------
+
+
+class TestAvaSmoothing:
+    def test_corridor_method_dispatches_to_corridor_model(self):
+        sm = CorridorAvaSmoothing.model_validate({"method": "corridor"})
+        assert sm.corridor_low == 0.8
+        assert sm.corridor_high == 1.2
+        assert sm.recognition_fraction == 0.2
+
+    def test_corridor_with_explicit_values(self):
+        sm = CorridorAvaSmoothing.model_validate({
+            "method": "corridor",
+            "corridor_low": 0.7,
+            "corridor_high": 1.3,
+            "recognition_fraction": 0.25,
+        })
+        assert sm.corridor_low == 0.7
+        assert sm.recognition_fraction == 0.25
+
+    def test_gain_loss_method(self):
+        sm = GainLossAvaSmoothing.model_validate({
+            "method": "gain_loss",
+            "recognition_period": 4,
+        })
+        assert sm.recognition_period == 4
+
+    def test_gain_loss_missing_recognition_period_raises(self):
+        with pytest.raises(ValidationError, match="recognition_period"):
+            GainLossAvaSmoothing.model_validate({"method": "gain_loss"})
+
+
+# ---------------------------------------------------------------------------
+# RateComponentSpec (mutual-exclusion validator)
+# ---------------------------------------------------------------------------
+
+
+class TestRateComponentSpec:
+    def test_schedule_form_loads(self):
+        c = RateComponentSpec.model_validate({
+            "name": "base",
+            "payroll_share": 1.0,
+            "schedule": [{"from_year": 0, "rate": 0.08}],
+        })
+        assert c.schedule is not None
+        assert c.ramp is None
+
+    def test_ramp_form_loads(self):
+        c = RateComponentSpec.model_validate({
+            "name": "surcharge",
+            "payroll_share": 0.5,
+            "initial_rate": 0.0,
+            "ramp": {"rate_per_year": 0.001, "end_year": 2030},
+        })
+        assert c.ramp is not None
+        assert c.schedule is None
+
+    def test_neither_schedule_nor_ramp_raises(self):
+        with pytest.raises(ValidationError, match="must specify either"):
+            RateComponentSpec.model_validate({
+                "name": "no_rate",
+            })
+
+    def test_both_schedule_and_ramp_raises(self):
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            RateComponentSpec.model_validate({
+                "name": "both",
+                "schedule": [{"from_year": 0, "rate": 0.08}],
+                "ramp": {"rate_per_year": 0.001, "end_year": 2030},
+            })
+
+
+# ---------------------------------------------------------------------------
+# Funding (top-level + cross-field validator)
+# ---------------------------------------------------------------------------
+
+
+class TestFunding:
+    def _valid_actuarial(self, **overrides):
+        base = {
+            "contribution_strategy": "actuarial",
+            "policy": "statutory",
+            "amo_method": "level_pct",
+            "amo_period_new": 20,
+            "amo_pay_growth": 0.0325,
+            "ava_smoothing": {"method": "corridor"},
+        }
+        base.update(overrides)
+        return base
+
+    def _valid_statutory(self, **overrides):
+        base = self._valid_actuarial()
+        base.update({
+            "contribution_strategy": "statutory",
+            "ava_smoothing": {"method": "gain_loss", "recognition_period": 4},
+            "statutory_rates": {
+                "ee_rate_schedule": [{"from_year": 0, "rate": 0.08}],
+                "er_rate_components": [
+                    {
+                        "name": "base",
+                        "schedule": [{"from_year": 0, "rate": 0.08}],
+                    },
+                ],
+            },
+        })
+        base.update(overrides)
+        return base
+
+    def test_actuarial_loads(self):
+        f = Funding.model_validate(self._valid_actuarial())
+        assert f.contribution_strategy == "actuarial"
+        assert isinstance(f.ava_smoothing, CorridorAvaSmoothing)
+
+    def test_statutory_loads(self):
+        f = Funding.model_validate(self._valid_statutory())
+        assert f.contribution_strategy == "statutory"
+        assert isinstance(f.ava_smoothing, GainLossAvaSmoothing)
+        assert f.statutory_rates is not None
+
+    def test_statutory_without_rates_block_raises(self):
+        bad = self._valid_actuarial()
+        bad["contribution_strategy"] = "statutory"
+        with pytest.raises(ValidationError, match="statutory_rates is missing"):
+            Funding.model_validate(bad)
+
+    def test_unknown_contribution_strategy_raises(self):
+        bad = self._valid_actuarial()
+        bad["contribution_strategy"] = "made_up"
+        with pytest.raises(ValidationError, match="made_up"):
+            Funding.model_validate(bad)
+
+    def test_default_legs(self):
+        f = Funding.model_validate(self._valid_actuarial())
+        assert len(f.legs) == 2
+        assert f.legs[0].name == "legacy"
+        assert f.legs[0].entry_year_max_param == "new_year"
+        assert f.legs[1].name == "new"
+        assert f.legs[1].entry_year_min_param == "new_year"
+
+    def test_explicit_legs_override_default(self):
+        f = Funding.model_validate(self._valid_actuarial(legs=[
+            {"name": "before_2011", "entry_year_max": 2011},
+            {"name": "from_2011", "entry_year_min": 2011},
+        ]))
+        assert [leg.name for leg in f.legs] == ["before_2011", "from_2011"]
+
+    def test_extra_field_raises(self):
+        with pytest.raises(ValidationError, match="bogus_field"):
+            Funding.model_validate(self._valid_actuarial(bogus_field=1))

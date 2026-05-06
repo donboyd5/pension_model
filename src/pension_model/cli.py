@@ -41,19 +41,16 @@ def _fmt_pct(val):
 
 
 def _fmt_smoothing(cfg):
-    """Describe asset smoothing from config dict."""
+    """Describe asset smoothing from typed config."""
     sm = cfg.ava_smoothing
-    method = sm.get("method", "unknown")
-    if method == "corridor":
-        lo = sm.get("corridor_low", 0.8)
-        hi = sm.get("corridor_high", 1.2)
-        recog = sm.get("recognition_fraction", 0.2)
-        return f"corridor ({lo:.0%}-{hi:.0%} of MVA), {recog:.0%}/yr recognition"
-    elif method == "gain_loss":
-        period = sm.get("recognition_period", 4)
-        return f"{period}-year gain-loss recognition"
-    else:
-        return method
+    if sm.method == "corridor":
+        return (
+            f"corridor ({sm.corridor_low:.0%}-{sm.corridor_high:.0%} "
+            f"of MVA), {sm.recognition_fraction:.0%}/yr recognition"
+        )
+    if sm.method == "gain_loss":
+        return f"{sm.recognition_period}-year gain-loss recognition"
+    return sm.method
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +169,7 @@ def print_parameters(constants):
     print(f"    Investment return:      {ec.model_return:.1%}")
     print(f"    Payroll growth:         {ec.payroll_growth:.2%}")
     print(f"    COLA (retirees):        {bn.cola_current_retire:.0%}")
-    print(f"    Funding policy:         {fn.funding_policy}")
+    print(f"    Funding policy:         {fn.policy}")
     print(f"    Amortization:           {fn.amo_method}, {fn.amo_period_new}-year period")
     print(f"    Asset smoothing:        {_fmt_smoothing(fn)}")
     print(f"    Projection horizon:     {rn.model_period} years from {rn.start_year} valuation (through {rn.start_year + rn.model_period})")

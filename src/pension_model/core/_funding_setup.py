@@ -76,21 +76,18 @@ def resolve_funding_context(
     has_cb = "cb" in constants.benefit_types
     has_dc = "payroll_dc_legacy" in funding_inputs["init_funding"].columns
 
-    smoothing_cfg = fund.ava_smoothing or {}
-    method = smoothing_cfg.get("method")
-    if method == "corridor":
+    # ``fund.ava_smoothing`` is now a typed discriminated union;
+    # method validity was checked at config-load time. Dispatch on
+    # the concrete type.
+    smoothing_cfg = fund.ava_smoothing
+    if smoothing_cfg.method == "corridor":
         ava_strategy = CorridorSmoothing(
-            recognition_fraction=smoothing_cfg.get("recognition_fraction", 0.2),
-            corridor_low=smoothing_cfg.get("corridor_low", 0.8),
-            corridor_high=smoothing_cfg.get("corridor_high", 1.2),
+            recognition_fraction=smoothing_cfg.recognition_fraction,
+            corridor_low=smoothing_cfg.corridor_low,
+            corridor_high=smoothing_cfg.corridor_high,
         )
-    elif method == "gain_loss":
+    else:  # method == "gain_loss" — schema enforces no other values
         ava_strategy = GainLossSmoothing()
-    else:
-        raise ValueError(
-            f"Unknown funding.ava_smoothing.method: {method!r}. "
-            f"Supported: 'corridor', 'gain_loss'."
-        )
 
     # The plan-aggregate frame is built up inside the year-loop when
     # either (a) there's more than one class and we want a plan-level
@@ -104,35 +101,24 @@ def resolve_funding_context(
         or ava_strategy.aggregation_level == "plan"
     )
 
-    cont_strategy_name = fund.contribution_strategy
-    stat_rates = constants.statutory_rates
-    if cont_strategy_name == "statutory":
-        if not stat_rates:
-            raise ValueError(
-                f"Plan {constants.plan_name!r}: "
-                f"funding.contribution_strategy is 'statutory' but "
-                f"funding.statutory_rates is missing. The statutory "
-                f"strategy requires a statutory_rates block declaring "
-                f"ee_rate_schedule and er_rate_components."
-            )
-        ee_schedule = stat_rates.get(
-            "ee_rate_schedule",
-            [{"from_year": 0, "rate": constants.benefit.db_ee_cont_rate}],
-        )
+    # ``fund.contribution_strategy`` validity is enforced by the
+    # Funding schema (Literal["statutory", "actuarial"]); the
+    # required-when-statutory check on ``statutory_rates`` is also
+    # schema-level, so by here the typed model is consistent.
+    if fund.contribution_strategy == "statutory":
+        stat_rates = fund.statutory_rates
+        ee_schedule = [
+            {"from_year": e.from_year, "rate": e.rate}
+            for e in stat_rates.ee_rate_schedule
+        ]
         cont_strategy = StatutoryContributions(
-            funding_policy=fund.funding_policy,
+            funding_policy=fund.policy,
             ee_schedule=ee_schedule,
             components=resolve_er_rate_components(stat_rates),
         )
-    elif cont_strategy_name == "actuarial":
+    else:  # "actuarial" — schema enforces no other values
         cont_strategy = ActuarialContributions(
             db_ee_cont_rate=constants.benefit.db_ee_cont_rate,
-        )
-    else:
-        raise ValueError(
-            f"Plan {constants.plan_name!r}: "
-            f"funding.contribution_strategy = {cont_strategy_name!r} "
-            f"is not supported. Pick one of: 'actuarial', 'statutory'."
         )
 
     return FundingContext(
@@ -157,7 +143,7 @@ def resolve_funding_context(
         builds_aggregate_in_loop=builds_aggregate_in_loop,
         has_cb=has_cb,
         has_dc=has_dc,
-        funding_policy=fund.funding_policy,
+        funding_policy=fund.policy,
         init_funding=funding_inputs["init_funding"],
         amort_layers=funding_inputs.get("amort_layers"),
         ret_scen=_build_return_stream_for_funding(constants, ava_strategy),
@@ -187,16 +173,18 @@ def _build_return_stream_for_funding(
     return stream
 
 
-def resolve_er_rate_components(stat_rates: dict) -> list:
-    """Build statutory employer-rate components from config."""
-    components = stat_rates.get("er_rate_components")
-    if components is None:
-        raise ValueError(
-            "funding.statutory_rates.er_rate_components is required when "
-            "using the statutory contribution strategy. See an existing "
-            "plan's plan_config.json for an example schema."
-        )
-    return [RateComponent.from_config(c) for c in components]
+def resolve_er_rate_components(stat_rates) -> list:
+    """Build statutory employer-rate components from the typed
+    StatutoryRates spec.
+
+    Each schema-side ``RateComponentSpec`` is converted to the
+    strategy-side ``RateComponent`` via ``model_dump()`` — the field
+    shapes match by design.
+    """
+    return [
+        RateComponent.from_config(c.model_dump())
+        for c in stat_rates.er_rate_components
+    ]
 
 
 def setup_funding_frames(ctx: FundingContext) -> dict:

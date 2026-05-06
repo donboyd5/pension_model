@@ -21,20 +21,6 @@ def build_benefit_namespace(config) -> SimpleNamespace:
     )
 
 
-def build_funding_namespace(config) -> SimpleNamespace:
-    return SimpleNamespace(
-        funding_policy=config.funding_policy,
-        contribution_strategy=config.contribution_strategy,
-        amo_method=config.amo_method,
-        amo_period_new=config.amo_period_new,
-        amo_pay_growth=config.amo_pay_growth,
-        funding_lag=config.funding_lag,
-        amo_period_term=config.amo_period_term,
-        amo_term_growth=config.amo_term_growth,
-        ava_smoothing=config.ava_smoothing,
-    )
-
-
 def build_class_data_namespace(config) -> dict:
     result = {}
     for class_name, valuation in config.valuation_inputs.items():
