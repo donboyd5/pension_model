@@ -325,7 +325,19 @@ def resolve_reduce_factor_vec(
         if "nra" in reduction:
             nra_map = reduction["nra"]
             rate = reduction["rate_per_year"]
-            nra = nra_map.get(class_name_value, nra_map.get("default", 65))
+            if class_name_value in nra_map:
+                nra = nra_map[class_name_value]
+            elif "default" in nra_map:
+                nra = nra_map["default"]
+            else:
+                tier_name = config._tier_id_to_name[tier_index]
+                raise ValueError(
+                    f"Plan {config.plan_name!r}: NRA map for tier "
+                    f"{tier_name!r} has no entry for class "
+                    f"{class_name_value!r} and no 'default' fallback. "
+                    f"Add either an explicit per-class NRA or a "
+                    f"'default' key to early_retire_reduction.nra."
+                )
             result[idx_arr] = 1.0 - rate * (nra - sub_age)
             continue
 
@@ -347,7 +359,14 @@ def resolve_reduce_factor_vec(
                 formula = rule.get("formula", "linear")
                 if formula == "linear":
                     rate = rule["rate_per_year"]
-                    nra = rule.get("nra", 65)
+                    if "nra" not in rule:
+                        raise ValueError(
+                            f"Plan {config.plan_name!r}: tier "
+                            f"{tier_name!r} has a linear early-retire "
+                            f"reduction rule without an 'nra' field. "
+                            f"Every linear rule must declare its NRA."
+                        )
+                    nra = rule["nra"]
                     sub_vals[cond_mask] = np.maximum(0.0, 1.0 - rate * (nra - sub_age[cond_mask]))
                     assigned |= cond_mask
                 elif formula == "table":

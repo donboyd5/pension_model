@@ -368,3 +368,66 @@ def test_unknown_tier_discount_rate_key_raises(frs_config):
     econ = frs_config.economic
     with pytest.raises(ValueError, match="bogus_rate"):
         _resolve_econ_rate(econ, "bogus_rate", frs_config.plan_name)
+
+
+def test_missing_per_class_nra_raises(frs_config):
+    """A per-class NRA map missing the requested class and the
+    'default' fallback raises a clear ValueError. Catches forgetting
+    to declare an NRA for one of the plan's classes.
+    """
+    from dataclasses import replace
+    from pension_model.config_resolvers import get_reduce_factor
+
+    # FRS tier_1 uses a per-class NRA map. Build a tier_defs tuple with
+    # tier_1's 'default' entry stripped — only 'special' is left.
+    new_tier_defs = []
+    for td in frs_config.tier_defs:
+        if td["name"] == "tier_1":
+            td2 = {**td, "early_retire_reduction": {**td["early_retire_reduction"]}}
+            td2["early_retire_reduction"]["nra"] = {"special": 55}  # no 'default'
+            new_tier_defs.append(td2)
+        else:
+            new_tier_defs.append(td)
+    bogus = replace(frs_config, tier_defs=tuple(new_tier_defs))
+
+    # 'regular' isn't in the map and no default — should raise.
+    with pytest.raises(ValueError, match="no 'default'"):
+        get_reduce_factor(
+            bogus, "regular", "tier_1", "early", dist_age=58, yos=10, entry_year=1990
+        )
+
+
+def test_missing_rule_nra_raises(frs_config):
+    """A linear early-retire reduction rule without an 'nra' field
+    raises a clear ValueError. Catches forgetting the NRA on a rule.
+    """
+    from dataclasses import replace
+    from pension_model.config_resolvers import get_reduce_factor
+
+    # Inject a tier with a linear rule that omits 'nra'.
+    bogus_tier = {
+        "name": "tier_bogus",
+        "entry_year_min": 0,
+        "entry_year_max": 9999,
+        "fas_years": 5,
+        "cola_key": "tier_1_active",
+        "retirement_rate_set": "before_2011",
+        "eligibility": {
+            "default": {
+                "normal": [{"min_age": 65}],
+                "early": [{"min_age": 55}],
+                "vesting_yos": 5,
+            }
+        },
+        "early_retire_reduction": {
+            "rules": [
+                {"condition": {}, "formula": "linear", "rate_per_year": 0.05},  # no 'nra'
+            ]
+        },
+    }
+    bogus = replace(frs_config, tier_defs=(bogus_tier,))
+
+    with pytest.raises(ValueError, match="without an 'nra' field"):
+        get_reduce_factor(
+            bogus, "regular", "tier_bogus", "early", dist_age=58, yos=10, entry_year=1990
+        )
