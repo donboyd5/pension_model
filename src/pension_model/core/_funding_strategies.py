@@ -132,12 +132,18 @@ class AvaSmoothingStrategy(Protocol):
 
 
 class CorridorSmoothing:
-    """Five-year corridor smoothing at the plan-aggregate level.
+    """Corridor smoothing at the plan-aggregate level.
 
-    Smooths each leg's AVA toward MVA at 1/5 per year, bounded to
-    ``[0.8 * mva, 1.2 * mva]``. After smoothing the aggregate, allocates
-    the realized earnings to each class in proportion to that class's
-    pre-smoothing ``ava_base`` (= ``ava_prev + net_cf / 2``).
+    Each year, smooths AVA toward MVA by ``recognition_fraction`` of the
+    gap, bounded to ``[corridor_low * mva, corridor_high * mva]``. After
+    smoothing the aggregate, allocates the realized earnings to each
+    class in proportion to that class's pre-smoothing ``ava_base``
+    (= ``ava_prev + net_cf / 2``).
+
+    The three constants are declared in ``plan_config.json`` under
+    ``funding.ava_smoothing`` and threaded in by ``resolve_funding_context``.
+    Defaults match FRS (0.2 recognition, [0.8, 1.2] corridor) so a plan
+    can omit them.
     """
 
     aggregation_level: ClassVar[Literal["plan", "class"]] = "plan"
@@ -157,6 +163,16 @@ class CorridorSmoothing:
     # Corridor does not emit the gainloss-only output columns.
     emits_liability_gain_loss_sum: ClassVar[bool] = False
 
+    def __init__(
+        self,
+        recognition_fraction: float = 0.2,
+        corridor_low: float = 0.8,
+        corridor_high: float = 1.2,
+    ):
+        self.recognition_fraction = recognition_fraction
+        self.corridor_low = corridor_low
+        self.corridor_high = corridor_high
+
     def smooth(
         self,
         ava_prev: float,
@@ -165,7 +181,15 @@ class CorridorSmoothing:
         dr: float,
         state: dict,  # noqa: ARG002 — corridor has no extra state
     ) -> dict:
-        return _ava_corridor_smoothing(ava_prev, net_cf, mva, dr)
+        return _ava_corridor_smoothing(
+            ava_prev,
+            net_cf,
+            mva,
+            dr,
+            self.recognition_fraction,
+            self.corridor_low,
+            self.corridor_high,
+        )
 
     def allocate_to_classes(
         self,

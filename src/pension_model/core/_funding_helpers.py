@@ -253,20 +253,33 @@ def _populate_calibrated_nc_rates(f, liab, nc_cal, n_years):
         f.loc[1:, "nc_rate_cb_new"] = nc_new_cb[:-1]
 
 
-def _ava_corridor_smoothing(ava_prev, net_cf, mva, dr):
-    """Five-year corridor AVA smoothing (recognize 1/5 of gain/loss).
+def _ava_corridor_smoothing(
+    ava_prev,
+    net_cf,
+    mva,
+    dr,
+    recognition_fraction,
+    corridor_low,
+    corridor_high,
+):
+    """Corridor AVA smoothing with config-driven recognition and bounds.
 
     Used by the corridor (FRS-style) funding path *at the plan-aggregate
     level*. The smoothed AVA is the prior AVA plus expected mid-year
-    investment income, plus 1/5 of the gap to MVA, then bounded to the
-    [80%, 120%] corridor around MVA::
+    investment income, plus ``recognition_fraction`` of the gap to MVA,
+    then bounded to the ``[corridor_low * mva, corridor_high * mva]``
+    corridor::
 
         exp_inv_earnings_ava = ava_prev * dr + net_cf * dr / 2
         exp_ava              = ava_prev + net_cf + exp_inv_earnings_ava
-        ava_unbounded        = exp_ava + (mva - exp_ava) * 0.2
-        ava                  = clip(ava_unbounded, 0.8 * mva, 1.2 * mva)
+        ava_unbounded        = exp_ava + (mva - exp_ava) * recognition_fraction
+        ava                  = clip(ava_unbounded, corridor_low * mva, corridor_high * mva)
         alloc_inv_earnings_ava = ava - ava_prev - net_cf
         ava_base             = ava_prev + net_cf / 2
+
+    For FRS the parameters are 0.2, 0.8, 1.2 (one-fifth recognition,
+    [80%, 120%] corridor) — declared in ``plan_config.json`` under
+    ``funding.ava_smoothing``.
 
     Returned values match the column names written by the original
     inline FRS smoothing block (legacy and new layers each get their
@@ -277,10 +290,10 @@ def _ava_corridor_smoothing(ava_prev, net_cf, mva, dr):
     exp_ava = ava_prev + net_cf + exp_inv_earnings_ava
     ava = max(
         min(
-            exp_ava + (mva - exp_ava) * 0.2,
-            mva * 1.2,
+            exp_ava + (mva - exp_ava) * recognition_fraction,
+            mva * corridor_high,
         ),
-        mva * 0.8,
+        mva * corridor_low,
     )
     alloc_inv_earnings_ava = ava - ava_prev - net_cf
     ava_base = ava_prev + net_cf / 2
