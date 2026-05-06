@@ -309,17 +309,22 @@ def _accumulate_to_aggregate(target, source, i, cols):
 
 
 def _maybe_accumulate(ctx, target, source, i, cols):
-    """Accumulate per-class values into the aggregate iff multi-class.
+    """Accumulate per-class values into the aggregate when needed.
 
-    For single-class plans the aggregate frame is just a copy of the
-    sole class frame at the end of the compute, so per-row
-    accumulation is wasted work — and would double-count if the
-    aggregate dict key happened to alias the class frame. The compute
-    functions wrap every aggregate-accumulation call in this helper so
-    the same orchestration shape works for both single- and
-    multi-class plans (Step 2.G.2).
+    Two reasons the in-loop aggregate is needed:
+      * more than one class — there's a real plan-level output frame
+        to maintain;
+      * smoothing strategy reads from the aggregate mid-loop (corridor
+        smooths at the plan level then allocates earnings to classes).
+
+    When neither holds, the aggregate frame is just a copy of the sole
+    class frame at the end of the compute, so per-row accumulation is
+    wasted work — and would double-count if the aggregate dict key
+    happened to alias the class frame. The compute functions wrap
+    every aggregate-accumulation call in this helper so the same
+    orchestration shape works for both shapes (Step 2.G.2).
     """
-    if ctx.is_multi_class:
+    if ctx.builds_aggregate_in_loop:
         _accumulate_to_aggregate(target, source, i, cols)
 
 
