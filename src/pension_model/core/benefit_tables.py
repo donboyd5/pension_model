@@ -1294,6 +1294,22 @@ def _resolve_sep_type_vec(ret_status: np.ndarray) -> np.ndarray:
     return _SEP_TYPE_LABELS[_resolve_sep_kind_vec(ret_status)]
 
 
+def _resolve_econ_rate(econ, key: str, plan_name: str) -> float:
+    """Resolve a tier's ``discount_rate_key`` to a value on the
+    economic namespace. Raises ``ValueError`` with the unknown key
+    listed if the lookup fails — silent fallback to ``dr_current``
+    is no longer permitted.
+    """
+    if not hasattr(econ, key):
+        raise ValueError(
+            f"Plan {plan_name!r}: tier discount_rate_key {key!r} is "
+            f"not a known economic-namespace attribute. Pick one of: "
+            f"dr_current, dr_new, dr_old, model_return, baseline_dr_current, "
+            f"baseline_model_return, payroll_growth."
+        )
+    return getattr(econ, key)
+
+
 def build_benefit_val_table(
     salary_benefit_table: pd.DataFrame,
     benefit_table: pd.DataFrame,
@@ -1367,7 +1383,7 @@ def build_benefit_val_table(
     ret_status_arr = sbt["ret_status"].to_numpy(dtype=np.int8, copy=False)
     sep_kind_arr = _resolve_sep_kind_vec(ret_status_arr)
     dr_by_tier_id = np.array(
-        [econ.dr_new if k == "dr_new" else econ.dr_current
+        [_resolve_econ_rate(econ, k, constants.plan_name)
          for k in constants._tier_id_to_dr_key],
         dtype=np.float64,
     )

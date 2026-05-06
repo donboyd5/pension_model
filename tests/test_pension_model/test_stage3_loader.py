@@ -356,3 +356,15 @@ def test_gappy_funding_legs_raises(frs_config):
 
     with pytest.raises(ValueError, match="not covered"):
         validate_funding_legs(bogus)
+
+
+def test_unknown_tier_discount_rate_key_raises(frs_config):
+    """A tier declaring a discount_rate_key not present on the
+    economic namespace raises ValueError naming the unknown key.
+    Catches typos and silent fallback to dr_current.
+    """
+    from pension_model.core.benefit_tables import _resolve_econ_rate
+
+    econ = frs_config.economic
+    with pytest.raises(ValueError, match="bogus_rate"):
+        _resolve_econ_rate(econ, "bogus_rate", frs_config.plan_name)
