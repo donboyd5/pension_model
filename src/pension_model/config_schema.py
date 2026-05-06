@@ -228,15 +228,6 @@ class PlanConfig:
     def class_group(self, class_name: str) -> str:
         return self._class_to_group.get(class_name, "default")
 
-    def get_fas_years(self, tier_name: str) -> int:
-        tier_base = tier_name.split("_")[0]
-        if len(tier_name.split("_")) > 1:
-            tier_base = tier_name.split("_")[0] + "_" + tier_name.split("_")[1]
-        for td in self.tier_defs:
-            if td["name"] == tier_base:
-                return td.get("fas_years", self.fas_years_default)
-        return self.fas_years_default
-
     def get_class_inputs(self, class_name: str) -> dict:
         base = dict(self.valuation_inputs.get(class_name, {}))
         cal = self.calibration.get(class_name, {})
