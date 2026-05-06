@@ -100,7 +100,7 @@ def test_multi_class_gainloss_aggregate_sums_flow_cols(two_class_gainloss_output
 
 
 def test_multi_class_gainloss_aggregate_rates_populated(two_class_gainloss_outputs):
-    """is_multi_class-gated aggregate rate writes fire."""
+    """builds_aggregate_in_loop-gated aggregate rate writes fire."""
     funding, constants = two_class_gainloss_outputs
     agg = funding[constants.plan_name]
     assert agg.loc[5, "fr_mva"] != 0

@@ -189,7 +189,7 @@ def _run_phase2_for_class(
     _maybe_accumulate(ctx, agg, f, i, ["ee_nc_cont_legacy", "ee_nc_cont_new"])
     _maybe_accumulate(ctx, agg, f, i, ["admin_exp_legacy", "admin_exp_new"])
 
-    if ctx.is_multi_class:
+    if ctx.builds_aggregate_in_loop:
         if "total_er_db_cont" in ctx.init_funding.columns:
             f.loc[i, "total_er_db_cont"] = (
                 f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
@@ -203,7 +203,7 @@ def _run_phase2_for_class(
 
     roa = _resolve_roa(ret_scen, year, dr_current)
     f.loc[i, "roa"] = roa
-    if ctx.is_multi_class:
+    if ctx.builds_aggregate_in_loop:
         agg.loc[i, "roa"] = roa
 
     _phase_cash_flow_and_solvency(f, i, roa)
@@ -252,15 +252,17 @@ def _compute_funding(
     selection is config-driven via :class:`FundingContext`:
     ``ava_strategy`` and ``cont_strategy`` come from
     plan_config.json; capability flags (``has_dc``, ``has_cb``,
-    ``has_drop``, ``is_multi_class``) gate the appropriate code paths
-    inside the year loop.
+    ``has_drop``, ``builds_aggregate_in_loop``) gate the appropriate
+    code paths inside the year loop.
 
     Returns:
         Dict mapping class_name -> funding DataFrame, plus an
-        aggregate frame keyed by ``constants.plan_name``. For
-        single-class plans the aggregate is a distinct copy of the
-        sole class frame (no DataFrame aliasing). Plans with
-        ``has_drop=true`` also get a ``"drop"`` frame.
+        aggregate frame keyed by ``constants.plan_name``. When the
+        aggregate is not built up inside the loop (single class,
+        class-level smoothing) the aggregate frame is a distinct copy
+        of the sole class frame at end of compute (no DataFrame
+        aliasing). Plans with ``has_drop=true`` also get a ``"drop"``
+        frame.
     """
     ctx = resolve_funding_context(constants, funding_inputs)
     dr_current = ctx.dr_current
@@ -282,7 +284,7 @@ def _compute_funding(
         for cn in ctx.class_names:
             _run_phase1_for_class(cn, i, funding, liability_results, agg, ctx, dr_current, dr_new)
 
-        if ctx.is_multi_class:
+        if ctx.builds_aggregate_in_loop:
             _nc_rate_agg(agg, i, ctx)
         if ctx.has_drop:
             _phase_drop_projection(funding, agg, i, ctx)
@@ -303,15 +305,15 @@ def _compute_funding(
         for cn in ctx.all_classes:
             _run_phase3_for_class(cn, i, funding, agg, ctx)
 
-        if ctx.is_multi_class:
+        if ctx.builds_aggregate_in_loop:
             _finalize_aggregate_row(agg, i)
 
         _phase_amort_rolling(funding, amort_state, i, ctx)
 
-    # For single-class plans the aggregate is a distinct copy of the
-    # sole class frame (no aliasing). Multi-class plans built the
-    # aggregate via _maybe_accumulate during the loop.
-    if not ctx.is_multi_class:
+    # When the aggregate wasn't built up during the loop, populate the
+    # aggregate frame as a distinct copy of the sole class frame (no
+    # aliasing). Otherwise it was filled in via _maybe_accumulate.
+    if not ctx.builds_aggregate_in_loop:
         funding[agg_name] = funding[ctx.class_names[0]].copy()
 
     return funding

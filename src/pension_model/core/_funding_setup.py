@@ -44,7 +44,7 @@ class FundingContext:
     has_drop: bool
     drop_ref_class: Optional[str]
     all_classes: list
-    is_multi_class: bool
+    builds_aggregate_in_loop: bool
     has_cb: bool
     has_dc: bool
     funding_policy: str
@@ -72,7 +72,6 @@ def resolve_funding_context(
     has_drop = constants.has_drop
     drop_ref_class = constants.drop_reference_class or (class_names[0] if class_names else None)
     all_classes = class_names + (["drop"] if has_drop else [])
-    is_multi_class = len(class_names) > 1
 
     has_cb = "cb" in constants.benefit_types
     has_dc = "payroll_dc_legacy" in funding_inputs["init_funding"].columns
@@ -87,6 +86,18 @@ def resolve_funding_context(
             f"Unknown funding.ava_smoothing.method: {method!r}. "
             f"Supported: 'corridor', 'gain_loss'."
         )
+
+    # The plan-aggregate frame is built up inside the year-loop when
+    # either (a) there's more than one class and we want a plan-level
+    # output frame, or (b) the smoothing strategy reads from the
+    # aggregate mid-loop (corridor smooths at plan level then allocates
+    # earnings to classes). Class count alone is insufficient: a
+    # single-class plan with corridor smoothing still needs the
+    # aggregate built up so the allocate-back step has values to read.
+    builds_aggregate_in_loop = (
+        len(class_names) > 1
+        or ava_strategy.aggregation_level == "plan"
+    )
 
     stat_rates = constants.statutory_rates
     if stat_rates:
@@ -123,7 +134,7 @@ def resolve_funding_context(
         has_drop=has_drop,
         drop_ref_class=drop_ref_class,
         all_classes=all_classes,
-        is_multi_class=is_multi_class,
+        builds_aggregate_in_loop=builds_aggregate_in_loop,
         has_cb=has_cb,
         has_dc=has_dc,
         funding_policy=fund.funding_policy,
