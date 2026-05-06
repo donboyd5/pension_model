@@ -384,9 +384,9 @@ def build_salary_benefit_table(
     has_cb = "cb" in constants.benefit_types
     cb_cfg = constants.cash_balance if has_cb else None
     if cb_cfg is not None and actual_icr_series is not None:
-        ee_credit = cb_cfg["ee_pay_credit"]
-        er_credit = cb_cfg["er_pay_credit"]
-        cb_vesting = cb_cfg["vesting_yos"]
+        ee_credit = cb_cfg.ee_pay_credit
+        er_credit = cb_cfg.er_pay_credit
+        cb_vesting = cb_cfg.vesting_yos
 
         df["cb_ee_cont"] = ee_credit * df["salary"]
         df["cb_er_cont"] = er_credit * df["salary"]
@@ -799,7 +799,7 @@ def build_ann_factor_table(
     if expected_icr_by_class:
         cb_cfg = constants.cash_balance
         if cb_cfg is not None:
-            acr = cb_cfg.get("annuity_conversion_rate", 0.04)
+            acr = cb_cfg.annuity_conversion_rate
             expected_icr_by_code = np.full(len(class_labels), -1.0, dtype=np.float64)
             for cn, expected_icr in expected_icr_by_class.items():
                 expected_icr_by_code[class_to_code[cn]] = expected_icr
@@ -982,7 +982,7 @@ def build_benefit_table(
         cb_vesting = 5
         cb_cfg = constants.cash_balance
         if cb_cfg is not None:
-            cb_vesting = cb_cfg["vesting_yos"]
+            cb_vesting = cb_cfg.vesting_yos
         is_vested = (df["yos"] >= cb_vesting).astype(float)
         df["pv_cb_benefit"] = (
             is_vested * df["cb_benefit"] * df["ann_factor_term"]
@@ -1354,7 +1354,7 @@ def build_benefit_val_table(
     if has_cb:
         cb_cfg = constants.cash_balance
         if cb_cfg is not None:
-            cb_vesting = cb_cfg["vesting_yos"]
+            cb_vesting = cb_cfg.vesting_yos
 
     # Start from salary_benefit_table
     sbt = salary_benefit_table.copy()

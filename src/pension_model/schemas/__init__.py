@@ -18,6 +18,12 @@ yet. See ``scratch/pydantic_migration_plan.md`` for the order.
 """
 
 from pension_model.schemas.base import StrictModel
+from pension_model.schemas.benefit import (
+    Benefit,
+    CashBalance,
+    Cola,
+    DcSpec,
+)
 from pension_model.schemas.decrements import Decrements
 from pension_model.schemas.economic import Economic
 from pension_model.schemas.funding import (
@@ -38,7 +44,11 @@ from pension_model.schemas.ranges import Ranges
 __all__ = [
     "AgeGroup",
     "AvaSmoothing",
+    "Benefit",
+    "CashBalance",
+    "Cola",
     "CorridorAvaSmoothing",
+    "DcSpec",
     "Decrements",
     "Economic",
     "Funding",
