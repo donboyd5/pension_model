@@ -277,9 +277,9 @@ def _resolve_age_group_breaks(constants: PlanConfig) -> list:
         )
     breaks = []
     for g in groups_cfg:
-        lo = g.get("min_age", -np.inf)
-        hi = g.get("max_age", np.inf)
-        breaks.append((lo, hi, g["label"]))
+        lo = g.min_age if g.min_age is not None else -np.inf
+        hi = g.max_age if g.max_age is not None else np.inf
+        breaks.append((lo, hi, g.label))
     return breaks
 
 

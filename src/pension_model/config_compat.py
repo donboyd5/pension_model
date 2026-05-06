@@ -1,37 +1,11 @@
-"""Compatibility adapters layered on top of ``PlanConfig``."""
+"""Compatibility adapters layered on top of ``PlanConfig``.
+
+Some sections (``benefit``, ``funding``, per-class data) still use
+``SimpleNamespace`` builders. The migration to typed pydantic models
+is in progress — see ``scratch/pydantic_migration_plan.md``.
+"""
 
 from types import SimpleNamespace
-
-
-def build_ranges_namespace(config) -> SimpleNamespace:
-    return SimpleNamespace(
-        min_age=config.min_age,
-        max_age=config.max_age,
-        start_year=config.start_year,
-        new_year=config.new_year,
-        min_entry_year=config.min_entry_year,
-        model_period=config.model_period,
-        max_yos=config.max_yos,
-        max_entry_year=config.max_entry_year,
-        entry_year_range=config.entry_year_range,
-        age_range=config.age_range,
-        yos_range=config.yos_range,
-        max_year=config.max_year,
-    )
-
-
-def build_economic_namespace(config) -> SimpleNamespace:
-    return SimpleNamespace(
-        dr_current=config.dr_current,
-        dr_new=config.dr_new,
-        dr_old=config.dr_old,
-        baseline_dr_current=config.baseline_dr_current,
-        baseline_model_return=config.baseline_model_return,
-        payroll_growth=config.payroll_growth,
-        pop_growth=config.pop_growth,
-        model_return=config.model_return,
-        asset_return_path=config.asset_return_path,
-    )
 
 
 def build_benefit_namespace(config) -> SimpleNamespace:

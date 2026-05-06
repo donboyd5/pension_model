@@ -297,26 +297,17 @@ def test_unknown_retirement_rate_set_raises(frs_config, tmp_path):
         )
 
 
-def test_unknown_decrements_method_raises(frs_config):
+def test_unknown_decrements_method_raises():
     """A plan declaring an unknown decrements.method must raise a clear
-    error from the registry dispatch in _load_decrements.
+    error at config-load time. The Decrements typed model uses a
+    Literal["yos_only", "years_from_nr"] type, so any other value
+    fails validation before reaching the dispatch in _load_decrements.
     """
-    from dataclasses import replace
-    from pension_model.core.data_loader import _load_decrements
+    from pydantic import ValidationError
+    from pension_model.schemas import Decrements
 
-    raw = dict(frs_config.raw)
-    raw["decrements"] = {"method": "made_up_method"}
-    bogus = replace(frs_config, raw=raw)
-
-    # Use FRS's existing decrements directory; the dispatch fails before
-    # the CSVs are ever inspected for content.
-    decr_dir = (
-        Path(__file__).parent.parent.parent
-        / "plans" / "frs" / "data" / "decrements"
-    )
-
-    with pytest.raises(ValueError, match="made_up_method"):
-        _load_decrements({}, bogus, decr_dir, "regular")
+    with pytest.raises(ValidationError, match="made_up_method"):
+        Decrements.model_validate({"method": "made_up_method"})
 
 
 def test_overlapping_funding_legs_raises(frs_config):

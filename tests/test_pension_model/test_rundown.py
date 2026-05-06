@@ -51,9 +51,11 @@ def rundown_results():
     from pension_model.plan_config import load_plan_config_by_name
 
     constants = load_plan_config_by_name("frs")
-    # PlanConfig stores model_period as a top-level field; ranges is a derived
-    # property, so we override the field directly.
-    constants = replace(constants, model_period=RUNDOWN_PERIOD)
+    # ``ranges`` is the source-of-truth typed model; mutate it via
+    # model_copy so the derived properties (entry_year_range etc.)
+    # follow.
+    new_ranges = constants.ranges.model_copy(update={"model_period": RUNDOWN_PERIOD})
+    constants = replace(constants, ranges=new_ranges)
 
     liability = run_plan_pipeline(constants, no_new_entrants=True)
 
