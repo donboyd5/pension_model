@@ -297,7 +297,7 @@ def test_unknown_retirement_rate_set_raises(frs_config, tmp_path):
         )
 
 
-def test_unknown_decrements_method_raises(frs_config, tmp_path):
+def test_unknown_decrements_method_raises(frs_config):
     """A plan declaring an unknown decrements.method must raise a clear
     error from the registry dispatch in _load_decrements.
     """

@@ -47,8 +47,8 @@ def _fmt_smoothing(cfg):
     if method == "corridor":
         lo = sm.get("corridor_low", 0.8)
         hi = sm.get("corridor_high", 1.2)
-        recog = sm.get("gain_loss_recognition", 0.2)
-        return f"corridor ({lo:.0%}-{hi:.0%} of MVA), {recog:.0%}/yr gain-loss recognition"
+        recog = sm.get("recognition_fraction", 0.2)
+        return f"corridor ({lo:.0%}-{hi:.0%} of MVA), {recog:.0%}/yr recognition"
     elif method == "gain_loss":
         period = sm.get("recognition_period", 4)
         return f"{period}-year gain-loss recognition"

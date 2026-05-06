@@ -47,7 +47,7 @@
       "method": "corridor",
       "corridor_low": 0.80,
       "corridor_high": 1.20,
-      "gain_loss_recognition": 0.20
+      "recognition_fraction": 0.20
     },
     "legs": [
       {"name": "legacy", "entry_year_max_param": "new_year"},
