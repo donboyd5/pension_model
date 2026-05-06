@@ -424,19 +424,23 @@ def _build_years_from_nr_decrements(
     df = pd.DataFrame(rows, columns=["entry_year", "term_age", "yos", "entry_age", "term_year"])
     df = df.sort_values(["entry_year", "entry_age", "term_age"]).reset_index(drop=True)
 
-    # Determine tier
-    tiers = np.empty(len(df), dtype=object)
+    # Resolve (tier_name, status) per row. Status drives the
+    # is_normal_retire / is_early_retire flags directly — no string
+    # parsing of a composite tier+status column.
+    tier_names = np.empty(len(df), dtype=object)
+    statuses = np.empty(len(df), dtype=object)
     for i in range(len(df)):
-        tiers[i] = get_tier(
+        tier_names[i], statuses[i] = get_tier(
             constants, class_name,
             int(df.iloc[i]["entry_year"]), int(df.iloc[i]["term_age"]),
             int(df.iloc[i]["yos"]),
             entry_age=int(df.iloc[i]["entry_age"]),
         )
-    df["tier"] = tiers
+    df["tier"] = tier_names
+    df["status"] = statuses
 
-    df["is_normal_retire"] = df["tier"].str.contains("norm")
-    df["is_early_retire"] = df["tier"].str.contains("early|reduced")
+    df["is_normal_retire"] = df["status"] == "norm"
+    df["is_early_retire"] = df["status"] == "early"
 
     # Find years from normal retirement
     first_normal = df[df["is_normal_retire"]].groupby(

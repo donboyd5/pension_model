@@ -233,11 +233,3 @@ def _reduce_condition_vec(
             or_mask |= _reduce_condition_vec(sub, dist_age, yos, entry_year, tier_name)
         mask &= or_mask
     return mask
-
-
-_STATUS_SUFFIX = {
-    NON_VESTED: "_non_vested",
-    VESTED: "_vested",
-    EARLY: "_early",
-    NORM: "_norm",
-}
