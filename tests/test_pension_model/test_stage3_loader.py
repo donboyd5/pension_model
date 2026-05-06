@@ -397,6 +397,39 @@ def test_missing_per_class_nra_raises(frs_config):
         )
 
 
+def test_unknown_contribution_strategy_raises(frs_config):
+    """A plan declaring funding.contribution_strategy = 'made_up' raises
+    a clear ValueError from resolve_funding_context.
+    """
+    from dataclasses import replace
+    from pension_model.core._funding_setup import resolve_funding_context
+
+    bogus = replace(frs_config, contribution_strategy="made_up_strategy")
+    funding_inputs = {
+        "init_funding": __import__("pandas").DataFrame({"class": ["regular"]}),
+    }
+
+    with pytest.raises(ValueError, match="made_up_strategy"):
+        resolve_funding_context(bogus, funding_inputs)
+
+
+def test_statutory_strategy_requires_rates_block(frs_config):
+    """Declaring funding.contribution_strategy = 'statutory' without a
+    funding.statutory_rates block raises a clear ValueError.
+    """
+    from dataclasses import replace
+    from pension_model.core._funding_setup import resolve_funding_context
+
+    bogus = replace(frs_config, contribution_strategy="statutory")
+    # FRS doesn't have statutory_rates; bogus inherits that absence.
+    funding_inputs = {
+        "init_funding": __import__("pandas").DataFrame({"class": ["regular"]}),
+    }
+
+    with pytest.raises(ValueError, match="statutory_rates"):
+        resolve_funding_context(bogus, funding_inputs)
+
+
 def test_missing_rule_nra_raises(frs_config):
     """A linear early-retire reduction rule without an 'nra' field
     raises a clear ValueError. Catches forgetting the NRA on a rule.

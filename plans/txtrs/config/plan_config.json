@@ -51,6 +51,7 @@
   },
 
   "funding": {
+    "contribution_strategy": "statutory",
     "policy": "statutory",
     "amo_method": "level_pct",
     "amo_period_new": 30,

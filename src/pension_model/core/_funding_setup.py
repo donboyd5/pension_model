@@ -104,8 +104,17 @@ def resolve_funding_context(
         or ava_strategy.aggregation_level == "plan"
     )
 
+    cont_strategy_name = fund.contribution_strategy
     stat_rates = constants.statutory_rates
-    if stat_rates:
+    if cont_strategy_name == "statutory":
+        if not stat_rates:
+            raise ValueError(
+                f"Plan {constants.plan_name!r}: "
+                f"funding.contribution_strategy is 'statutory' but "
+                f"funding.statutory_rates is missing. The statutory "
+                f"strategy requires a statutory_rates block declaring "
+                f"ee_rate_schedule and er_rate_components."
+            )
         ee_schedule = stat_rates.get(
             "ee_rate_schedule",
             [{"from_year": 0, "rate": constants.benefit.db_ee_cont_rate}],
@@ -115,9 +124,15 @@ def resolve_funding_context(
             ee_schedule=ee_schedule,
             components=resolve_er_rate_components(stat_rates),
         )
-    else:
+    elif cont_strategy_name == "actuarial":
         cont_strategy = ActuarialContributions(
             db_ee_cont_rate=constants.benefit.db_ee_cont_rate,
+        )
+    else:
+        raise ValueError(
+            f"Plan {constants.plan_name!r}: "
+            f"funding.contribution_strategy = {cont_strategy_name!r} "
+            f"is not supported. Pick one of: 'actuarial', 'statutory'."
         )
 
     return FundingContext(

@@ -36,6 +36,7 @@
   "funding": {
     "has_drop": true,
     "drop_reference_class": "regular",
+    "contribution_strategy": "actuarial",
     "policy": "statutory",
     "amo_method": "level_pct",
     "amo_period_new": 20,

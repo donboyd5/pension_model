@@ -50,6 +50,7 @@ def build_benefit_namespace(config) -> SimpleNamespace:
 def build_funding_namespace(config) -> SimpleNamespace:
     return SimpleNamespace(
         funding_policy=config.funding_policy,
+        contribution_strategy=config.contribution_strategy,
         amo_method=config.amo_method,
         amo_period_new=config.amo_period_new,
         amo_pay_growth=config.amo_pay_growth,

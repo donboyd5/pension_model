@@ -43,6 +43,7 @@ class PlanConfig:
     benefit_types: Tuple[str, ...]
     cola: dict
     funding_policy: str
+    contribution_strategy: str
     amo_method: str
     amo_period_new: int
     amo_pay_growth: float

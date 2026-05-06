@@ -167,6 +167,7 @@ def load_plan_config(
         cola=ben.get("cola", {}),
         cash_balance=ben.get("cash_balance"),
         funding_policy=fun["policy"],
+        contribution_strategy=fun["contribution_strategy"],
         amo_method=fun["amo_method"],
         amo_period_new=fun["amo_period_new"],
         amo_pay_growth=fun.get("amo_pay_growth", eco["payroll_growth"]),
