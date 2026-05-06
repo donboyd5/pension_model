@@ -3,6 +3,51 @@
 from pathlib import Path
 
 
+def validate_funding_legs(config) -> None:
+    """Fatal check: funding legs are non-overlapping and cover the full
+    entry-year range of the model.
+
+    Currently also enforces exactly two legs — the simulation's
+    funding-frame columns are hardcoded to two leg names (today
+    ``legacy`` / ``new``). Generalization to N legs is tracked in
+    Phase C9 (#137).
+
+    Raises:
+        ValueError: if leg count is not 2, if any two legs overlap, or
+        if any entry year in ``[min_entry_year, max_entry_year)`` is
+        not covered by exactly one leg.
+    """
+    legs = config.funding_legs
+    if len(legs) != 2:
+        raise ValueError(
+            f"Plan {config.plan_name!r}: funding.legs must declare "
+            f"exactly two legs (today's column-name shape requires it). "
+            f"Got {len(legs)}: {[n for n, _, _ in legs]}. "
+            f"N-leg generalization tracked in #137."
+        )
+
+    lo_bound = config.min_entry_year
+    hi_bound = config.max_entry_year + 1  # max_entry_year is inclusive in usage
+
+    for ey in range(lo_bound, hi_bound):
+        matches = [
+            name for name, lo, hi in legs
+            if (lo is None or ey >= lo) and (hi is None or ey < hi)
+        ]
+        if len(matches) == 0:
+            raise ValueError(
+                f"Plan {config.plan_name!r}: entry_year {ey} is not "
+                f"covered by any funding leg. Legs: "
+                f"{[(n, lo, hi) for n, lo, hi in legs]}."
+            )
+        if len(matches) > 1:
+            raise ValueError(
+                f"Plan {config.plan_name!r}: entry_year {ey} is covered "
+                f"by multiple funding legs {matches}. Legs must not "
+                f"overlap. Legs: {[(n, lo, hi) for n, lo, hi in legs]}."
+            )
+
+
 def validate_config(config) -> list[str]:
     """Return non-fatal config warnings for a loaded plan."""
     warnings: list[str] = []

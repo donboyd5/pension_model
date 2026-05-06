@@ -48,7 +48,11 @@
       "corridor_low": 0.80,
       "corridor_high": 1.20,
       "gain_loss_recognition": 0.20
-    }
+    },
+    "legs": [
+      {"name": "legacy", "entry_year_max_param": "new_year"},
+      {"name": "new", "entry_year_min_param": "new_year"}
+    ]
   },
 
   "decrements": {

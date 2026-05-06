@@ -143,6 +143,35 @@ class PlanConfig:
         return self.raw.get("funding", {}).get("amo_period_current")
 
     @property
+    def funding_legs(self) -> Tuple[Tuple[str, Optional[int], Optional[int]], ...]:
+        """Resolved funding legs as ``((name, lo, hi), ...)``.
+
+        ``lo`` is inclusive, ``hi`` is exclusive — same convention as
+        the tier resolver (``entry_year_min`` / ``entry_year_max``).
+        ``entry_year_min_param`` / ``entry_year_max_param`` strings of
+        ``\"new_year\"`` resolve to ``self.new_year``.
+
+        Defaults to today's two-leg ``legacy`` / ``new`` split keyed off
+        ``new_year`` if the plan_config doesn't declare ``funding.legs``.
+        """
+        legs_raw = self.raw.get("funding", {}).get("legs")
+        if not legs_raw:
+            legs_raw = [
+                {"name": "legacy", "entry_year_max_param": "new_year"},
+                {"name": "new", "entry_year_min_param": "new_year"},
+            ]
+        resolved = []
+        for leg in legs_raw:
+            lo = leg.get("entry_year_min")
+            if leg.get("entry_year_min_param") == "new_year":
+                lo = self.new_year
+            hi = leg.get("entry_year_max")
+            if leg.get("entry_year_max_param") == "new_year":
+                hi = self.new_year
+            resolved.append((leg["name"], lo, hi))
+        return tuple(resolved)
+
+    @property
     def decrements_method(self) -> str:
         decr = self.raw.get("decrements")
         if not decr or "method" not in decr:
