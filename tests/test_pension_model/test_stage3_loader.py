@@ -258,3 +258,38 @@ def test_stage3_total_aal_matches_r_year_30(class_name, stage3_liability):
         f"{class_name} year-30 total_aal_est: Py={py_val:.2f} "
         f"R={r_val:.2f} diff={py_val - r_val:+.2f}"
     )
+
+
+def test_unknown_retirement_rate_set_raises(frs_config, tmp_path):
+    """A tier declaring a retirement_rate_set not in the CSV must raise
+    a clear ValueError. Catches typos and broken refactors that today's
+    silent-fallback code would absorb without warning.
+    """
+    from dataclasses import replace
+    import pandas as pd
+    from pension_model.core.data_loader import _build_yos_only_decrements
+
+    # Force one tier to declare an unknown rate set. _tier_id_to_retire_rate_set
+    # is a tuple[str, ...] cached on PlanConfig.
+    bogus = replace(
+        frs_config,
+        _tier_id_to_retire_rate_set=("before_2011", "bogus_set", "2011_or_later"),
+    )
+
+    # A valid term_df shape with the lookup_type column the loader keys on
+    term_df = pd.DataFrame({
+        "lookup_type": ["yos"] * 2,
+        "lookup_value": [0, 1],
+        "age": [25, 26],
+        "term_rate": [0.1, 0.1],
+    })
+    # ret_df has only the rate sets FRS already declares — bogus_set is missing
+    ret_df = pd.DataFrame({
+        "age": [55, 55],
+        "rate_set": ["before_2011", "2011_or_later"],
+        "retire_type": ["normal", "normal"],
+        "retire_rate": [0.05, 0.04],
+    })
+
+    with pytest.raises(ValueError, match="bogus_set"):
+        _build_yos_only_decrements({}, bogus, term_df, ret_df)

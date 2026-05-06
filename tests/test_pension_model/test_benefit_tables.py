@@ -155,15 +155,17 @@ class TestSeparationRateTable:
         ep = build_entrant_profile(sh)
 
         dt = FRS_BASELINES / "decrement_tables"
+        # R-baseline filenames preserve the historical "tier1" / "tier2"
+        # suffix; the dict keys map them to the FRS plan_config rate sets.
         sep = build_separation_rate_table(
             term_rate_avg=pd.read_csv(dt / f"{sep_class}_term_rate_avg.csv"),
-            normal_retire_rate_by_tier={
-                "tier_1": pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier1.csv"),
-                "tier_2": pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier2.csv"),
+            normal_retire_rate_by_set={
+                "before_2011":   pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier1.csv"),
+                "2011_or_later": pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier2.csv"),
             },
-            early_retire_rate_by_tier={
-                "tier_1": pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier1.csv"),
-                "tier_2": pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier2.csv"),
+            early_retire_rate_by_set={
+                "before_2011":   pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier1.csv"),
+                "2011_or_later": pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier2.csv"),
             },
             entrant_profile=ep,
             class_name=sep_class,

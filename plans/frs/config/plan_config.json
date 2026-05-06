@@ -111,7 +111,7 @@
       },
       "cola_key": "tier_1_active",
       "prorate_cola": true,
-      "retirement_rate_tier_key": "tier_1"
+      "retirement_rate_set": "before_2011"
     },
     {
       "name": "tier_2",
@@ -148,7 +148,7 @@
         }
       },
       "cola_key": "tier_2_active",
-      "retirement_rate_tier_key": "tier_2"
+      "retirement_rate_set": "2011_or_later"
     },
     {
       "name": "tier_3",
@@ -159,7 +159,7 @@
       "early_retire_reduction_same_as": "tier_2",
       "cola_key": "tier_3_active",
       "discount_rate_key": "dr_new",
-      "retirement_rate_tier_key": "tier_2"
+      "retirement_rate_set": "2011_or_later"
     }
   ],
 
