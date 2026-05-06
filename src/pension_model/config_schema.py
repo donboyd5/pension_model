@@ -6,11 +6,17 @@ from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple
 
 from pension_model.config_compat import (
-    build_benefit_namespace,
     build_class_data_namespace,
 )
 from pension_model.config_validation import validate_config, validate_data_files
-from pension_model.schemas import Decrements, Economic, Funding, Modeling, Ranges
+from pension_model.schemas import (
+    Benefit,
+    Decrements,
+    Economic,
+    Funding,
+    Modeling,
+    Ranges,
+)
 
 
 NON_VESTED = 0
@@ -24,13 +30,6 @@ class PlanConfig:
     plan_name: str
     plan_description: str
     raw: dict
-    db_ee_cont_rate: float
-    db_ee_interest_rate: float
-    cal_factor: float
-    retire_refund_ratio: float
-    fas_years_default: int
-    benefit_types: Tuple[str, ...]
-    cola: dict
     classes: Tuple[str, ...]
     class_groups: Dict[str, List[str]]
     tier_defs: Tuple[dict, ...]
@@ -42,8 +41,8 @@ class PlanConfig:
     decrements: Decrements
     modeling: Modeling
     funding: Funding
+    benefit: Benefit
     calibration: Dict[str, dict] = field(default_factory=dict)
-    cash_balance: Optional[dict] = None
     reduce_tables: Optional[Dict[str, object]] = None
     _class_to_group: Dict[str, str] = field(default_factory=dict)
     _tier_name_to_id: Dict[str, int] = field(default_factory=dict)
@@ -125,6 +124,42 @@ class PlanConfig:
         return self.ranges.max_yos
 
     @property
+    def db_ee_cont_rate(self) -> float:
+        return self.benefit.db_ee_cont_rate
+
+    @property
+    def db_ee_interest_rate(self) -> float:
+        return self.benefit.db_ee_interest_rate
+
+    @property
+    def cal_factor(self) -> float:
+        return self.benefit.cal_factor
+
+    @property
+    def retire_refund_ratio(self) -> float:
+        return self.benefit.retire_refund_ratio
+
+    @property
+    def fas_years_default(self) -> int:
+        return self.benefit.fas_years_default
+
+    @property
+    def benefit_types(self) -> Tuple[str, ...]:
+        return tuple(self.benefit.benefit_types)
+
+    @property
+    def cola(self):
+        """Typed Cola model. Use ``getattr(cola, key, default)`` for
+        per-tier active-rate keys (admitted as ``extra=\"allow\"``).
+        """
+        return self.benefit.cola
+
+    @property
+    def cash_balance(self):
+        """Typed CashBalance model, or None if not declared."""
+        return self.benefit.cash_balance
+
+    @property
     def scenario_name(self) -> Optional[str]:
         return self.raw.get("_scenario_name")
 
@@ -151,7 +186,7 @@ class PlanConfig:
 
     @property
     def cola_proration_cutoff_year(self) -> Optional[int]:
-        return self.cola.get("proration_cutoff_year")
+        return self.cola.proration_cutoff_year
 
     @property
     def plan_design_cutoff_year(self) -> Optional[int]:
@@ -280,10 +315,6 @@ class PlanConfig:
     @property
     def max_year(self) -> int:
         return self.ranges.max_year
-
-    @property
-    def benefit(self) -> SimpleNamespace:
-        return build_benefit_namespace(self)
 
     @property
     def class_data(self) -> dict:

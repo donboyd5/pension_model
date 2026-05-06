@@ -10,7 +10,14 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from pension_model.config_schema import PlanConfig
-from pension_model.schemas import Decrements, Economic, Funding, Modeling, Ranges
+from pension_model.schemas import (
+    Benefit,
+    Decrements,
+    Economic,
+    Funding,
+    Modeling,
+    Ranges,
+)
 
 
 log = logging.getLogger(__name__)
@@ -204,19 +211,12 @@ def load_plan_config(
     decrements_model = _build_decrements_model(raw, plan_name=raw["plan_name"])
     modeling_model = Modeling.model_validate(raw.get("modeling", {}))
     funding_model = _build_funding_model(fun, eco)
+    benefit_model = Benefit.model_validate(ben)
 
     config = PlanConfig(
         plan_name=raw["plan_name"],
         plan_description=raw.get("plan_description", ""),
         raw=raw,
-        db_ee_cont_rate=ben["db_ee_cont_rate"],
-        db_ee_interest_rate=ben.get("db_ee_interest_rate", 0.0),
-        cal_factor=ben.get("cal_factor", 1.0),
-        retire_refund_ratio=ben.get("retire_refund_ratio", 1.0),
-        fas_years_default=ben["fas_years_default"],
-        benefit_types=tuple(ben.get("benefit_types", ["db"])),
-        cola=ben.get("cola", {}),
-        cash_balance=ben.get("cash_balance"),
         classes=tuple(raw["classes"]),
         class_groups=raw.get("class_groups", {}),
         tier_defs=tuple(raw.get("tiers", [])),
@@ -228,6 +228,7 @@ def load_plan_config(
         decrements=decrements_model,
         modeling=modeling_model,
         funding=funding_model,
+        benefit=benefit_model,
         calibration=calibration,
         _class_to_group=class_to_group,
         _tier_name_to_id=tier_name_to_id,

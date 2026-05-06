@@ -201,10 +201,10 @@ def resolve_cola_vec(
         if not mask.any():
             continue
         cola_key = tier_def["cola_key"]
-        raw_cola = config.cola.get(cola_key, 0.0)
+        raw_cola = getattr(config.cola, cola_key, 0.0)
         should_prorate = (
             tier_def.get("prorate_cola", False)
-            and not config.cola.get(cola_key + "_constant", False)
+            and not getattr(config.cola, cola_key + "_constant", False)
             and cola_cutoff is not None
             and raw_cola > 0
         )

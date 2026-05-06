@@ -15,4 +15,4 @@ def test_txtrs_loads():
     assert config.dr_current == 0.07
     assert config.db_ee_cont_rate == 0.0825
     assert config.cash_balance is not None
-    assert config.cash_balance["ee_pay_credit"] == 0.06
+    assert config.cash_balance.ee_pay_credit == 0.06

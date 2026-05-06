@@ -86,9 +86,9 @@ def scalar_cola(config, tier_name, entry_year, yos):
     for td in config.tier_defs:
         if td["name"] == tier_name:
             cola_key = td.get("cola_key", "tier_1_active")
-            raw_cola = config.cola.get(cola_key, 0.0)
+            raw_cola = getattr(config.cola, cola_key, 0.0)
             if (cola_key == "tier_1_active"
-                    and not config.cola.get("tier_1_active_constant", False)
+                    and not getattr(config.cola, "tier_1_active_constant", False)
                     and cola_cutoff is not None
                     and raw_cola > 0 and yos > 0):
                 yos_b4 = min(max(cola_cutoff - entry_year, 0), yos)

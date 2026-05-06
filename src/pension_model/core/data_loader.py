@@ -135,7 +135,7 @@ def load_plan_data(
             constants.ranges.start_year,
             constants.ranges.model_period,
             constants.economic.dr_current,
-            constants.benefit.cola_current_retire,
+            constants.benefit.cola.current_retire,
         )
         afr = ann_factor_retire_cache.get(ann_factor_key)
     else:
@@ -143,7 +143,7 @@ def load_plan_data(
     if afr is None:
         afr = build_ann_factor_retire_table(
             cm, class_name, constants.ranges.start_year, constants.ranges.model_period,
-            constants.economic.dr_current, constants.benefit.cola_current_retire,
+            constants.economic.dr_current, constants.benefit.cola.current_retire,
         )
         if ann_factor_retire_cache is not None:
             ann_factor_retire_cache[ann_factor_key] = afr

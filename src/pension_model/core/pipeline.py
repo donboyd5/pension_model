@@ -127,21 +127,21 @@ def _compute_cb_icr_series(inputs: dict, constants: PlanConfig) -> tuple[float, 
     cash_balance = constants.cash_balance
     expected_icr = compute_expected_icr(
         constants.model_return,
-        cash_balance.get("return_volatility", 0.12),
-        cash_balance["icr_smooth_period"],
-        cash_balance["icr_floor"],
-        cash_balance["icr_cap"],
-        cash_balance["icr_upside_share"],
+        cash_balance.return_volatility,
+        cash_balance.icr_smooth_period,
+        cash_balance.icr_floor,
+        cash_balance.icr_cap,
+        cash_balance.icr_upside_share,
     )
     years = range(constants.min_entry_year, constants.max_year + 1)
     actual_icr_series = compute_actual_icr_series(
         years,
         constants.start_year,
         inputs["_return_scenario"],
-        cash_balance["icr_smooth_period"],
-        cash_balance["icr_floor"],
-        cash_balance["icr_cap"],
-        cash_balance["icr_upside_share"],
+        cash_balance.icr_smooth_period,
+        cash_balance.icr_floor,
+        cash_balance.icr_cap,
+        cash_balance.icr_upside_share,
     )
     return expected_icr, actual_icr_series
 

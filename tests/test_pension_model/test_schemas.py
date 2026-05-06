@@ -14,7 +14,11 @@ from pydantic import ValidationError
 from pension_model.schemas import (
     AgeGroup,
     AvaSmoothing,
+    Benefit,
+    CashBalance,
+    Cola,
     CorridorAvaSmoothing,
+    DcSpec,
     Decrements,
     Economic,
     Funding,
@@ -338,3 +342,126 @@ class TestFunding:
     def test_extra_field_raises(self):
         with pytest.raises(ValidationError, match="bogus_field"):
             Funding.model_validate(self._valid_actuarial(bogus_field=1))
+
+
+# ---------------------------------------------------------------------------
+# Cola (extra=allow for per-tier dynamic keys)
+# ---------------------------------------------------------------------------
+
+
+class TestCola:
+    def test_empty_loads_with_defaults(self):
+        c = Cola.model_validate({})
+        assert c.current_retire == 0.0
+        assert c.proration_cutoff_year is None
+
+    def test_per_tier_keys_admitted_as_extras(self):
+        c = Cola.model_validate({
+            "current_retire": 0.03,
+            "tier_1_active": 0.03,
+            "tier_2_active": 0.0,
+            "tier_1_active_constant": False,
+        })
+        assert c.current_retire == 0.03
+        # Per-tier keys readable via getattr (not part of typed fields).
+        assert getattr(c, "tier_1_active") == 0.03
+        assert getattr(c, "tier_2_active") == 0.0
+        assert getattr(c, "tier_1_active_constant") is False
+        assert getattr(c, "missing_key", "fallback") == "fallback"
+
+
+# ---------------------------------------------------------------------------
+# CashBalance
+# ---------------------------------------------------------------------------
+
+
+class TestCashBalance:
+    def test_required_fields(self):
+        cb = CashBalance.model_validate({
+            "ee_pay_credit": 0.06,
+            "er_pay_credit": 0.09,
+            "vesting_yos": 5,
+            "icr_smooth_period": 5,
+            "icr_floor": 0.04,
+            "icr_cap": 0.07,
+            "icr_upside_share": 0.5,
+            "annuity_conversion_rate": 0.04,
+        })
+        assert cb.ee_pay_credit == 0.06
+        assert cb.return_volatility == 0.12  # default
+
+    def test_missing_required_raises(self):
+        with pytest.raises(ValidationError, match="vesting_yos"):
+            CashBalance.model_validate({
+                "ee_pay_credit": 0.06,
+                "er_pay_credit": 0.09,
+                "icr_smooth_period": 5,
+                "icr_floor": 0.04,
+                "icr_cap": 0.07,
+                "icr_upside_share": 0.5,
+                "annuity_conversion_rate": 0.04,
+            })
+
+    def test_extra_field_raises(self):
+        with pytest.raises(ValidationError, match="extra_thing"):
+            CashBalance.model_validate({
+                "ee_pay_credit": 0.06,
+                "er_pay_credit": 0.09,
+                "vesting_yos": 5,
+                "icr_smooth_period": 5,
+                "icr_floor": 0.04,
+                "icr_cap": 0.07,
+                "icr_upside_share": 0.5,
+                "annuity_conversion_rate": 0.04,
+                "extra_thing": True,
+            })
+
+
+# ---------------------------------------------------------------------------
+# Benefit (top-level + composition)
+# ---------------------------------------------------------------------------
+
+
+class TestBenefit:
+    def _valid(self, **overrides):
+        base = {
+            "db_ee_cont_rate": 0.03,
+            "fas_years_default": 5,
+            "benefit_types": ["db"],
+        }
+        base.update(overrides)
+        return base
+
+    def test_minimal_loads(self):
+        b = Benefit.model_validate(self._valid())
+        assert b.db_ee_cont_rate == 0.03
+        assert b.cola.current_retire == 0.0  # default Cola
+        assert b.cash_balance is None
+        assert b.dc is None
+
+    def test_with_cola_and_cb(self):
+        b = Benefit.model_validate(self._valid(
+            cola={"current_retire": 0.03, "tier_1_active": 0.03},
+            cash_balance={
+                "ee_pay_credit": 0.06,
+                "er_pay_credit": 0.09,
+                "vesting_yos": 5,
+                "icr_smooth_period": 5,
+                "icr_floor": 0.04,
+                "icr_cap": 0.07,
+                "icr_upside_share": 0.5,
+                "annuity_conversion_rate": 0.04,
+            },
+        ))
+        assert b.cola.current_retire == 0.03
+        assert getattr(b.cola, "tier_1_active") == 0.03
+        assert b.cash_balance is not None
+        assert b.cash_balance.ee_pay_credit == 0.06
+
+    def test_missing_required_raises(self):
+        with pytest.raises(ValidationError, match="db_ee_cont_rate"):
+            Benefit.model_validate({"fas_years_default": 5})
+
+    def test_extra_field_raises(self):
+        with pytest.raises(ValidationError, match="bogus"):
+            Benefit.model_validate(self._valid(bogus=1))
