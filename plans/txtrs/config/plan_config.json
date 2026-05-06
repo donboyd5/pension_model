@@ -96,6 +96,10 @@
     }
   },
 
+  "decrements": {
+    "method": "years_from_nr"
+  },
+
   "ranges": {
     "min_age": 20,
     "max_age": 120,

@@ -51,6 +51,10 @@
     }
   },
 
+  "decrements": {
+    "method": "yos_only"
+  },
+
   "ranges": {
     "min_age": 18,
     "max_age": 120,

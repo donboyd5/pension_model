@@ -292,4 +292,28 @@ def test_unknown_retirement_rate_set_raises(frs_config, tmp_path):
     })
 
     with pytest.raises(ValueError, match="bogus_set"):
-        _build_yos_only_decrements({}, bogus, term_df, ret_df)
+        _build_yos_only_decrements(
+            {}, bogus, term_df, ret_df, tmp_path, "regular"
+        )
+
+
+def test_unknown_decrements_method_raises(frs_config, tmp_path):
+    """A plan declaring an unknown decrements.method must raise a clear
+    error from the registry dispatch in _load_decrements.
+    """
+    from dataclasses import replace
+    from pension_model.core.data_loader import _load_decrements
+
+    raw = dict(frs_config.raw)
+    raw["decrements"] = {"method": "made_up_method"}
+    bogus = replace(frs_config, raw=raw)
+
+    # Use FRS's existing decrements directory; the dispatch fails before
+    # the CSVs are ever inspected for content.
+    decr_dir = (
+        Path(__file__).parent.parent.parent
+        / "plans" / "frs" / "data" / "decrements"
+    )
+
+    with pytest.raises(ValueError, match="made_up_method"):
+        _load_decrements({}, bogus, decr_dir, "regular")
