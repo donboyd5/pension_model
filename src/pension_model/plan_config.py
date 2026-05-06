@@ -6,10 +6,7 @@ the import surface for callers and tests that still do
 """
 
 from pension_model.config_helpers import (
-    extract_normal_retirement_params,
     get_plan_design_ratios,
-    get_sep_type,
-    resolve_cola_scalar,
 )
 from pension_model.config_loading import (
     discover_plans,
@@ -36,16 +33,13 @@ __all__ = [
     "PlanConfig",
     "VESTED",
     "discover_plans",
-    "extract_normal_retirement_params",
     "get_ben_mult",
     "get_plan_design_ratios",
     "get_reduce_factor",
-    "get_sep_type",
     "get_tier",
     "load_plan_config",
     "load_plan_config_by_name",
     "resolve_ben_mult_vec",
-    "resolve_cola_scalar",
     "resolve_cola_vec",
     "resolve_reduce_factor_vec",
     "resolve_tiers_vec",

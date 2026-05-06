@@ -1278,7 +1278,7 @@ def _get_pvfb_cb(
 
 
 def _resolve_sep_kind_vec(ret_status: np.ndarray) -> np.ndarray:
-    """Vectorized get_sep_type using integer codes instead of strings."""
+    """Map ret_status integers to SEP_* kind codes (vectorized)."""
     ret_status = np.asarray(ret_status, dtype=np.int8)
     result = np.full(len(ret_status), SEP_NON_VESTED, dtype=np.int8)
     result[ret_status == VESTED] = SEP_VESTED
@@ -1287,7 +1287,7 @@ def _resolve_sep_kind_vec(ret_status: np.ndarray) -> np.ndarray:
 
 
 def _resolve_sep_type_vec(ret_status: np.ndarray) -> np.ndarray:
-    """Vectorized get_sep_type using integer ret_status.
+    """Map ret_status integers to sep_type strings (vectorized).
 
     Returns string sep_type: "retire" | "vested" | "non_vested".
     """
