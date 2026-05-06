@@ -2,6 +2,38 @@
 
 import numpy as np
 
+from pension_model.config_schema import EARLY, NON_VESTED, NORM, VESTED
+
+
+# Map ret_status integer codes to the same status strings emitted by
+# scalar get_tier. Used to compare scalar (tier_name, status) tuples
+# against vectorized (tier_id, ret_status) results.
+_STATUS_INT_TO_STR = {
+    NON_VESTED: "non_vested",
+    VESTED: "vested",
+    EARLY: "early",
+    NORM: "norm",
+}
+
+
+def vec_tier_components(config, cn, ey, age, yos, entry_age=None):
+    """Return parallel (tier_names, statuses) arrays from the vectorized resolver.
+
+    Replacement for the deleted ``resolve_tiers_vec_str`` — produces the
+    same component pair the scalar ``get_tier`` returns, sourced from
+    ``resolve_tiers_vec``'s integer codes via lookup tables.
+    """
+    from pension_model.plan_config import resolve_tiers_vec
+
+    tier_id, ret_status = resolve_tiers_vec(config, cn, ey, age, yos, entry_age)
+    tier_names = np.array(
+        [config._tier_id_to_name[t] for t in tier_id], dtype=object
+    )
+    statuses = np.array(
+        [_STATUS_INT_TO_STR[s] for s in ret_status], dtype=object
+    )
+    return tier_names, statuses
+
 
 def build_frs_grid():
     """Dense grid of inputs covering FRS tier boundaries and class variations."""
@@ -48,11 +80,11 @@ def rows_to_arrays(rows):
     return cn, ey, age, yos
 
 
-def scalar_cola(config, tier_str, entry_year, yos):
+def scalar_cola(config, tier_name, entry_year, yos):
     """Reproduce the scalar COLA logic used by the annuity builder."""
     cola_cutoff = config.cola_proration_cutoff_year
     for td in config.tier_defs:
-        if td["name"] in tier_str:
+        if td["name"] == tier_name:
             cola_key = td.get("cola_key", "tier_1_active")
             raw_cola = config.cola.get(cola_key, 0.0)
             if (cola_key == "tier_1_active"

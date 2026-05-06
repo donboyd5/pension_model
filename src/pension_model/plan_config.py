@@ -21,7 +21,6 @@ from pension_model.config_resolvers import (
     resolve_cola_vec,
     resolve_reduce_factor_vec,
     resolve_tiers_vec,
-    resolve_tiers_vec_str,
 )
 from pension_model.config_schema import EARLY, NON_VESTED, NORM, VESTED, PlanConfig
 
@@ -43,5 +42,4 @@ __all__ = [
     "resolve_cola_vec",
     "resolve_reduce_factor_vec",
     "resolve_tiers_vec",
-    "resolve_tiers_vec_str",
 ]

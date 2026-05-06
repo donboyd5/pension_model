@@ -11,7 +11,6 @@ from pension_model.config_resolvers_vectorized import (
     resolve_cola_vec,
     resolve_reduce_factor_vec,
     resolve_tiers_vec,
-    resolve_tiers_vec_str,
 )
 
 
@@ -27,5 +26,4 @@ __all__ = [
     "resolve_cola_vec",
     "resolve_reduce_factor_vec",
     "resolve_tiers_vec",
-    "resolve_tiers_vec_str",
 ]

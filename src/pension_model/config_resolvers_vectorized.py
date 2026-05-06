@@ -11,7 +11,6 @@ from pension_model.config_resolver_common import (
     NON_VESTED,
     NORM,
     VESTED,
-    _STATUS_SUFFIX,
     _entry_year_in_tier_vec,
     _get_eligibility,
     _is_grandfathered_vec,
@@ -183,21 +182,6 @@ def resolve_tiers_vec(
             ret_status[combo_mask] = sub_status
 
     return tier_id, ret_status
-
-
-def resolve_tiers_vec_str(
-    config: PlanConfig,
-    class_name: np.ndarray,
-    entry_year: np.ndarray,
-    age: np.ndarray,
-    yos: np.ndarray,
-    entry_age: Optional[np.ndarray] = None,
-) -> np.ndarray:
-    tier_id, ret_status = resolve_tiers_vec(config, class_name, entry_year, age, yos, entry_age)
-    result = np.empty(len(tier_id), dtype=object)
-    for i in range(len(tier_id)):
-        result[i] = config._tier_id_to_name[tier_id[i]] + _STATUS_SUFFIX[ret_status[i]]
-    return result
 
 
 def resolve_cola_vec(

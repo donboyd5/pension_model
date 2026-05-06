@@ -26,7 +26,11 @@ def get_tier(
     age: int,
     yos: int,
     entry_age: int = 0,
-) -> str:
+) -> tuple[str, str]:
+    """Resolve the (tier_name, status) for one (class, entry_year, age, yos).
+
+    Status is one of ``"norm"``, ``"early"``, ``"vested"``, ``"non_vested"``.
+    """
     group = config.class_group(class_name)
 
     matched_tier = None
@@ -68,25 +72,26 @@ def get_tier(
     eligibility = _get_eligibility(matched_tier, group, config.tier_defs)
 
     if not eligibility:
-        return f"{tier_name}_non_vested"
+        return tier_name, "non_vested"
 
     if _matches_any(eligibility.get("normal", []), age, yos, entry_year, entry_age):
-        return f"{tier_name}_norm"
+        return tier_name, "norm"
 
     if _matches_any(eligibility.get("early", []), age, yos, entry_year, entry_age):
-        return f"{tier_name}_early"
+        return tier_name, "early"
 
     vesting_yos = eligibility["vesting_yos"]
     if yos >= vesting_yos:
-        return f"{tier_name}_vested"
+        return tier_name, "vested"
 
-    return f"{tier_name}_non_vested"
+    return tier_name, "non_vested"
 
 
 def get_ben_mult(
     config: PlanConfig,
     class_name: str,
-    tier: str,
+    tier_name: str,
+    status: str,
     dist_age: int,
     yos: int,
     dist_year: int = 0,
@@ -95,15 +100,13 @@ def get_ben_mult(
     if class_rules is None:
         return float("nan")
 
-    tier_base = tier.split("_")[0] + "_" + tier.split("_")[1] if "_" in tier else tier
-
     if "all_tiers" in class_rules:
         rules = class_rules["all_tiers"]
     else:
-        rules = class_rules.get(tier_base)
+        rules = class_rules.get(tier_name)
         if rules is None:
             for key in class_rules:
-                if key.endswith("_same_as") and key.replace("_same_as", "") == tier_base:
+                if key.endswith("_same_as") and key.replace("_same_as", "") == tier_name:
                     rules = class_rules.get(class_rules[key])
                     break
         if rules is None:
@@ -119,7 +122,7 @@ def get_ben_mult(
             for cond in entry["or"]:
                 if _matches_condition(cond, dist_age, yos):
                     return entry["mult"]
-        if "early" in tier and "early_fallback" in rules:
+        if status == "early" and "early_fallback" in rules:
             return rules["early_fallback"]
         return float("nan")
 
@@ -129,17 +132,17 @@ def get_ben_mult(
 def get_reduce_factor(
     config: PlanConfig,
     class_name: str,
-    tier: str,
+    tier_name: str,
+    status: str,
     dist_age: int,
     yos: int = 0,
     entry_year: int = 0,
 ) -> float:
-    if "norm" in tier:
+    if status == "norm":
         return 1.0
-    if "early" not in tier and "reduced" not in tier:
+    if status != "early":
         return float("nan")
 
-    tier_name = tier.rsplit("_", 1)[0] if "_" in tier else tier
     tier_def = next((td for td in config.tier_defs if td["name"] == tier_name), None)
     if tier_def is None:
         return float("nan")
