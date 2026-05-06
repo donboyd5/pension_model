@@ -135,7 +135,8 @@
           {"condition": {}, "formula": "table", "table_key": "reduced_others"}
         ]
       },
-      "cola_key": "tier_1_active"
+      "cola_key": "tier_1_active",
+      "retirement_rate_set": "all"
     },
     {
       "name": "pre_2007",
@@ -161,7 +162,8 @@
           {"condition": {}, "formula": "table", "table_key": "reduced_others"}
         ]
       },
-      "cola_key": "tier_2_active"
+      "cola_key": "tier_2_active",
+      "retirement_rate_set": "all"
     },
     {
       "name": "vested_2014",
@@ -189,7 +191,8 @@
           {"condition": {}, "formula": "table", "table_key": "reduced_others"}
         ]
       },
-      "cola_key": "tier_3_active"
+      "cola_key": "tier_3_active",
+      "retirement_rate_set": "all"
     },
     {
       "name": "current",
@@ -216,7 +219,8 @@
           {"condition": {}, "formula": "table", "table_key": "reduced_others"}
         ]
       },
-      "cola_key": "tier_4_active"
+      "cola_key": "tier_4_active",
+      "retirement_rate_set": "all"
     }
   ],
 
