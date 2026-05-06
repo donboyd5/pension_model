@@ -317,3 +317,42 @@ def test_unknown_decrements_method_raises(frs_config, tmp_path):
 
     with pytest.raises(ValueError, match="made_up_method"):
         _load_decrements({}, bogus, decr_dir, "regular")
+
+
+def test_overlapping_funding_legs_raises(frs_config):
+    """Funding legs whose entry-year ranges overlap raise a clear
+    ValueError listing the overlapping leg names.
+    """
+    from dataclasses import replace
+    from pension_model.config_validation import validate_funding_legs
+
+    # Override raw so funding_legs resolves to two overlapping legs.
+    raw = dict(frs_config.raw)
+    raw["funding"] = dict(raw["funding"])
+    raw["funding"]["legs"] = [
+        {"name": "legacy", "entry_year_max": 2030},
+        {"name": "new", "entry_year_min": 2020},  # overlap on 2020-2029
+    ]
+    bogus = replace(frs_config, raw=raw)
+
+    with pytest.raises(ValueError, match="overlap"):
+        validate_funding_legs(bogus)
+
+
+def test_gappy_funding_legs_raises(frs_config):
+    """Funding legs that don't cover the full entry-year range raise a
+    clear ValueError naming the uncovered year.
+    """
+    from dataclasses import replace
+    from pension_model.config_validation import validate_funding_legs
+
+    raw = dict(frs_config.raw)
+    raw["funding"] = dict(raw["funding"])
+    raw["funding"]["legs"] = [
+        {"name": "legacy", "entry_year_max": 2010},
+        {"name": "new", "entry_year_min": 2020},  # gap 2010..2019
+    ]
+    bogus = replace(frs_config, raw=raw)
+
+    with pytest.raises(ValueError, match="not covered"):
+        validate_funding_legs(bogus)

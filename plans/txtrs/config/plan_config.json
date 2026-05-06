@@ -93,7 +93,11 @@
           ]
         }
       ]
-    }
+    },
+    "legs": [
+      {"name": "legacy", "entry_year_max_param": "new_year"},
+      {"name": "new", "entry_year_min_param": "new_year"}
+    ]
   },
 
   "decrements": {

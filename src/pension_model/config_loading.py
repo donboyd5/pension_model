@@ -197,6 +197,11 @@ def load_plan_config(
         _tier_id_to_retire_rate_set=tier_id_to_retire_rate_set,
     )
 
+    # Fatal: legs must be non-overlapping and cover the full
+    # entry-year range. Raises ValueError on misconfiguration.
+    from pension_model.config_validation import validate_funding_legs
+    validate_funding_legs(config)
+
     for warning in config.validate():
         log.info("[%s config] %s", config.plan_name, warning)
 
