@@ -33,11 +33,14 @@ def calibration_results():
     # Load with calibration file to get cal_factor (a calibration parameter,
     # not plan design), but neutralize nc_cal and pvfb_term_current so the
     # calibration module re-derives them from scratch.
+    from pension_model.schemas import ClassCalibration
+
     constants = load_plan_config_by_name("frs")
-    # Reset per-class calibration values to neutral in the underlying dict
-    for cn in constants.calibration:
-        constants.calibration[cn]["nc_cal"] = 1.0
-        constants.calibration[cn]["pvfb_term_current"] = 0.0
+    # Reset per-class calibration values to neutral. The typed
+    # ClassCalibration is frozen, so swap the dict entries.
+    neutral = ClassCalibration(nc_cal=1.0, pvfb_term_current=0.0)
+    for cn in list(constants.calibration):
+        constants.calibration[cn] = neutral
     targets = build_targets_from_config(constants)
 
     liability = run_plan_pipeline(constants)

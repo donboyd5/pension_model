@@ -38,8 +38,10 @@ def two_class_gainloss_outputs():
 
     sole_class = constants.classes[0]
     one_liab = liability[sole_class]
+    from pension_model.schemas import ClassCalibration
+
     one_vi = constants.valuation_inputs[sole_class]
-    one_cal = constants.calibration.get(sole_class, {})
+    one_cal = constants.calibration.get(sole_class) or ClassCalibration()
     init_row = funding_inputs["init_funding"].iloc[0].to_dict()
 
     new_constants = dataclasses.replace(

@@ -561,9 +561,9 @@ def load_plan_inputs(constants: PlanConfig) -> tuple[PlanConfig, dict]:
     # Pre-compute per-class headcount adjustment ratios so the core
     # pipeline no longer needs to read demographic CSVs mid-computation.
     for cn in classes:
-        acfr = constants.valuation_inputs.get(cn, {})
+        acfr = constants.valuation_inputs.get(cn)
         target = constants.class_data[cn].total_active_member
-        hc_group = acfr.get("headcount_group")
+        hc_group = acfr.headcount_group if acfr is not None else None
         if hc_group and len(hc_group) > 1:
             raw_total = sum(raw_inputs_by_class[peer]["_raw_headcount_total"] for peer in hc_group)
         else:
