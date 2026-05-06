@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from pension_model.config_schema import PlanConfig
+from pension_model.schemas import Decrements, Economic, Modeling, Ranges
 
 
 log = logging.getLogger(__name__)
@@ -93,6 +94,43 @@ def _build_tier_metadata(
     )
 
 
+def _build_economic_model(
+    eco_raw: dict,
+    baseline_dr_current: float,
+    baseline_model_return: float,
+) -> Economic:
+    """Validate and build the Economic schema model.
+
+    The two ``baseline_*`` fields aren't in the raw economic dict —
+    they're snapshots from before any scenario merge, computed by the
+    loader and supplied alongside.
+    """
+    return Economic.model_validate({
+        **eco_raw,
+        "baseline_dr_current": baseline_dr_current,
+        "baseline_model_return": baseline_model_return,
+    })
+
+
+def _build_decrements_model(raw: dict, *, plan_name: str) -> Decrements:
+    """Validate and build the Decrements schema model.
+
+    Raises a clear ``KeyError`` if the required ``decrements`` block
+    is missing from plan_config.json — preserves the same error
+    surface as the previous ``decrements_method`` runtime check.
+    """
+    decr = raw.get("decrements")
+    if not decr:
+        raise KeyError(
+            f"Plan {plan_name!r}: required field 'decrements' is "
+            f"missing from plan_config.json. Set 'decrements.method' "
+            f"to 'yos_only' (FRS-style) or 'years_from_nr' "
+            f"(TXTRS-style) — see an existing plan's plan_config.json "
+            f"for an example."
+        )
+    return Decrements.model_validate(decr)
+
+
 def load_plan_config(
     config_path: Path,
     calibration_path: Optional[Path] = None,
@@ -145,19 +183,18 @@ def load_plan_config(
         fas_default=ben["fas_years_default"],
     )
 
+    # Parse typed schemas. ``baseline_*`` fields on Economic are
+    # populated from the pre-scenario raw config so scenarios don't
+    # disturb the term-vested cashflow scaling.
+    economic_model = _build_economic_model(eco, baseline_dr_current, baseline_model_return)
+    ranges_model = Ranges.model_validate(rng)
+    decrements_model = _build_decrements_model(raw, plan_name=raw["plan_name"])
+    modeling_model = Modeling.model_validate(raw.get("modeling", {}))
+
     config = PlanConfig(
         plan_name=raw["plan_name"],
         plan_description=raw.get("plan_description", ""),
         raw=raw,
-        dr_current=eco["dr_current"],
-        dr_new=eco["dr_new"],
-        dr_old=eco.get("dr_old", eco["dr_current"]),
-        baseline_dr_current=baseline_dr_current,
-        baseline_model_return=baseline_model_return,
-        payroll_growth=eco["payroll_growth"],
-        pop_growth=eco.get("pop_growth", 0.0),
-        model_return=eco.get("model_return", eco["dr_current"]),
-        asset_return_path=eco.get("asset_return_path"),
         db_ee_cont_rate=ben["db_ee_cont_rate"],
         db_ee_interest_rate=ben.get("db_ee_interest_rate", 0.0),
         cal_factor=ben.get("cal_factor", 1.0),
@@ -175,19 +212,16 @@ def load_plan_config(
         amo_period_term=fun.get("amo_period_term", 50),
         amo_term_growth=fun.get("amo_term_growth", 0.03),
         ava_smoothing=fun.get("ava_smoothing", {}),
-        min_age=rng["min_age"],
-        max_age=rng["max_age"],
-        start_year=rng["start_year"],
-        new_year=rng.get("new_year", rng["start_year"]),
-        min_entry_year=rng.get("min_entry_year", 1970),
-        model_period=rng["model_period"],
-        max_yos=rng.get("max_yos", 70),
         classes=tuple(raw["classes"]),
         class_groups=raw.get("class_groups", {}),
         tier_defs=tuple(raw.get("tiers", [])),
         benefit_mult_defs=raw.get("benefit_multipliers", {}),
         plan_design_defs=raw.get("plan_design", {}),
         valuation_inputs=raw.get("valuation_inputs", {}),
+        economic=economic_model,
+        ranges=ranges_model,
+        decrements=decrements_model,
+        modeling=modeling_model,
         calibration=calibration,
         _class_to_group=class_to_group,
         _tier_name_to_id=tier_name_to_id,

@@ -8,11 +8,10 @@ from typing import Dict, List, Optional, Tuple
 from pension_model.config_compat import (
     build_benefit_namespace,
     build_class_data_namespace,
-    build_economic_namespace,
     build_funding_namespace,
-    build_ranges_namespace,
 )
 from pension_model.config_validation import validate_config, validate_data_files
+from pension_model.schemas import Decrements, Economic, Modeling, Ranges
 
 
 NON_VESTED = 0
@@ -26,15 +25,6 @@ class PlanConfig:
     plan_name: str
     plan_description: str
     raw: dict
-    dr_current: float
-    dr_new: float
-    dr_old: float
-    baseline_dr_current: float
-    baseline_model_return: float
-    payroll_growth: float
-    pop_growth: float
-    model_return: float
-    asset_return_path: Optional[dict]
     db_ee_cont_rate: float
     db_ee_interest_rate: float
     cal_factor: float
@@ -51,19 +41,16 @@ class PlanConfig:
     amo_period_term: int
     amo_term_growth: float
     ava_smoothing: dict
-    min_age: int
-    max_age: int
-    start_year: int
-    new_year: int
-    min_entry_year: int
-    model_period: int
-    max_yos: int
     classes: Tuple[str, ...]
     class_groups: Dict[str, List[str]]
     tier_defs: Tuple[dict, ...]
     benefit_mult_defs: dict
     plan_design_defs: dict
     valuation_inputs: Dict[str, dict]
+    economic: Economic
+    ranges: Ranges
+    decrements: Decrements
+    modeling: Modeling
     calibration: Dict[str, dict] = field(default_factory=dict)
     cash_balance: Optional[dict] = None
     reduce_tables: Optional[Dict[str, object]] = None
@@ -74,6 +61,77 @@ class PlanConfig:
     _tier_id_to_fas_years: Tuple[int, ...] = ()
     _tier_id_to_dr_key: Tuple[str, ...] = ()
     _tier_id_to_retire_rate_set: Tuple[str, ...] = ()
+
+    # ------------------------------------------------------------------
+    # Delegating accessors to the typed-model fields. The typed model
+    # is the source of truth; these accessors preserve the legacy
+    # ``config.dr_current`` / ``config.start_year`` access pattern so
+    # consumers don't change as sections migrate.
+    # ------------------------------------------------------------------
+
+    @property
+    def dr_current(self) -> float:
+        return self.economic.dr_current
+
+    @property
+    def dr_new(self) -> float:
+        return self.economic.dr_new
+
+    @property
+    def dr_old(self) -> float:
+        return self.economic.dr_old  # type: ignore[return-value]
+
+    @property
+    def baseline_dr_current(self) -> float:
+        return self.economic.baseline_dr_current
+
+    @property
+    def baseline_model_return(self) -> float:
+        return self.economic.baseline_model_return
+
+    @property
+    def payroll_growth(self) -> float:
+        return self.economic.payroll_growth
+
+    @property
+    def pop_growth(self) -> float:
+        return self.economic.pop_growth
+
+    @property
+    def model_return(self) -> float:
+        return self.economic.model_return  # type: ignore[return-value]
+
+    @property
+    def asset_return_path(self) -> Optional[dict]:
+        return self.economic.asset_return_path
+
+    @property
+    def min_age(self) -> int:
+        return self.ranges.min_age
+
+    @property
+    def max_age(self) -> int:
+        return self.ranges.max_age
+
+    @property
+    def start_year(self) -> int:
+        return self.ranges.start_year
+
+    @property
+    def new_year(self) -> int:
+        return self.ranges.new_year  # type: ignore[return-value]
+
+    @property
+    def min_entry_year(self) -> int:
+        return self.ranges.min_entry_year
+
+    @property
+    def model_period(self) -> int:
+        return self.ranges.model_period
+
+    @property
+    def max_yos(self) -> int:
+        return self.ranges.max_yos
 
     @property
     def scenario_name(self) -> Optional[str]:
@@ -90,15 +148,15 @@ class PlanConfig:
 
     @property
     def entrant_salary_at_start_year(self) -> bool:
-        return self.raw.get("modeling", {}).get("entrant_salary_at_start_year", False)
+        return self.modeling.entrant_salary_at_start_year
 
     @property
     def use_earliest_retire(self) -> bool:
-        return self.raw.get("modeling", {}).get("use_earliest_retire", False)
+        return self.modeling.use_earliest_retire
 
     @property
     def male_mp_forward_shift(self) -> int:
-        return self.raw.get("modeling", {}).get("male_mp_forward_shift", 0)
+        return self.modeling.male_mp_forward_shift
 
     @property
     def cola_proration_cutoff_year(self) -> Optional[int]:
@@ -124,8 +182,9 @@ class PlanConfig:
         return self.base_table_map.get(class_name, "general")
 
     @property
-    def age_groups(self) -> Optional[List[dict]]:
-        return self.raw.get("modeling", {}).get("age_groups")
+    def age_groups(self):
+        """Optional list of ``AgeGroup`` models (or None if absent)."""
+        return self.modeling.age_groups
 
     @property
     def has_drop(self) -> bool:
@@ -174,16 +233,7 @@ class PlanConfig:
 
     @property
     def decrements_method(self) -> str:
-        decr = self.raw.get("decrements")
-        if not decr or "method" not in decr:
-            raise KeyError(
-                f"Plan {self.plan_name!r}: required field "
-                f"'decrements.method' is missing from plan_config.json. "
-                f"Set it to 'yos_only' (FRS-style) or 'years_from_nr' "
-                f"(TXTRS-style) — see an existing plan's plan_config.json "
-                f"for an example."
-            )
-        return decr["method"]
+        return self.decrements.method
 
     @property
     def design_ratio_group_map(self) -> Dict[str, str]:
@@ -191,31 +241,23 @@ class PlanConfig:
 
     @property
     def max_entry_year(self) -> int:
-        return self.start_year + self.model_period
+        return self.ranges.max_entry_year
 
     @property
     def entry_year_range(self) -> range:
-        return range(self.min_entry_year, self.max_entry_year + 1)
+        return self.ranges.entry_year_range
 
     @property
     def age_range(self) -> range:
-        return range(self.min_age, self.max_age + 1)
+        return self.ranges.age_range
 
     @property
     def yos_range(self) -> range:
-        return range(0, self.max_yos + 1)
+        return self.ranges.yos_range
 
     @property
     def max_year(self) -> int:
-        return self.start_year + self.model_period + self.max_age - self.min_age
-
-    @property
-    def ranges(self) -> SimpleNamespace:
-        return build_ranges_namespace(self)
-
-    @property
-    def economic(self) -> SimpleNamespace:
-        return build_economic_namespace(self)
+        return self.ranges.max_year
 
     @property
     def benefit(self) -> SimpleNamespace:
