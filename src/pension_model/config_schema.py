@@ -7,12 +7,14 @@ from typing import Dict, List, Optional, Tuple
 from pension_model.config_validation import validate_config, validate_data_files
 from pension_model.schemas import (
     Benefit,
+    BenefitMultipliers,
     ClassCalibration,
     ClassData,
     Decrements,
     Economic,
     Funding,
     Modeling,
+    MultiplierRules,
     PlanDesign,
     Ranges,
     ValuationInputs,
@@ -33,7 +35,7 @@ class PlanConfig:
     classes: Tuple[str, ...]
     class_groups: Dict[str, List[str]]
     tier_defs: Tuple[dict, ...]
-    benefit_mult_defs: dict
+    benefit_mult_defs: BenefitMultipliers
     plan_design: PlanDesign
     valuation_inputs: Dict[str, ValuationInputs]
     economic: Economic
@@ -378,6 +380,17 @@ class PlanConfig:
 
     def class_group(self, class_name: str) -> str:
         return self._class_to_group.get(class_name, "default")
+
+    def resolve_ben_mult(
+        self, class_name: str, tier_name: str
+    ) -> Optional[MultiplierRules]:
+        """Look up the typed :class:`MultiplierRules` for a (class, tier).
+
+        Encapsulates the ``all_tiers`` / ``<tier>_same_as`` / direct
+        resolution so consumers don't have to thread the lookup logic
+        through dict access.
+        """
+        return self.benefit_mult_defs.resolve(class_name, tier_name)
 
     def get_class_inputs(self, class_name: str) -> dict:
         valuation = self.valuation_inputs.get(class_name)

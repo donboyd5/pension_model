@@ -15,18 +15,24 @@ from pension_model.schemas import (
     AgeGroup,
     AvaSmoothing,
     Benefit,
+    BenefitMultipliers,
     Calibration,
     CashBalance,
     ClassCalibration,
+    ClassMultipliers,
     Cola,
+    Condition,
     CorridorAvaSmoothing,
     DcSpec,
     Decrements,
     Economic,
+    FlatBeforeYear,
     Funding,
     GainLossAvaSmoothing,
+    GradedRule,
     LegDef,
     Modeling,
+    MultiplierRules,
     PlanDesign,
     PlanDesignRatios,
     RampSpec,
@@ -586,3 +592,118 @@ class TestPlanDesign:
         assert pd.group("regular_group").before_cutoff == 0.75
         assert set(pd.groups) == {"regular_group", "special_group"}
         assert pd.group("missing") is None
+
+
+# ---------------------------------------------------------------------------
+# Condition (shared predicate)
+# ---------------------------------------------------------------------------
+
+
+class TestCondition:
+    def test_empty_condition_loads(self):
+        c = Condition.model_validate({})
+        assert c.min_age is None and c.min_yos is None and c.rule_of is None
+
+    def test_typical_fields(self):
+        c = Condition.model_validate({"min_age": 65, "min_yos": 6})
+        assert c.min_age == 65
+        assert c.min_yos == 6
+
+    def test_extra_field_raises(self):
+        with pytest.raises(ValidationError, match="bogus"):
+            Condition.model_validate({"min_age": 65, "bogus": 1})
+
+
+# ---------------------------------------------------------------------------
+# MultiplierRules (primary-rule mutual exclusion)
+# ---------------------------------------------------------------------------
+
+
+class TestMultiplierRules:
+    def test_flat_only_loads(self):
+        r = MultiplierRules.model_validate({"flat": 0.023})
+        assert r.flat == 0.023
+
+    def test_graded_only_loads(self):
+        r = MultiplierRules.model_validate({
+            "graded": [
+                {"or": [{"min_age": 65}], "mult": 0.02},
+            ],
+        })
+        assert r.graded is not None
+        assert len(r.graded) == 1
+        assert r.graded[0].mult == 0.02
+        assert r.graded[0].or_[0].min_age == 65
+
+    def test_flat_with_flat_before_year(self):
+        r = MultiplierRules.model_validate({
+            "flat": 0.03,
+            "flat_before_year": {"year": 1974, "mult": 0.02},
+        })
+        assert r.flat_before_year is not None
+        assert r.flat_before_year.year == 1974
+
+    def test_neither_flat_nor_graded_raises(self):
+        with pytest.raises(ValidationError, match="must declare either"):
+            MultiplierRules.model_validate({"early_fallback": 0.01})
+
+    def test_both_flat_and_graded_raises(self):
+        with pytest.raises(ValidationError, match="mutually exclusive"):
+            MultiplierRules.model_validate({
+                "flat": 0.02,
+                "graded": [{"or": [{"min_age": 65}], "mult": 0.02}],
+            })
+
+    def test_flat_before_year_without_flat_raises(self):
+        with pytest.raises(ValidationError, match="requires 'flat'"):
+            MultiplierRules.model_validate({
+                "graded": [{"or": [{"min_age": 65}], "mult": 0.02}],
+                "flat_before_year": {"year": 1974, "mult": 0.02},
+            })
+
+
+# ---------------------------------------------------------------------------
+# BenefitMultipliers (lookup + same_as resolution)
+# ---------------------------------------------------------------------------
+
+
+class TestBenefitMultipliers:
+    def _frs_like(self):
+        return {
+            "regular": {
+                "tier_1": {"flat": 0.0168},
+                "tier_2": {"flat": 0.016},
+                "tier_3_same_as": "tier_2",
+            },
+            "judges": {
+                "all_tiers": {"flat": 0.0333},
+            },
+        }
+
+    def test_resolve_direct_tier(self):
+        bm = BenefitMultipliers.model_validate(self._frs_like())
+        rules = bm.resolve("regular", "tier_1")
+        assert isinstance(rules, MultiplierRules)
+        assert rules.flat == 0.0168
+
+    def test_resolve_all_tiers(self):
+        bm = BenefitMultipliers.model_validate(self._frs_like())
+        rules = bm.resolve("judges", "tier_1")
+        assert rules is not None and rules.flat == 0.0333
+        # Any tier name resolves the same way under all_tiers.
+        assert bm.resolve("judges", "tier_99").flat == 0.0333
+
+    def test_resolve_same_as_alias(self):
+        bm = BenefitMultipliers.model_validate(self._frs_like())
+        rules = bm.resolve("regular", "tier_3")
+        assert rules is not None and rules.flat == 0.016  # tier_2's value
+
+    def test_resolve_unknown_class(self):
+        bm = BenefitMultipliers.model_validate(self._frs_like())
+        assert bm.resolve("nonexistent", "tier_1") is None
+
+    def test_resolve_unknown_tier(self):
+        bm = BenefitMultipliers.model_validate({
+            "regular": {"tier_1": {"flat": 0.02}},
+        })
+        assert bm.resolve("regular", "tier_2") is None
