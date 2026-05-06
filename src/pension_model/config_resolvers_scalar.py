@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from pension_model.config_resolver_common import (
     _check_reduce_condition,
     _entry_year_in_tier,
@@ -83,29 +81,6 @@ def get_tier(
         return f"{tier_name}_vested"
 
     return f"{tier_name}_non_vested"
-
-
-def get_tier_vectorized(
-    config: PlanConfig,
-    class_name: str,
-    entry_year: np.ndarray,
-    age: np.ndarray,
-    yos: np.ndarray,
-    entry_age: np.ndarray = None,
-) -> np.ndarray:
-    n = len(entry_year)
-    result = np.empty(n, dtype=object)
-    effective_entry_age = entry_age if entry_age is not None else (age - yos)
-    for i in range(n):
-        result[i] = get_tier(
-            config,
-            class_name,
-            int(entry_year[i]),
-            int(age[i]),
-            int(yos[i]),
-            int(effective_entry_age[i]),
-        )
-    return result
 
 
 def get_ben_mult(

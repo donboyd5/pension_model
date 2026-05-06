@@ -5,7 +5,6 @@ from pension_model.config_resolvers_scalar import (
     get_ben_mult,
     get_reduce_factor,
     get_tier,
-    get_tier_vectorized,
 )
 from pension_model.config_resolvers_vectorized import (
     resolve_ben_mult_vec,
@@ -24,7 +23,6 @@ __all__ = [
     "get_ben_mult",
     "get_reduce_factor",
     "get_tier",
-    "get_tier_vectorized",
     "resolve_ben_mult_vec",
     "resolve_cola_vec",
     "resolve_reduce_factor_vec",
