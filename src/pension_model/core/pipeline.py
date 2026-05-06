@@ -194,10 +194,8 @@ def _build_class_benefit_prelude(
     else:
         separation_rate = build_separation_rate_table(
             inputs["term_rate_avg"],
-            inputs["normal_retire_tier1"],
-            inputs["normal_retire_tier2"],
-            inputs["early_retire_tier1"],
-            inputs["early_retire_tier2"],
+            inputs["normal_retire_rate_by_tier"],
+            inputs["early_retire_rate_by_tier"],
             entrant_profile,
             class_name,
             constants,

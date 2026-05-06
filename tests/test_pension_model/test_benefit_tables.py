@@ -157,10 +157,14 @@ class TestSeparationRateTable:
         dt = FRS_BASELINES / "decrement_tables"
         sep = build_separation_rate_table(
             term_rate_avg=pd.read_csv(dt / f"{sep_class}_term_rate_avg.csv"),
-            normal_retire_rate_tier1=pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier1.csv"),
-            normal_retire_rate_tier2=pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier2.csv"),
-            early_retire_rate_tier1=pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier1.csv"),
-            early_retire_rate_tier2=pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier2.csv"),
+            normal_retire_rate_by_tier={
+                "tier_1": pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier1.csv"),
+                "tier_2": pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier2.csv"),
+            },
+            early_retire_rate_by_tier={
+                "tier_1": pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier1.csv"),
+                "tier_2": pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier2.csv"),
+            },
             entrant_profile=ep,
             class_name=sep_class,
             constants=constants,

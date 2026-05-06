@@ -72,6 +72,7 @@ class PlanConfig:
     _tier_id_to_cola_key: Tuple[str, ...] = ()
     _tier_id_to_fas_years: Tuple[int, ...] = ()
     _tier_id_to_dr_key: Tuple[str, ...] = ()
+    _tier_id_to_retire_rate_key: Tuple[str, ...] = ()
 
     @property
     def scenario_name(self) -> Optional[str]:
