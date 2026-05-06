@@ -316,15 +316,15 @@ def test_overlapping_funding_legs_raises(frs_config):
     """
     from dataclasses import replace
     from pension_model.config_validation import validate_funding_legs
+    from pension_model.schemas import LegDef
 
-    # Override raw so funding_legs resolves to two overlapping legs.
-    raw = dict(frs_config.raw)
-    raw["funding"] = dict(raw["funding"])
-    raw["funding"]["legs"] = [
-        {"name": "legacy", "entry_year_max": 2030},
-        {"name": "new", "entry_year_min": 2020},  # overlap on 2020-2029
-    ]
-    bogus = replace(frs_config, raw=raw)
+    new_funding = frs_config.funding.model_copy(update={
+        "legs": [
+            LegDef(name="legacy", entry_year_max=2030),
+            LegDef(name="new", entry_year_min=2020),  # overlap 2020-2029
+        ],
+    })
+    bogus = replace(frs_config, funding=new_funding)
 
     with pytest.raises(ValueError, match="overlap"):
         validate_funding_legs(bogus)
@@ -336,14 +336,15 @@ def test_gappy_funding_legs_raises(frs_config):
     """
     from dataclasses import replace
     from pension_model.config_validation import validate_funding_legs
+    from pension_model.schemas import LegDef
 
-    raw = dict(frs_config.raw)
-    raw["funding"] = dict(raw["funding"])
-    raw["funding"]["legs"] = [
-        {"name": "legacy", "entry_year_max": 2010},
-        {"name": "new", "entry_year_min": 2020},  # gap 2010..2019
-    ]
-    bogus = replace(frs_config, raw=raw)
+    new_funding = frs_config.funding.model_copy(update={
+        "legs": [
+            LegDef(name="legacy", entry_year_max=2010),
+            LegDef(name="new", entry_year_min=2020),  # gap 2010-2019
+        ],
+    })
+    bogus = replace(frs_config, funding=new_funding)
 
     with pytest.raises(ValueError, match="not covered"):
         validate_funding_legs(bogus)
@@ -392,33 +393,35 @@ def test_unknown_contribution_strategy_raises(frs_config):
     """A plan declaring funding.contribution_strategy = 'made_up' raises
     a clear ValueError from resolve_funding_context.
     """
-    from dataclasses import replace
-    from pension_model.core._funding_setup import resolve_funding_context
+    from pydantic import ValidationError
+    from pension_model.schemas import Funding
 
-    bogus = replace(frs_config, contribution_strategy="made_up_strategy")
-    funding_inputs = {
-        "init_funding": __import__("pandas").DataFrame({"class": ["regular"]}),
-    }
+    # Build a Funding payload with an unsupported contribution_strategy.
+    # Validation fires at schema-parse time via Literal type.
+    bad_payload = dict(frs_config.funding.model_dump())
+    bad_payload["contribution_strategy"] = "made_up_strategy"
 
-    with pytest.raises(ValueError, match="made_up_strategy"):
-        resolve_funding_context(bogus, funding_inputs)
+    with pytest.raises(ValidationError, match="made_up_strategy"):
+        Funding.model_validate(bad_payload)
 
 
 def test_statutory_strategy_requires_rates_block(frs_config):
     """Declaring funding.contribution_strategy = 'statutory' without a
-    funding.statutory_rates block raises a clear ValueError.
+    funding.statutory_rates block raises at schema-parse time via the
+    Funding model_validator.
     """
-    from dataclasses import replace
-    from pension_model.core._funding_setup import resolve_funding_context
+    from pydantic import ValidationError
+    from pension_model.schemas import Funding
 
-    bogus = replace(frs_config, contribution_strategy="statutory")
-    # FRS doesn't have statutory_rates; bogus inherits that absence.
-    funding_inputs = {
-        "init_funding": __import__("pandas").DataFrame({"class": ["regular"]}),
-    }
+    # FRS today is "actuarial" with no statutory_rates. Build a payload
+    # that flips contribution_strategy to "statutory" but keeps
+    # statutory_rates absent.
+    bad_payload = dict(frs_config.funding.model_dump())
+    bad_payload["contribution_strategy"] = "statutory"
+    bad_payload["statutory_rates"] = None
 
-    with pytest.raises(ValueError, match="statutory_rates"):
-        resolve_funding_context(bogus, funding_inputs)
+    with pytest.raises(ValidationError, match="statutory_rates"):
+        Funding.model_validate(bad_payload)
 
 
 def test_missing_rule_nra_raises(frs_config):

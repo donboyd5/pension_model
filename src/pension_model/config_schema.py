@@ -8,10 +8,9 @@ from typing import Dict, List, Optional, Tuple
 from pension_model.config_compat import (
     build_benefit_namespace,
     build_class_data_namespace,
-    build_funding_namespace,
 )
 from pension_model.config_validation import validate_config, validate_data_files
-from pension_model.schemas import Decrements, Economic, Modeling, Ranges
+from pension_model.schemas import Decrements, Economic, Funding, Modeling, Ranges
 
 
 NON_VESTED = 0
@@ -32,15 +31,6 @@ class PlanConfig:
     fas_years_default: int
     benefit_types: Tuple[str, ...]
     cola: dict
-    funding_policy: str
-    contribution_strategy: str
-    amo_method: str
-    amo_period_new: int
-    amo_pay_growth: float
-    funding_lag: int
-    amo_period_term: int
-    amo_term_growth: float
-    ava_smoothing: dict
     classes: Tuple[str, ...]
     class_groups: Dict[str, List[str]]
     tier_defs: Tuple[dict, ...]
@@ -51,6 +41,7 @@ class PlanConfig:
     ranges: Ranges
     decrements: Decrements
     modeling: Modeling
+    funding: Funding
     calibration: Dict[str, dict] = field(default_factory=dict)
     cash_balance: Optional[dict] = None
     reduce_tables: Optional[Dict[str, object]] = None
@@ -188,19 +179,59 @@ class PlanConfig:
 
     @property
     def has_drop(self) -> bool:
-        return self.raw.get("funding", {}).get("has_drop", False)
+        return self.funding.has_drop
 
     @property
     def drop_reference_class(self) -> Optional[str]:
-        return self.raw.get("funding", {}).get("drop_reference_class")
+        return self.funding.drop_reference_class
 
     @property
-    def statutory_rates(self) -> Optional[dict]:
-        return self.raw.get("funding", {}).get("statutory_rates")
+    def statutory_rates(self):
+        """Typed StatutoryRates model, or None if not declared."""
+        return self.funding.statutory_rates
 
     @property
     def amo_period_current(self) -> Optional[int]:
-        return self.raw.get("funding", {}).get("amo_period_current")
+        return self.funding.amo_period_current
+
+    @property
+    def funding_policy(self) -> str:
+        return self.funding.policy
+
+    @property
+    def contribution_strategy(self) -> str:
+        return self.funding.contribution_strategy
+
+    @property
+    def amo_method(self) -> str:
+        return self.funding.amo_method
+
+    @property
+    def amo_period_new(self) -> int:
+        return self.funding.amo_period_new
+
+    @property
+    def amo_pay_growth(self) -> float:
+        return self.funding.amo_pay_growth
+
+    @property
+    def funding_lag(self) -> int:
+        return self.funding.funding_lag
+
+    @property
+    def amo_period_term(self) -> int:
+        return self.funding.amo_period_term
+
+    @property
+    def amo_term_growth(self) -> float:
+        return self.funding.amo_term_growth
+
+    @property
+    def ava_smoothing(self):
+        """Typed AVA smoothing spec (CorridorAvaSmoothing or
+        GainLossAvaSmoothing).
+        """
+        return self.funding.ava_smoothing
 
     @property
     def funding_legs(self) -> Tuple[Tuple[str, Optional[int], Optional[int]], ...]:
@@ -209,26 +240,17 @@ class PlanConfig:
         ``lo`` is inclusive, ``hi`` is exclusive — same convention as
         the tier resolver (``entry_year_min`` / ``entry_year_max``).
         ``entry_year_min_param`` / ``entry_year_max_param`` strings of
-        ``\"new_year\"`` resolve to ``self.new_year``.
-
-        Defaults to today's two-leg ``legacy`` / ``new`` split keyed off
-        ``new_year`` if the plan_config doesn't declare ``funding.legs``.
+        ``"new_year"`` resolve to ``self.new_year``.
         """
-        legs_raw = self.raw.get("funding", {}).get("legs")
-        if not legs_raw:
-            legs_raw = [
-                {"name": "legacy", "entry_year_max_param": "new_year"},
-                {"name": "new", "entry_year_min_param": "new_year"},
-            ]
         resolved = []
-        for leg in legs_raw:
-            lo = leg.get("entry_year_min")
-            if leg.get("entry_year_min_param") == "new_year":
+        for leg in self.funding.legs:
+            lo = leg.entry_year_min
+            if leg.entry_year_min_param == "new_year":
                 lo = self.new_year
-            hi = leg.get("entry_year_max")
-            if leg.get("entry_year_max_param") == "new_year":
+            hi = leg.entry_year_max
+            if leg.entry_year_max_param == "new_year":
                 hi = self.new_year
-            resolved.append((leg["name"], lo, hi))
+            resolved.append((leg.name, lo, hi))
         return tuple(resolved)
 
     @property
@@ -262,10 +284,6 @@ class PlanConfig:
     @property
     def benefit(self) -> SimpleNamespace:
         return build_benefit_namespace(self)
-
-    @property
-    def funding(self) -> SimpleNamespace:
-        return build_funding_namespace(self)
 
     @property
     def class_data(self) -> dict:

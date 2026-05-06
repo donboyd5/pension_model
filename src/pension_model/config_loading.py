@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from pension_model.config_schema import PlanConfig
-from pension_model.schemas import Decrements, Economic, Modeling, Ranges
+from pension_model.schemas import Decrements, Economic, Funding, Modeling, Ranges
 
 
 log = logging.getLogger(__name__)
@@ -112,6 +112,19 @@ def _build_economic_model(
     })
 
 
+def _build_funding_model(fun_raw: dict, eco_raw: dict) -> Funding:
+    """Validate and build the Funding schema model.
+
+    Pre-fills ``amo_pay_growth`` from ``economic.payroll_growth`` if
+    the funding block omits it — preserves the pre-pydantic loader's
+    defensive default. All other required fields must be declared
+    explicitly (the schema enforces).
+    """
+    fun_with_defaults = dict(fun_raw)
+    fun_with_defaults.setdefault("amo_pay_growth", eco_raw["payroll_growth"])
+    return Funding.model_validate(fun_with_defaults)
+
+
 def _build_decrements_model(raw: dict, *, plan_name: str) -> Decrements:
     """Validate and build the Decrements schema model.
 
@@ -190,6 +203,7 @@ def load_plan_config(
     ranges_model = Ranges.model_validate(rng)
     decrements_model = _build_decrements_model(raw, plan_name=raw["plan_name"])
     modeling_model = Modeling.model_validate(raw.get("modeling", {}))
+    funding_model = _build_funding_model(fun, eco)
 
     config = PlanConfig(
         plan_name=raw["plan_name"],
@@ -203,15 +217,6 @@ def load_plan_config(
         benefit_types=tuple(ben.get("benefit_types", ["db"])),
         cola=ben.get("cola", {}),
         cash_balance=ben.get("cash_balance"),
-        funding_policy=fun["policy"],
-        contribution_strategy=fun["contribution_strategy"],
-        amo_method=fun["amo_method"],
-        amo_period_new=fun["amo_period_new"],
-        amo_pay_growth=fun.get("amo_pay_growth", eco["payroll_growth"]),
-        funding_lag=fun.get("funding_lag", 1),
-        amo_period_term=fun.get("amo_period_term", 50),
-        amo_term_growth=fun.get("amo_term_growth", 0.03),
-        ava_smoothing=fun.get("ava_smoothing", {}),
         classes=tuple(raw["classes"]),
         class_groups=raw.get("class_groups", {}),
         tier_defs=tuple(raw.get("tiers", [])),
@@ -222,6 +227,7 @@ def load_plan_config(
         ranges=ranges_model,
         decrements=decrements_model,
         modeling=modeling_model,
+        funding=funding_model,
         calibration=calibration,
         _class_to_group=class_to_group,
         _tier_name_to_id=tier_name_to_id,

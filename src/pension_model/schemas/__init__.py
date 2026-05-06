@@ -20,15 +20,35 @@ yet. See ``scratch/pydantic_migration_plan.md`` for the order.
 from pension_model.schemas.base import StrictModel
 from pension_model.schemas.decrements import Decrements
 from pension_model.schemas.economic import Economic
+from pension_model.schemas.funding import (
+    AvaSmoothing,
+    CorridorAvaSmoothing,
+    Funding,
+    GainLossAvaSmoothing,
+    LegDef,
+    RampSpec,
+    RateComponentSpec,
+    RateScheduleEntry,
+    StatutoryRates,
+)
 from pension_model.schemas.modeling import AgeGroup, Modeling
 from pension_model.schemas.ranges import Ranges
 
 
 __all__ = [
     "AgeGroup",
+    "AvaSmoothing",
+    "CorridorAvaSmoothing",
     "Decrements",
     "Economic",
+    "Funding",
+    "GainLossAvaSmoothing",
+    "LegDef",
     "Modeling",
+    "RampSpec",
     "Ranges",
+    "RateComponentSpec",
+    "RateScheduleEntry",
+    "StatutoryRates",
     "StrictModel",
 ]
