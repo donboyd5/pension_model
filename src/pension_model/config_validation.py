@@ -50,16 +50,11 @@ def validate_config(config) -> list[str]:
     """Return non-fatal config warnings for a loaded plan."""
     warnings: list[str] = []
 
-    for class_name, valuation in config.valuation_inputs.items():
-        if "ben_payment" not in valuation:
-            warnings.append(
-                f"class '{class_name}' is missing 'ben_payment' in valuation_inputs. "
-                f"This is the initial-year pension benefit payments to "
-                f"current retirees (used to seed the retiree liability projection)."
-            )
-
+    # ben_payment is required by ValuationInputs; the schema would
+    # have failed to load if it were missing. The check is kept here
+    # as a no-op for forward compat.
     for class_name, calibration in config.calibration.items():
-        nc_cal = calibration.get("nc_cal", 1.0)
+        nc_cal = calibration.nc_cal
         if nc_cal < 0.8 or nc_cal > 1.2:
             warnings.append(
                 f"class '{class_name}' has nc_cal={nc_cal:.3f} (outside 0.8-1.2 range). "
@@ -80,20 +75,25 @@ def validate_config(config) -> list[str]:
                 f"class '{class_name}' is listed in 'classes' but has no entry in valuation_inputs."
             )
 
+    # er_dc_cont_rate has a default of 0.0 in the schema. Only warn
+    # if the plan declares dc but the rate is zero (likely
+    # under-configured).
     if "dc" in config.benefit_types:
         for class_name in config.classes:
-            if "er_dc_cont_rate" not in config.valuation_inputs.get(class_name, {}):
+            valuation = config.valuation_inputs.get(class_name)
+            if valuation is not None and valuation.er_dc_cont_rate == 0.0:
                 warnings.append(
-                    f"class '{class_name}' is missing 'er_dc_cont_rate' in valuation_inputs "
+                    f"class '{class_name}' has er_dc_cont_rate=0.0 in valuation_inputs "
                     f"but benefit_types includes 'dc'."
                 )
 
     for class_name, valuation in config.valuation_inputs.items():
-        headcount_group = valuation.get("headcount_group")
+        headcount_group = valuation.headcount_group
         if headcount_group and len(headcount_group) > 1:
-            target = valuation["total_active_member"]
+            target = valuation.total_active_member
             for peer in headcount_group:
-                peer_target = config.valuation_inputs.get(peer, {}).get("total_active_member")
+                peer_val = config.valuation_inputs.get(peer)
+                peer_target = peer_val.total_active_member if peer_val is not None else None
                 if peer_target != target:
                     warnings.append(
                         f"headcount_group mismatch: '{class_name}' has total_active_member={target} "

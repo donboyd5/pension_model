@@ -126,16 +126,18 @@ def build_targets_from_config(constants) -> Dict[str, CalibrationTargets]:
     targets = {}
     vi = constants.valuation_inputs
     for cn in constants.classes:
-        entry = vi.get(cn, {})
-        vnc = entry.get("val_norm_cost")
-        val_aal = entry.get("val_aal")
-        if vnc is None or val_aal is None:
+        entry = vi.get(cn)
+        if entry is None:
+            continue
+        if entry.val_norm_cost is None or entry.val_aal is None:
             continue
         targets[cn] = CalibrationTargets(
-            val_norm_cost=vnc,
-            val_aal=val_aal,
-            val_payroll=entry.get("val_payroll"),
-            val_benefit_payments=entry.get("outflow"),
+            val_norm_cost=entry.val_norm_cost,
+            val_aal=entry.val_aal,
+            val_payroll=entry.val_payroll,
+            # 'outflow' isn't part of the typed schema today; preserve
+            # the optional lookup pattern for future schema additions.
+            val_benefit_payments=getattr(entry, "outflow", None),
         )
     return targets
 

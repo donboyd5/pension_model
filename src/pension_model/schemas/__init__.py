@@ -24,6 +24,7 @@ from pension_model.schemas.benefit import (
     Cola,
     DcSpec,
 )
+from pension_model.schemas.calibration import Calibration, ClassCalibration
 from pension_model.schemas.decrements import Decrements
 from pension_model.schemas.economic import Economic
 from pension_model.schemas.funding import (
@@ -38,14 +39,19 @@ from pension_model.schemas.funding import (
     StatutoryRates,
 )
 from pension_model.schemas.modeling import AgeGroup, Modeling
+from pension_model.schemas.plan_design import PlanDesign, PlanDesignRatios
 from pension_model.schemas.ranges import Ranges
+from pension_model.schemas.valuation_inputs import ClassData, ValuationInputs
 
 
 __all__ = [
     "AgeGroup",
     "AvaSmoothing",
     "Benefit",
+    "Calibration",
     "CashBalance",
+    "ClassCalibration",
+    "ClassData",
     "Cola",
     "CorridorAvaSmoothing",
     "DcSpec",
@@ -55,10 +61,13 @@ __all__ = [
     "GainLossAvaSmoothing",
     "LegDef",
     "Modeling",
+    "PlanDesign",
+    "PlanDesignRatios",
     "RampSpec",
     "Ranges",
     "RateComponentSpec",
     "RateScheduleEntry",
     "StatutoryRates",
     "StrictModel",
+    "ValuationInputs",
 ]

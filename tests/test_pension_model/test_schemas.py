@@ -15,7 +15,9 @@ from pension_model.schemas import (
     AgeGroup,
     AvaSmoothing,
     Benefit,
+    Calibration,
     CashBalance,
+    ClassCalibration,
     Cola,
     CorridorAvaSmoothing,
     DcSpec,
@@ -25,11 +27,14 @@ from pension_model.schemas import (
     GainLossAvaSmoothing,
     LegDef,
     Modeling,
+    PlanDesign,
+    PlanDesignRatios,
     RampSpec,
     Ranges,
     RateComponentSpec,
     RateScheduleEntry,
     StatutoryRates,
+    ValuationInputs,
 )
 
 
@@ -465,3 +470,119 @@ class TestBenefit:
     def test_extra_field_raises(self):
         with pytest.raises(ValidationError, match="bogus"):
             Benefit.model_validate(self._valid(bogus=1))
+
+
+# ---------------------------------------------------------------------------
+# ValuationInputs
+# ---------------------------------------------------------------------------
+
+
+class TestValuationInputs:
+    def _valid(self, **overrides):
+        base = {
+            "ben_payment": 1.0e9,
+            "retiree_pop": 1000,
+            "total_active_member": 5000,
+            "val_norm_cost": 0.10,
+        }
+        base.update(overrides)
+        return base
+
+    def test_minimal_loads(self):
+        v = ValuationInputs.model_validate(self._valid())
+        assert v.ben_payment == 1.0e9
+        assert v.er_dc_cont_rate == 0.0  # default
+        assert v.headcount_group is None
+
+    def test_with_headcount_group(self):
+        v = ValuationInputs.model_validate(
+            self._valid(headcount_group=["a", "b", "c"])
+        )
+        assert v.headcount_group == ["a", "b", "c"]
+
+    def test_missing_required_raises(self):
+        with pytest.raises(ValidationError, match="ben_payment"):
+            ValuationInputs.model_validate({
+                "retiree_pop": 1000,
+                "total_active_member": 5000,
+                "val_norm_cost": 0.10,
+            })
+
+    def test_extra_field_raises(self):
+        with pytest.raises(ValidationError, match="extra_thing"):
+            ValuationInputs.model_validate(self._valid(extra_thing=1))
+
+
+# ---------------------------------------------------------------------------
+# Calibration + ClassCalibration
+# ---------------------------------------------------------------------------
+
+
+class TestCalibration:
+    def test_classcalibration_defaults(self):
+        c = ClassCalibration.model_validate({})
+        assert c.nc_cal == 1.0
+        assert c.pvfb_term_current == 0.0
+
+    def test_calibration_loads_classes_dict(self):
+        c = Calibration.model_validate({
+            "cal_factor": 0.9,
+            "classes": {
+                "regular": {"nc_cal": 0.985, "pvfb_term_current": 6e9},
+                "special": {"nc_cal": 1.0, "pvfb_term_current": 0.0},
+            },
+        })
+        assert c.cal_factor == 0.9
+        assert isinstance(c.classes["regular"], ClassCalibration)
+        assert c.classes["regular"].nc_cal == 0.985
+
+    def test_documentation_fields_optional(self):
+        c = Calibration.model_validate({
+            "description": "FRS 2022 calibration",
+            "cal_factor": 0.9,
+        })
+        assert c.description == "FRS 2022 calibration"
+
+    def test_extra_admitted(self):
+        # Calibration uses extra="allow" so future fields don't break.
+        c = Calibration.model_validate({"future_field": "ok"})
+        assert "future_field" in (c.model_extra or {})
+
+
+# ---------------------------------------------------------------------------
+# PlanDesign + PlanDesignRatios
+# ---------------------------------------------------------------------------
+
+
+class TestPlanDesign:
+    def test_db_triple_with_full_fields(self):
+        r = PlanDesignRatios.model_validate({
+            "before_cutoff": 0.95,
+            "after_cutoff": 0.85,
+            "new": 0.75,
+        })
+        assert r.db_triple() == (0.95, 0.85, 0.75)
+
+    def test_db_triple_after_defaults_to_before(self):
+        r = PlanDesignRatios.model_validate({"before_cutoff": 0.75})
+        assert r.db_triple() == (0.75, 0.75, 1.0)
+
+    def test_db_triple_uses_new_db_when_new_absent(self):
+        r = PlanDesignRatios.model_validate({"before_cutoff": 1.0, "new_db": 0.5})
+        assert r.db_triple() == (1.0, 1.0, 0.5)
+
+    def test_cb_triple_defaults_to_zero(self):
+        r = PlanDesignRatios.model_validate({})
+        assert r.cb_triple() == (0.0, 0.0, 0.0)
+
+    def test_groups_promoted_to_typed_at_parse(self):
+        pd = PlanDesign.model_validate({
+            "cutoff_year": 2018,
+            "regular_group": {"before_cutoff": 0.75, "new": 0.25},
+            "special_group": {"before_cutoff": 0.95, "after_cutoff": 0.85, "new": 0.75},
+        })
+        assert pd.cutoff_year == 2018
+        assert isinstance(pd.group("regular_group"), PlanDesignRatios)
+        assert pd.group("regular_group").before_cutoff == 0.75
+        assert set(pd.groups) == {"regular_group", "special_group"}
+        assert pd.group("missing") is None

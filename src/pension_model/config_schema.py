@@ -2,20 +2,20 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Dict, List, Optional, Tuple
 
-from pension_model.config_compat import (
-    build_class_data_namespace,
-)
 from pension_model.config_validation import validate_config, validate_data_files
 from pension_model.schemas import (
     Benefit,
+    ClassCalibration,
+    ClassData,
     Decrements,
     Economic,
     Funding,
     Modeling,
+    PlanDesign,
     Ranges,
+    ValuationInputs,
 )
 
 
@@ -34,15 +34,15 @@ class PlanConfig:
     class_groups: Dict[str, List[str]]
     tier_defs: Tuple[dict, ...]
     benefit_mult_defs: dict
-    plan_design_defs: dict
-    valuation_inputs: Dict[str, dict]
+    plan_design: PlanDesign
+    valuation_inputs: Dict[str, ValuationInputs]
     economic: Economic
     ranges: Ranges
     decrements: Decrements
     modeling: Modeling
     funding: Funding
     benefit: Benefit
-    calibration: Dict[str, dict] = field(default_factory=dict)
+    calibration: Dict[str, ClassCalibration] = field(default_factory=dict)
     reduce_tables: Optional[Dict[str, object]] = None
     _class_to_group: Dict[str, str] = field(default_factory=dict)
     _tier_name_to_id: Dict[str, int] = field(default_factory=dict)
@@ -190,7 +190,7 @@ class PlanConfig:
 
     @property
     def plan_design_cutoff_year(self) -> Optional[int]:
-        return self.raw.get("plan_design", {}).get("cutoff_year")
+        return self.plan_design.cutoff_year
 
     @property
     def salary_growth_col_map(self) -> Dict[str, str]:
@@ -317,25 +317,55 @@ class PlanConfig:
         return self.ranges.max_year
 
     @property
-    def class_data(self) -> dict:
-        return build_class_data_namespace(self)
+    def class_data(self) -> Dict[str, ClassData]:
+        """Per-class merged view of valuation_inputs + calibration.
+
+        Returns typed ``ClassData`` objects, one per class. Same
+        access pattern as the prior ``SimpleNamespace`` shape:
+        ``config.class_data[cn].nc_cal``, etc.
+        """
+        result = {}
+        for class_name, valuation in self.valuation_inputs.items():
+            cal = self.calibration.get(class_name)
+            result[class_name] = ClassData(
+                ben_payment=valuation.ben_payment,
+                retiree_pop=valuation.retiree_pop,
+                total_active_member=valuation.total_active_member,
+                er_dc_cont_rate=valuation.er_dc_cont_rate,
+                val_norm_cost=valuation.val_norm_cost,
+                nc_cal=cal.nc_cal if cal is not None else 1.0,
+                pvfb_term_current=cal.pvfb_term_current if cal is not None else 0.0,
+            )
+        return result
+
+    @property
+    def plan_design_defs(self) -> dict:
+        """Backward-compat: raw dict of group → ratios mappings.
+
+        Some legacy code (and the calibration runner) still iterates
+        the raw shape. Builds a dict from the typed ``plan_design``
+        each call.
+        """
+        return {
+            name: ratios.model_dump(exclude_none=True)
+            for name, ratios in self.plan_design.groups.items()
+        }
 
     def get_design_ratios(self, class_name: str) -> Dict[str, Tuple[float, float, float]]:
-        group = self.design_ratio_group_map.get(class_name, self.class_group(class_name))
-        ratios = self.plan_design_defs.get(group, self.plan_design_defs.get("default", {}))
+        from pension_model.schemas import PlanDesignRatios
+
+        group_name = self.design_ratio_group_map.get(class_name, self.class_group(class_name))
+        ratios = (
+            self.plan_design.group(group_name)
+            or self.plan_design.group("default")
+            or PlanDesignRatios()
+        )
         result = {}
         for bt in self.benefit_types:
             if bt == "db":
-                before = ratios.get("before_cutoff", 1.0)
-                after = ratios.get("after_cutoff", before)
-                new = ratios.get("new", ratios.get("new_db", 1.0))
-                result["db"] = (before, after, new)
+                result["db"] = ratios.db_triple()
             elif bt == "cb":
-                result["cb"] = (
-                    ratios.get("before_cb", 0.0),
-                    ratios.get("after_cb", 0.0),
-                    ratios.get("new_cb", 0.0),
-                )
+                result["cb"] = ratios.cb_triple()
             elif bt == "dc":
                 db_before, db_after, db_new = result.get("db", (1.0, 1.0, 1.0))
                 cb_before, cb_after, cb_new = result.get("cb", (0.0, 0.0, 0.0))
@@ -350,10 +380,13 @@ class PlanConfig:
         return self._class_to_group.get(class_name, "default")
 
     def get_class_inputs(self, class_name: str) -> dict:
-        base = dict(self.valuation_inputs.get(class_name, {}))
-        cal = self.calibration.get(class_name, {})
-        base["nc_cal"] = cal.get("nc_cal", 1.0)
-        base["pvfb_term_current"] = cal.get("pvfb_term_current", 0.0)
+        valuation = self.valuation_inputs.get(class_name)
+        if valuation is None:
+            return {"nc_cal": 1.0, "pvfb_term_current": 0.0}
+        base = valuation.model_dump(exclude_none=True)
+        cal = self.calibration.get(class_name)
+        base["nc_cal"] = cal.nc_cal if cal is not None else 1.0
+        base["pvfb_term_current"] = cal.pvfb_term_current if cal is not None else 0.0
         return base
 
     def validate(self) -> list:

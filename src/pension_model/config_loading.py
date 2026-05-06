@@ -12,11 +12,15 @@ from typing import Dict, Optional
 from pension_model.config_schema import PlanConfig
 from pension_model.schemas import (
     Benefit,
+    Calibration,
+    ClassCalibration,
     Decrements,
     Economic,
     Funding,
     Modeling,
+    PlanDesign,
     Ranges,
+    ValuationInputs,
 )
 
 
@@ -47,11 +51,13 @@ def _load_calibration_data(
     calibration_path: Optional[Path],
     *,
     skip_class_calibration: bool,
-) -> tuple[dict, Optional[float]]:
+) -> tuple[Dict[str, ClassCalibration], Optional[float]]:
     """Load calibration payload from JSON when available.
 
     Returns:
         Tuple of ``(per_class_calibration, global_cal_factor_override)``.
+        The per-class dict is keyed by class name, with each value
+        a typed :class:`ClassCalibration`.
     """
     if calibration_path is None or not calibration_path.exists():
         return {}, None
@@ -59,8 +65,9 @@ def _load_calibration_data(
     with open(calibration_path) as f:
         cal_raw = json.load(f)
 
-    calibration = {} if skip_class_calibration else cal_raw.get("classes", {})
-    return calibration, cal_raw.get("cal_factor")
+    cal_model = Calibration.model_validate(cal_raw)
+    classes = {} if skip_class_calibration else cal_model.classes
+    return dict(classes), cal_model.cal_factor
 
 
 def _build_tier_metadata(
@@ -212,6 +219,11 @@ def load_plan_config(
     modeling_model = Modeling.model_validate(raw.get("modeling", {}))
     funding_model = _build_funding_model(fun, eco)
     benefit_model = Benefit.model_validate(ben)
+    plan_design_model = PlanDesign.model_validate(raw.get("plan_design", {}))
+    valuation_models = {
+        cn: ValuationInputs.model_validate(v)
+        for cn, v in raw.get("valuation_inputs", {}).items()
+    }
 
     config = PlanConfig(
         plan_name=raw["plan_name"],
@@ -221,8 +233,8 @@ def load_plan_config(
         class_groups=raw.get("class_groups", {}),
         tier_defs=tuple(raw.get("tiers", [])),
         benefit_mult_defs=raw.get("benefit_multipliers", {}),
-        plan_design_defs=raw.get("plan_design", {}),
-        valuation_inputs=raw.get("valuation_inputs", {}),
+        plan_design=plan_design_model,
+        valuation_inputs=valuation_models,
         economic=economic_model,
         ranges=ranges_model,
         decrements=decrements_model,
