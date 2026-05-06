@@ -231,11 +231,9 @@ def _load_decrements(
     {class_name}_retirement_rates.csv in the standard lookup_type format,
     falling back to unprefixed filenames for single-class plans.
 
-    For plans with years_from_nr termination rates, builds the full
-    separation rate table directly.
-
-    For plans with yos-only termination rates, converts back to the
-    term_rate_avg + retirement rate table format.
+    Dispatches to the builder named by ``decrements.method`` in
+    plan_config.json. Supported methods are listed in
+    ``_DECREMENT_BUILDERS``.
     """
     term_path = decr_dir / f"{class_name}_termination_rates.csv"
     if not term_path.exists():
@@ -249,15 +247,14 @@ def _load_decrements(
 
     ret_df = pd.read_csv(ret_path)
 
-    # Check if plan has years_from_nr termination rates
-    has_years_from_nr = "years_from_nr" in term_df["lookup_type"].values
-
-    if has_years_from_nr:
-        # Years-from-normal-retirement lookup: build separation rate table
-        _build_years_from_nr_decrements(inputs, constants, term_df, ret_df, decr_dir, class_name)
-    else:
-        # YOS-only lookup: convert to wide format for existing builder
-        _build_yos_only_decrements(inputs, constants, term_df, ret_df)
+    method = constants.decrements_method
+    builder = _DECREMENT_BUILDERS.get(method)
+    if builder is None:
+        raise ValueError(
+            f"Plan {constants.plan_name!r}: unknown decrements.method "
+            f"{method!r}. Supported: {sorted(_DECREMENT_BUILDERS)}."
+        )
+    builder(inputs, constants, term_df, ret_df, decr_dir, class_name)
 
 
 def _resolve_age_group_breaks(constants: PlanConfig) -> list:
@@ -291,6 +288,8 @@ def _build_yos_only_decrements(
     constants: PlanConfig,
     term_df: pd.DataFrame,
     ret_df: pd.DataFrame,
+    decr_dir: Path,  # noqa: ARG001 — accepted for registry uniformity
+    class_name: str,  # noqa: ARG001 — accepted for registry uniformity
 ):
     """Convert stage 3 YOS-only termination rates to wide decrement format.
 
@@ -302,6 +301,9 @@ def _build_yos_only_decrements(
 
     Age group bands are read from ``modeling.age_groups`` in plan config
     via ``_resolve_age_group_breaks``.
+
+    ``decr_dir`` and ``class_name`` are accepted only so the decrement
+    registry can dispatch uniformly; this builder doesn't use them.
 
     Raises:
         ValueError: if any tier's declared ``retirement_rate_set``
@@ -370,7 +372,7 @@ def _build_years_from_nr_decrements(
     constants: PlanConfig,
     term_df: pd.DataFrame,
     ret_df: pd.DataFrame,
-    decr_dir: Path,
+    decr_dir: Path,  # noqa: ARG001 — accepted for registry uniformity
     class_name: str,
 ):
     """Build separation rate table using years-from-normal-retirement lookup.
@@ -486,6 +488,19 @@ def _build_years_from_nr_decrements(
     reduction_tables = load_reduction_tables(constants)
     if reduction_tables is not None:
         inputs["_reduction_tables"] = reduction_tables
+
+
+# ---------------------------------------------------------------------------
+# Decrement-method registry
+# ---------------------------------------------------------------------------
+
+# Maps the value of plan_config.json's ``decrements.method`` to a builder.
+# Each builder accepts a uniform 6-arg signature so ``_load_decrements``
+# can dispatch without knowing which method is in use.
+_DECREMENT_BUILDERS = {
+    "yos_only": _build_yos_only_decrements,
+    "years_from_nr": _build_years_from_nr_decrements,
+}
 
 
 # ---------------------------------------------------------------------------

@@ -143,6 +143,19 @@ class PlanConfig:
         return self.raw.get("funding", {}).get("amo_period_current")
 
     @property
+    def decrements_method(self) -> str:
+        decr = self.raw.get("decrements")
+        if not decr or "method" not in decr:
+            raise KeyError(
+                f"Plan {self.plan_name!r}: required field "
+                f"'decrements.method' is missing from plan_config.json. "
+                f"Set it to 'yos_only' (FRS-style) or 'years_from_nr' "
+                f"(TXTRS-style) — see an existing plan's plan_config.json "
+                f"for an example."
+            )
+        return decr["method"]
+
+    @property
     def design_ratio_group_map(self) -> Dict[str, str]:
         return self.raw.get("design_ratio_group_map", {})
 
