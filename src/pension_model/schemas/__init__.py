@@ -34,6 +34,7 @@ from pension_model.schemas.benefit_multipliers import (
 from pension_model.schemas.calibration import Calibration, ClassCalibration
 from pension_model.schemas.conditions import Condition
 from pension_model.schemas.decrements import Decrements
+from pension_model.schemas.eligibility import EligibilitySpec
 from pension_model.schemas.economic import Economic
 from pension_model.schemas.funding import (
     AvaSmoothing,
@@ -68,6 +69,7 @@ __all__ = [
     "DcSpec",
     "Decrements",
     "Economic",
+    "EligibilitySpec",
     "FlatBeforeYear",
     "Funding",
     "GainLossAvaSmoothing",

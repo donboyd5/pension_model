@@ -15,8 +15,6 @@ from pension_model.config_resolver_common import (
     _get_eligibility,
     _is_grandfathered_vec,
     _lookup_reduce_table,
-    _matches_any_vec,
-    _matches_condition_vec,
     _reduce_condition_vec,
     _resolve_tier_def,
 )
@@ -165,14 +163,14 @@ def resolve_tiers_vec(
             combo_mask = tier_mask & (group_codes == group_code)
             if not combo_mask.any():
                 continue
-            if not eligibility:
+            if eligibility is None:
                 continue
 
             sub_age = age[combo_mask]
             sub_yos = yos[combo_mask]
-            norm_mask = _matches_any_vec(eligibility.get("normal", []), sub_age, sub_yos)
-            early_mask = _matches_any_vec(eligibility.get("early", []), sub_age, sub_yos) & ~norm_mask
-            vested_mask = (sub_yos >= eligibility["vesting_yos"]) & ~norm_mask & ~early_mask
+            norm_mask = eligibility.matches_normal_vec(sub_age, sub_yos)
+            early_mask = eligibility.matches_early_vec(sub_age, sub_yos) & ~norm_mask
+            vested_mask = (sub_yos >= eligibility.vesting_yos) & ~norm_mask & ~early_mask
 
             sub_status = np.full(combo_mask.sum(), NON_VESTED, dtype=np.int8)
             sub_status[norm_mask] = NORM
@@ -264,9 +262,7 @@ def resolve_ben_mult_vec(
             for entry in rules.graded:
                 entry_mask = np.zeros(len(idx_arr), dtype=bool)
                 for cond in entry.or_:
-                    entry_mask |= _matches_condition_vec(
-                        cond.model_dump(exclude_none=True), sub_age, sub_yos
-                    )
+                    entry_mask |= cond.matches_vec(sub_age, sub_yos)
                 new_assign = entry_mask & ~assigned
                 if new_assign.any():
                     sub_vals[new_assign] = entry.mult

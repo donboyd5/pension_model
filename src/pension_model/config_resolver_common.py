@@ -41,7 +41,15 @@ def _resolve_tier_def(tier_name: str, tier_defs: tuple) -> dict:
     raise ValueError(f"Unknown tier: {tier_name}")
 
 
-def _get_eligibility(tier_def: dict, group: str, all_tier_defs: tuple) -> dict:
+def _get_eligibility(tier_def: dict, group: str, all_tier_defs: tuple):
+    """Resolve a tier's eligibility for ``group`` to a typed
+    :class:`EligibilitySpec`, following ``eligibility_same_as``
+    references. Returns None when no matching eligibility (or
+    ``default`` fallback) exists — today this happens only for
+    DROP-shaped tier defs and similar edge cases.
+    """
+    from pension_model.schemas import EligibilitySpec  # local to avoid cycle
+
     current = tier_def
     seen = set()
     while "eligibility_same_as" in current:
@@ -52,7 +60,10 @@ def _get_eligibility(tier_def: dict, group: str, all_tier_defs: tuple) -> dict:
         current = _resolve_tier_def(ref, all_tier_defs)
 
     eligibility = current["eligibility"]
-    return eligibility.get(group, eligibility.get("default", {}))
+    raw = eligibility.get(group, eligibility.get("default"))
+    if raw is None:
+        return None
+    return EligibilitySpec.model_validate(raw)
 
 
 def _entry_year_in_tier(entry_year: int, tier_def: dict, new_year: int) -> bool:
