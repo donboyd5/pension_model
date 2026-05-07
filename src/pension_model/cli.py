@@ -311,6 +311,18 @@ def _execute_pipeline(constants, *, check_identities: bool = False):
             + "\n".join(f"  - {p}" for p in missing)
         )
 
+    # Cross-check against the plan's data manifest (additive; the
+    # manifest is the per-plan source of truth, and may declare files
+    # the hardcoded validator above doesn't know about).
+    from pension_model.config_validation import validate_data_manifest
+    manifest_missing = validate_data_manifest(constants)
+    if manifest_missing:
+        raise FileNotFoundError(
+            f"Missing files declared in data_manifest.json for plan "
+            f"'{constants.plan_name}':\n"
+            + "\n".join(f"  - {p}" for p in manifest_missing)
+        )
+
     seen_stages = set()
 
     def _print_stage(stage_name: str) -> None:
@@ -505,18 +517,38 @@ def _get_test_targets(plan_name: str | None = None) -> list[str]:
     return [*DEFAULT_CORE_TEST_FILES, *_load_plan_test_manifest(plan_name)]
 
 
-def run_tests(plan_name: str | None = None):
+def _print_test_banner(plan_name: str | None, targets: list[str]) -> None:
+    """Tell the user up front which test set is running.
+
+    The default for ``pension-model run <plan>`` is plan-scoped — a
+    shared-core slice plus the plan's manifest, not the full repo
+    suite. Without a banner that's a silent surprise.
+    """
+    if plan_name is None:
+        scope = "full suite"
+    else:
+        scope = f"plan-scoped ({plan_name}); pass --full-suite for the full suite"
+    print(f"  Test scope: {scope}")
+    for t in targets:
+        print(f"    - {t}")
+
+
+def run_tests(plan_name: str | None = None) -> bool:
     """Run a shared-core plus plan-specific pytest subset.
 
     When ``plan_name`` is provided, the CLI does not run the full repository
     suite by default. It runs a smaller shared-core slice plus the tests most
-    closely tied to that plan. This keeps post-run validation aligned with the
-    plan the user actually ran while leaving the full suite available via
-    direct pytest invocation or future CI/full-profile commands.
+    closely tied to that plan. Pass ``plan_name=None`` (CLI ``--full-suite``)
+    to run every test in the suite.
     """
     import subprocess
+    targets = _get_test_targets(plan_name)
+    _print_test_banner(plan_name, targets)
+    # When stdout is piped, the prints above can stay buffered until
+    # after the subprocess writes its own output, scrambling the order.
+    sys.stdout.flush()
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", *_get_test_targets(plan_name), "-v", "--tb=short"],
+        [sys.executable, "-m", "pytest", *targets, "-v", "--tb=short"],
     )
     return result.returncode == 0
 
@@ -530,8 +562,9 @@ def cmd_run(args):
     from pension_model.config_loading import discover_plans, load_plan_config
 
     if args.test_only:
+        plan_for_tests = None if args.full_suite else args.plan
         print(f"Running tests for plan '{args.plan}'...")
-        ok = run_tests(args.plan)
+        ok = run_tests(plan_for_tests)
         sys.exit(0 if ok else 1)
 
     plans = discover_plans()
@@ -552,8 +585,9 @@ def cmd_run(args):
     _run_plan(constants, args)
 
     if not args.no_test:
+        plan_for_tests = None if args.full_suite else args.plan
         print(f"\nRunning tests for plan '{args.plan}'...")
-        tests_ok = run_tests(args.plan)
+        tests_ok = run_tests(plan_for_tests)
         sys.exit(0 if tests_ok else 1)
 
 
@@ -569,6 +603,79 @@ def cmd_list(args):
     for name, path in sorted(plans.items()):
         rel = path.relative_to(Path.cwd()) if path.is_relative_to(Path.cwd()) else path
         print(f"  {name:20s} {rel}")
+
+
+def _discover_scenarios(scenarios_dir: Path | None = None) -> dict[str, Path]:
+    """Return ``{scenario_name: path}`` for every JSON under scenarios/."""
+    if scenarios_dir is None:
+        scenarios_dir = Path("scenarios")
+    if not scenarios_dir.exists():
+        return {}
+    return {p.stem: p for p in sorted(scenarios_dir.glob("*.json"))}
+
+
+def cmd_validate_scenarios(args):
+    """Pre-flight: load every (plan, scenario) pair and report failures.
+
+    Exits non-zero if any pair fails to load. Catches typo'd override
+    keys, scenarios that target a feature the plan doesn't have
+    (``requires`` mismatch), and unknown top-level keys — all in
+    seconds, before anyone runs the model.
+    """
+    from pension_model.config_loading import discover_plans, load_plan_config
+
+    plans = discover_plans()
+    scenarios = _discover_scenarios()
+
+    if not plans:
+        print("No plans found under plans/")
+        sys.exit(2)
+    if not scenarios:
+        print("No scenarios found under scenarios/")
+        sys.exit(2)
+
+    plan_filter = {args.plan} if getattr(args, "plan", None) else set(plans)
+    scenario_filter = (
+        {args.scenario} if getattr(args, "scenario", None) else set(scenarios)
+    )
+
+    pairs: list[tuple[str, str]] = [
+        (p, s)
+        for p in sorted(plans)
+        if p in plan_filter
+        for s in sorted(scenarios)
+        if s in scenario_filter
+    ]
+
+    if not pairs:
+        print("No (plan, scenario) pairs match the given filters.")
+        sys.exit(2)
+
+    failures: list[tuple[str, str, str]] = []
+    print(f"Validating {len(pairs)} (plan, scenario) pair(s)...")
+    for plan_name, scen_name in pairs:
+        config_path = plans[plan_name]
+        cal_path = config_path.parent / "calibration.json"
+        scenario_path = scenarios[scen_name]
+        try:
+            load_plan_config(
+                config_path,
+                calibration_path=cal_path if cal_path.exists() else None,
+                scenario_path=scenario_path,
+            )
+            print(f"  ok    {plan_name:12s} {scen_name}")
+        except Exception as exc:  # noqa: BLE001 — report any load-time error
+            print(f"  FAIL  {plan_name:12s} {scen_name}")
+            failures.append((plan_name, scen_name, str(exc)))
+
+    if failures:
+        print(f"\n{len(failures)} failure(s):")
+        for plan_name, scen_name, msg in failures:
+            print(f"\n  {plan_name} + {scen_name}:")
+            for line in msg.splitlines():
+                print(f"    {line}")
+        sys.exit(1)
+    print(f"\nAll {len(pairs)} pair(s) validated.")
 
 
 def cmd_benchmark(args):
@@ -701,6 +808,9 @@ def main():
                        help="Path to scenario JSON file (overrides baseline assumptions)")
     run_p.add_argument("--check-identities", action="store_true",
                        help="Verify MVA, AAL, and NC-dollar identities on funding output")
+    run_p.add_argument("--full-suite", action="store_true",
+                       help="Run the full pytest suite after the model run "
+                            "(default: plan-scoped tests only)")
 
     cal = subparsers.add_parser("calibrate", help="Compute calibration factors")
     cal.add_argument("plan_name", choices=discovered or None,
@@ -724,6 +834,19 @@ def main():
     bench.add_argument("--compare-baseline", type=str, default=None,
                        help="Compare the current benchmark summary against a saved baseline JSON")
 
+    val_scen = subparsers.add_parser(
+        "validate-scenarios",
+        help="Load every (plan, scenario) pair and report failures up front",
+    )
+    val_scen.add_argument(
+        "--plan", choices=discovered or None, default=None,
+        help="Restrict to one plan",
+    )
+    val_scen.add_argument(
+        "--scenario", default=None,
+        help="Restrict to one scenario name (the JSON stem)",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -738,3 +861,5 @@ def main():
         cmd_list(args)
     elif args.command == "benchmark":
         cmd_benchmark(args)
+    elif args.command == "validate-scenarios":
+        cmd_validate_scenarios(args)

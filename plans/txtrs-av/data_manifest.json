@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "description": "Data files required by the txtrs-av plan (AV-first first cut). Single class (`all`). Departures from txtrs: source-backed inputs only, no current_term_vested_cashflow.csv yet (term-vested liability handled differently in this cut), no amort_layers.csv. Mortality files are placeholders pending the AV-first mortality build.",
+  "files": [
+    {
+      "path": "demographics/{class_name}_salary.csv",
+      "scope": "per_class",
+      "required": true,
+      "purpose": "AV-sourced salary distribution by entry_age x yos x age_group"
+    },
+    {
+      "path": "demographics/{class_name}_headcount.csv",
+      "scope": "per_class",
+      "required": true,
+      "purpose": "AV-sourced active headcount by entry_age x yos x age_group"
+    },
+    {
+      "path": "demographics/salary_growth.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Plan-wide salary growth schedule (yos x growth rate)"
+    },
+    {
+      "path": "demographics/retiree_distribution.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Current retiree distribution by entry age"
+    },
+    {
+      "path": "demographics/entrant_profile.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "New-entrant profile (entry age x start salary)"
+    },
+    {
+      "path": "decrements/{class_name}_termination_rates.csv",
+      "scope": "per_class",
+      "required": true,
+      "fallback": "decrements/termination_rates.csv",
+      "purpose": "Withdrawal rates by yos x age group"
+    },
+    {
+      "path": "decrements/{class_name}_retirement_rates.csv",
+      "scope": "per_class",
+      "required": true,
+      "fallback": "decrements/retirement_rates.csv",
+      "purpose": "Retirement rates by age x rate set"
+    },
+    {
+      "path": "decrements/reduction_gft.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Early-retirement reduction table for grandfathered tier"
+    },
+    {
+      "path": "decrements/reduction_others.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Early-retirement reduction table for non-grandfathered tiers"
+    },
+    {
+      "path": "mortality/base_rates.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Base mortality rates"
+    },
+    {
+      "path": "mortality/improvement_scale.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Mortality improvement scale"
+    },
+    {
+      "path": "funding/init_funding.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Initial funding state from AV"
+    },
+    {
+      "path": "funding/current_term_vested_cashflow.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Synthetic cashflow stream sizing the current term-vested AAL"
+    }
+  ]
+}

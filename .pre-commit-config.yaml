@@ -1,0 +1,51 @@
+# Pre-commit hooks. Install once:
+#
+#     pip install pre-commit
+#     pre-commit install
+#
+# Hooks run automatically on `git commit`; run on the whole repo with
+# `pre-commit run --all-files`.
+#
+# This file intentionally enables only file-hygiene hooks. The repo's
+# existing ruff/black/mypy configuration in pyproject.toml describes
+# the intended style, but the codebase has accumulated drift that a
+# blanket `ruff --fix` + `black` pass would touch ~60 files.
+# That cleanup belongs in its own focused PR (tracked as Phase A.3).
+# Once it lands, uncomment the ruff/black/mypy blocks below and
+# rerun `pre-commit run --all-files`.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        # Snapshot and baseline fixtures are bit-identity-tested;
+        # leave their byte content untouched.
+        exclude: ^(plans/.*/baselines/|tests/fixtures/funding_snapshots/)
+      - id: end-of-file-fixer
+        exclude: ^(plans/.*/baselines/|tests/fixtures/funding_snapshots/)
+      - id: check-json
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=2000"]
+      - id: check-merge-conflict
+
+  # TODO (Phase A.3): enable ruff once the existing lint findings are
+  # cleaned up. Most are auto-fixable (UP045, I001, F401); ~30 require
+  # manual edits (E402 module-level import order, F821 string-quoted
+  # type annotations).
+  #
+  # - repo: https://github.com/astral-sh/ruff-pre-commit
+  #   rev: v0.7.4
+  #   hooks:
+  #     - id: ruff
+  #       args: [--fix]
+
+  # TODO (Phase A.3): enable black once the existing formatting drift
+  # is resolved (~60 files would be reformatted today).
+  #
+  # - repo: https://github.com/psf/black-pre-commit-mirror
+  #   rev: 24.10.0
+  #   hooks:
+  #     - id: black

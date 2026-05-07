@@ -1,5 +1,10 @@
 """Validation helpers for loaded plan configs."""
 
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
 
 def validate_funding_legs(config) -> None:
     """Fatal check: funding legs are non-overlapping and cover the full
@@ -143,4 +148,57 @@ def validate_data_files(config) -> list[str]:
     if not (funding_dir / "init_funding.csv").exists():
         missing.append(str(funding_dir / "init_funding.csv"))
 
+    return missing
+
+
+def _resolve_manifest_path(config) -> Path:
+    """Return the expected location of this plan's data manifest.
+
+    The manifest lives at ``plans/<plan>/data_manifest.json`` — sibling
+    to the ``config/`` and ``data/`` directories.
+    """
+    return config.resolve_data_dir().parent / "data_manifest.json"
+
+
+def _expand_manifest_entry_paths(entry: dict, classes: list[str]) -> list[str]:
+    """Expand a manifest entry's ``path`` field for its declared scope."""
+    scope = entry.get("scope", "plan")
+    template = entry["path"]
+    if scope == "per_class":
+        return [template.format(**{"class_name": cn}) for cn in classes]
+    return [template]
+
+
+def validate_data_manifest(config) -> list[str]:
+    """Return missing required files per the plan's ``data_manifest.json``.
+
+    A manifest is the per-plan source of truth for what data files the
+    plan needs. Each entry declares ``path`` (with optional
+    ``{class_name}`` placeholder), ``scope`` (``"plan"`` or
+    ``"per_class"``), ``required``, and an optional ``fallback`` path
+    (an alternate location that, if present, satisfies the entry).
+
+    Returns an empty list if the plan has no manifest, so this check is
+    additive — not a replacement for :func:`validate_data_files`.
+    """
+    manifest_path = _resolve_manifest_path(config)
+    if not manifest_path.exists():
+        return []
+
+    manifest = json.loads(manifest_path.read_text())
+    data_dir = config.resolve_data_dir()
+    classes = list(config.classes)
+
+    missing: list[str] = []
+    for entry in manifest.get("files", []):
+        if not entry.get("required", False):
+            continue
+        for relative in _expand_manifest_entry_paths(entry, classes):
+            primary = data_dir / relative
+            if primary.exists():
+                continue
+            fallback = entry.get("fallback")
+            if fallback and (data_dir / fallback).exists():
+                continue
+            missing.append(str(primary))
     return missing
