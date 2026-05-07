@@ -19,7 +19,9 @@ def _phase_payroll(f: pd.DataFrame, i: int, ctx: FundingContext) -> None:
     if ctx.has_cb:
         f.loc[i, "payroll_cb_new"] = f.loc[i, "total_payroll"] * f.loc[i, "payroll_cb_new_ratio"]
     if ctx.has_dc:
-        f.loc[i, "payroll_dc_legacy"] = f.loc[i, "total_payroll"] * f.loc[i, "payroll_dc_legacy_ratio"]
+        f.loc[i, "payroll_dc_legacy"] = (
+            f.loc[i, "total_payroll"] * f.loc[i, "payroll_dc_legacy_ratio"]
+        )
         f.loc[i, "payroll_dc_new"] = f.loc[i, "total_payroll"] * f.loc[i, "payroll_dc_new_ratio"]
 
 
@@ -29,7 +31,9 @@ def _phase_dc_contributions(f: pd.DataFrame, i: int) -> None:
     f.loc[i, "total_er_dc_cont"] = f.loc[i, "er_dc_cont_legacy"] + f.loc[i, "er_dc_cont_new"]
 
 
-def _phase_benefits_refunds(f: pd.DataFrame, liab: pd.DataFrame, i: int, ctx: FundingContext) -> None:
+def _phase_benefits_refunds(
+    f: pd.DataFrame, liab: pd.DataFrame, i: int, ctx: FundingContext
+) -> None:
     f.loc[i, "ben_payment_legacy"] = (
         liab["retire_ben_db_legacy_est"].iloc[i]
         + liab["retire_ben_current_est"].iloc[i]
@@ -50,7 +54,9 @@ def _nc_rate_agg(agg: pd.DataFrame, i: int, ctx: FundingContext) -> None:
     denom = agg.loc[i, "payroll_db_legacy"] + agg.loc[i, "payroll_db_new"]
     if ctx.has_cb:
         denom = denom + agg.loc[i, "payroll_cb_new"]
-    agg.loc[i, "nc_rate"] = (agg.loc[i, "nc_legacy"] + agg.loc[i, "nc_new"]) / denom if denom > 0 else 0
+    agg.loc[i, "nc_rate"] = (
+        (agg.loc[i, "nc_legacy"] + agg.loc[i, "nc_new"]) / denom if denom > 0 else 0
+    )
 
 
 def _phase_normal_cost(f: pd.DataFrame, i: int, ctx: FundingContext) -> None:
@@ -79,29 +85,55 @@ def _phase_drop_projection(funding: dict, agg: pd.DataFrame, i: int, ctx: Fundin
     if reg.loc[i - 1, "total_ben_payment"] > 0:
         drop.loc[i, "total_ben_payment"] = (
             drop.loc[i - 1, "total_ben_payment"]
-            * reg.loc[i, "total_ben_payment"] / reg.loc[i - 1, "total_ben_payment"]
+            * reg.loc[i, "total_ben_payment"]
+            / reg.loc[i - 1, "total_ben_payment"]
         )
     if reg.loc[i - 1, "total_refund"] > 0:
         drop.loc[i, "total_refund"] = (
             drop.loc[i - 1, "total_refund"]
-            * reg.loc[i, "total_refund"] / reg.loc[i - 1, "total_refund"]
+            * reg.loc[i, "total_refund"]
+            / reg.loc[i - 1, "total_refund"]
         )
 
     if reg.loc[i, "total_ben_payment"] > 0:
-        drop.loc[i, "ben_payment_legacy"] = drop.loc[i, "total_ben_payment"] * reg.loc[i, "ben_payment_legacy"] / reg.loc[i, "total_ben_payment"]
-        drop.loc[i, "ben_payment_new"] = drop.loc[i, "total_ben_payment"] * reg.loc[i, "ben_payment_new"] / reg.loc[i, "total_ben_payment"]
+        drop.loc[i, "ben_payment_legacy"] = (
+            drop.loc[i, "total_ben_payment"]
+            * reg.loc[i, "ben_payment_legacy"]
+            / reg.loc[i, "total_ben_payment"]
+        )
+        drop.loc[i, "ben_payment_new"] = (
+            drop.loc[i, "total_ben_payment"]
+            * reg.loc[i, "ben_payment_new"]
+            / reg.loc[i, "total_ben_payment"]
+        )
     if reg.loc[i, "total_refund"] > 0:
-        drop.loc[i, "refund_legacy"] = drop.loc[i, "total_refund"] * reg.loc[i, "refund_legacy"] / reg.loc[i, "total_refund"]
-        drop.loc[i, "refund_new"] = drop.loc[i, "total_refund"] * reg.loc[i, "refund_new"] / reg.loc[i, "total_refund"]
+        drop.loc[i, "refund_legacy"] = (
+            drop.loc[i, "total_refund"] * reg.loc[i, "refund_legacy"] / reg.loc[i, "total_refund"]
+        )
+        drop.loc[i, "refund_new"] = (
+            drop.loc[i, "total_refund"] * reg.loc[i, "refund_new"] / reg.loc[i, "total_refund"]
+        )
 
-    drop.loc[i, "nc_rate_db_legacy"] = agg.loc[i, "nc_legacy"] / agg.loc[i, "payroll_db_legacy"] if agg.loc[i, "payroll_db_legacy"] > 0 else 0
-    drop.loc[i, "nc_rate_db_new"] = agg.loc[i, "nc_new"] / agg.loc[i, "payroll_db_new"] if agg.loc[i, "payroll_db_new"] > 0 else 0
+    drop.loc[i, "nc_rate_db_legacy"] = (
+        agg.loc[i, "nc_legacy"] / agg.loc[i, "payroll_db_legacy"]
+        if agg.loc[i, "payroll_db_legacy"] > 0
+        else 0
+    )
+    drop.loc[i, "nc_rate_db_new"] = (
+        agg.loc[i, "nc_new"] / agg.loc[i, "payroll_db_new"]
+        if agg.loc[i, "payroll_db_new"] > 0
+        else 0
+    )
     drop.loc[i, "nc_legacy"] = drop.loc[i, "nc_rate_db_legacy"] * drop.loc[i, "payroll_db_legacy"]
     drop.loc[i, "nc_new"] = drop.loc[i, "nc_rate_db_new"] * drop.loc[i, "payroll_db_new"]
 
     drop.loc[i, "aal_legacy"] = (
         drop.loc[i - 1, "aal_legacy"] * (1 + ctx.dr_current)
-        + (drop.loc[i, "nc_legacy"] - drop.loc[i, "ben_payment_legacy"] - drop.loc[i, "refund_legacy"])
+        + (
+            drop.loc[i, "nc_legacy"]
+            - drop.loc[i, "ben_payment_legacy"]
+            - drop.loc[i, "refund_legacy"]
+        )
         * (1 + ctx.dr_current) ** 0.5
     )
     drop.loc[i, "aal_new"] = (
@@ -113,14 +145,33 @@ def _phase_drop_projection(funding: dict, agg: pd.DataFrame, i: int, ctx: Fundin
     funding["drop"] = drop
 
     _maybe_accumulate(ctx, agg, drop, i, ["total_payroll", "payroll_db_legacy", "payroll_db_new"])
-    _maybe_accumulate(ctx, agg, drop, i, [
-        "ben_payment_legacy", "refund_legacy", "ben_payment_new", "refund_new", "total_ben_payment", "total_refund",
-    ])
+    _maybe_accumulate(
+        ctx,
+        agg,
+        drop,
+        i,
+        [
+            "ben_payment_legacy",
+            "refund_legacy",
+            "ben_payment_new",
+            "refund_new",
+            "total_ben_payment",
+            "total_refund",
+        ],
+    )
     _maybe_accumulate(ctx, agg, drop, i, ["nc_legacy", "nc_new"])
 
     _nc_rate_agg(agg, i, ctx)
-    agg.loc[i, "nc_rate_db_legacy"] = agg.loc[i, "nc_legacy"] / agg.loc[i, "payroll_db_legacy"] if agg.loc[i, "payroll_db_legacy"] > 0 else 0
-    agg.loc[i, "nc_rate_db_new"] = agg.loc[i, "nc_new"] / agg.loc[i, "payroll_db_new"] if agg.loc[i, "payroll_db_new"] > 0 else 0
+    agg.loc[i, "nc_rate_db_legacy"] = (
+        agg.loc[i, "nc_legacy"] / agg.loc[i, "payroll_db_legacy"]
+        if agg.loc[i, "payroll_db_legacy"] > 0
+        else 0
+    )
+    agg.loc[i, "nc_rate_db_new"] = (
+        agg.loc[i, "nc_new"] / agg.loc[i, "payroll_db_new"]
+        if agg.loc[i, "payroll_db_new"] > 0
+        else 0
+    )
     _maybe_accumulate(ctx, agg, drop, i, ["aal_legacy", "aal_new", "total_aal"])
 
 
@@ -128,10 +179,18 @@ def _finalize_ava_with_drop(funding: dict, agg: pd.DataFrame, i: int, ctx: Fundi
     if ctx.has_drop:
         drop = funding["drop"]
         if agg.loc[i, "aal_legacy"] != 0:
-            drop.loc[i, "net_reallocation_legacy"] = drop.loc[i, "unadj_ava_legacy"] - drop.loc[i, "aal_legacy"] * agg.loc[i, "ava_legacy"] / agg.loc[i, "aal_legacy"]
-        drop.loc[i, "ava_legacy"] = drop.loc[i, "unadj_ava_legacy"] - drop.loc[i, "net_reallocation_legacy"]
+            drop.loc[i, "net_reallocation_legacy"] = (
+                drop.loc[i, "unadj_ava_legacy"]
+                - drop.loc[i, "aal_legacy"] * agg.loc[i, "ava_legacy"] / agg.loc[i, "aal_legacy"]
+            )
+        drop.loc[i, "ava_legacy"] = (
+            drop.loc[i, "unadj_ava_legacy"] - drop.loc[i, "net_reallocation_legacy"]
+        )
         if agg.loc[i, "aal_new"] != 0:
-            drop.loc[i, "net_reallocation_new"] = drop.loc[i, "unadj_ava_new"] - drop.loc[i, "aal_new"] * agg.loc[i, "ava_new"] / agg.loc[i, "aal_new"]
+            drop.loc[i, "net_reallocation_new"] = (
+                drop.loc[i, "unadj_ava_new"]
+                - drop.loc[i, "aal_new"] * agg.loc[i, "ava_new"] / agg.loc[i, "aal_new"]
+            )
         drop.loc[i, "ava_new"] = drop.loc[i, "unadj_ava_new"] - drop.loc[i, "net_reallocation_new"]
         funding["drop"] = drop
 
@@ -140,7 +199,9 @@ def _finalize_ava_with_drop(funding: dict, agg: pd.DataFrame, i: int, ctx: Fundi
             agg_ex_drop_leg = agg.loc[i, "aal_legacy"] - drop.loc[i, "aal_legacy"]
             prop_leg = f.loc[i, "aal_legacy"] / agg_ex_drop_leg if agg_ex_drop_leg != 0 else 0
             f.loc[i, "net_reallocation_legacy"] = prop_leg * drop.loc[i, "net_reallocation_legacy"]
-            f.loc[i, "ava_legacy"] = f.loc[i, "unadj_ava_legacy"] + f.loc[i, "net_reallocation_legacy"]
+            f.loc[i, "ava_legacy"] = (
+                f.loc[i, "unadj_ava_legacy"] + f.loc[i, "net_reallocation_legacy"]
+            )
 
             agg_ex_drop_new = agg.loc[i, "aal_new"] - drop.loc[i, "aal_new"]
             prop_new = f.loc[i, "aal_new"] / agg_ex_drop_new if agg_ex_drop_new != 0 else 0
@@ -155,7 +216,9 @@ def _finalize_ava_with_drop(funding: dict, agg: pd.DataFrame, i: int, ctx: Fundi
             funding[cn] = f
 
 
-def _phase_ava_corridor_smoothing(agg: pd.DataFrame, i: int, ava_strategy, dr_current: float, dr_new: float) -> None:
+def _phase_ava_corridor_smoothing(
+    agg: pd.DataFrame, i: int, ava_strategy, dr_current: float, dr_new: float
+) -> None:
     for leg, dr in (("legacy", dr_current), ("new", dr_new)):
         result = ava_strategy.smooth(
             ava_prev=agg.loc[i - 1, f"ava_{leg}"],
@@ -171,7 +234,9 @@ def _phase_ava_corridor_smoothing(agg: pd.DataFrame, i: int, ava_strategy, dr_cu
         agg.loc[i, f"ava_base_{leg}"] = result["ava_base"]
 
 
-def _phase_ava_gainloss_smoothing(f: pd.DataFrame, i: int, ava_strategy, dr_current: float, dr_new: float) -> None:
+def _phase_ava_gainloss_smoothing(
+    f: pd.DataFrame, i: int, ava_strategy, dr_current: float, dr_new: float
+) -> None:
     for leg, dr in (("legacy", dr_current), ("new", dr_new)):
         result = ava_strategy.smooth(
             ava_prev=f.loc[i - 1, f"ava_{leg}"],
@@ -203,31 +268,57 @@ def _phase_amort_rolling(funding: dict, amort_state: dict, i: int, ctx: FundingC
             amo = amort_state["amo_tables"][cn]
             mc = amo["max_col"]
             _roll_amort_layer(
-                debt=amo["cur_debt"], pay=amo["cur_pay"], per=amo["cur_per"],
-                i=i, max_col=mc, ual=f.loc[i, "ual_ava_legacy"], dr=ctx.dr_current, amo_pay_growth=ctx.amo_pay_growth,
+                debt=amo["cur_debt"],
+                pay=amo["cur_pay"],
+                per=amo["cur_per"],
+                i=i,
+                max_col=mc,
+                ual=f.loc[i, "ual_ava_legacy"],
+                dr=ctx.dr_current,
+                amo_pay_growth=ctx.amo_pay_growth,
             )
             _roll_amort_layer(
-                debt=amo["fut_debt"], pay=amo["fut_pay"], per=amo["fut_per"],
-                i=i, max_col=mc, ual=f.loc[i, "ual_ava_new"], dr=ctx.dr_new, amo_pay_growth=ctx.amo_pay_growth,
+                debt=amo["fut_debt"],
+                pay=amo["fut_pay"],
+                per=amo["fut_per"],
+                i=i,
+                max_col=mc,
+                ual=f.loc[i, "ual_ava_new"],
+                dr=ctx.dr_new,
+                amo_pay_growth=ctx.amo_pay_growth,
             )
         return
 
     f = funding[ctx.class_names[0]]
     n_amo = amort_state["n_amo"]
     _roll_amort_layer(
-        debt=amort_state["debt_current"], pay=amort_state["pay_current"], per=amort_state["amo_per_current_diag"],
-        i=i, max_col=n_amo, ual=f.loc[i, "ual_ava_legacy"], dr=ctx.dr_current, amo_pay_growth=ctx.amo_pay_growth,
+        debt=amort_state["debt_current"],
+        pay=amort_state["pay_current"],
+        per=amort_state["amo_per_current_diag"],
+        i=i,
+        max_col=n_amo,
+        ual=f.loc[i, "ual_ava_legacy"],
+        dr=ctx.dr_current,
+        amo_pay_growth=ctx.amo_pay_growth,
     )
     _roll_amort_layer(
-        debt=amort_state["debt_new"], pay=amort_state["pay_new"], per=amort_state["amo_per_new"],
-        i=i, max_col=n_amo, ual=f.loc[i, "ual_ava_new"], dr=ctx.dr_new, amo_pay_growth=ctx.amo_pay_growth,
+        debt=amort_state["debt_new"],
+        pay=amort_state["pay_new"],
+        per=amort_state["amo_per_new"],
+        i=i,
+        max_col=n_amo,
+        ual=f.loc[i, "ual_ava_new"],
+        dr=ctx.dr_new,
+        amo_pay_growth=ctx.amo_pay_growth,
     )
 
 
 def _phase_er_cont_totals(f: pd.DataFrame, i: int, ctx: FundingContext) -> None:
     total = (
-        f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
-        + f.loc[i, "er_amo_cont_legacy"] + f.loc[i, "er_amo_cont_new"]
+        f.loc[i, "er_nc_cont_legacy"]
+        + f.loc[i, "er_nc_cont_new"]
+        + f.loc[i, "er_amo_cont_legacy"]
+        + f.loc[i, "er_amo_cont_new"]
         + f.loc[i, "solv_cont"]
     )
     if ctx.has_dc:
@@ -273,32 +364,48 @@ def _phase_contributions(f: pd.DataFrame, i: int, ctx: FundingContext) -> None:
 
 def _phase_cash_flow_and_solvency(f: pd.DataFrame, i: int, roa: float) -> None:
     cf_legacy = (
-        f.loc[i, "ee_nc_cont_legacy"] + f.loc[i, "er_nc_cont_legacy"]
-        + f.loc[i, "er_amo_cont_legacy"] - f.loc[i, "ben_payment_legacy"]
-        - f.loc[i, "refund_legacy"] - f.loc[i, "admin_exp_legacy"]
+        f.loc[i, "ee_nc_cont_legacy"]
+        + f.loc[i, "er_nc_cont_legacy"]
+        + f.loc[i, "er_amo_cont_legacy"]
+        - f.loc[i, "ben_payment_legacy"]
+        - f.loc[i, "refund_legacy"]
+        - f.loc[i, "admin_exp_legacy"]
     )
     cf_new = (
-        f.loc[i, "ee_nc_cont_new"] + f.loc[i, "er_nc_cont_new"]
-        + f.loc[i, "er_amo_cont_new"] - f.loc[i, "ben_payment_new"]
-        - f.loc[i, "refund_new"] - f.loc[i, "admin_exp_new"]
+        f.loc[i, "ee_nc_cont_new"]
+        + f.loc[i, "er_nc_cont_new"]
+        + f.loc[i, "er_amo_cont_new"]
+        - f.loc[i, "ben_payment_new"]
+        - f.loc[i, "refund_new"]
+        - f.loc[i, "admin_exp_new"]
     )
 
-    f.loc[i, "solv_cont"] = _solvency_cont(mva_prev=f.loc[i - 1, "total_mva"], cf_total=cf_legacy + cf_new, roa=roa)
+    f.loc[i, "solv_cont"] = _solvency_cont(
+        mva_prev=f.loc[i - 1, "total_mva"], cf_total=cf_legacy + cf_new, roa=roa
+    )
     if f.loc[i, "total_aal"] > 0:
-        f.loc[i, "solv_cont_legacy"] = f.loc[i, "solv_cont"] * f.loc[i, "aal_legacy"] / f.loc[i, "total_aal"]
-        f.loc[i, "solv_cont_new"] = f.loc[i, "solv_cont"] * f.loc[i, "aal_new"] / f.loc[i, "total_aal"]
+        f.loc[i, "solv_cont_legacy"] = (
+            f.loc[i, "solv_cont"] * f.loc[i, "aal_legacy"] / f.loc[i, "total_aal"]
+        )
+        f.loc[i, "solv_cont_new"] = (
+            f.loc[i, "solv_cont"] * f.loc[i, "aal_new"] / f.loc[i, "total_aal"]
+        )
 
     f.loc[i, "net_cf_legacy"] = cf_legacy + f.loc[i, "solv_cont_legacy"]
     f.loc[i, "net_cf_new"] = cf_new + f.loc[i, "solv_cont_new"]
 
 
 def _phase_mva(f: pd.DataFrame, i: int, roa: float) -> None:
-    f.loc[i, "mva_legacy"] = _mva_rollforward(f.loc[i - 1, "mva_legacy"], f.loc[i, "net_cf_legacy"], roa)
+    f.loc[i, "mva_legacy"] = _mva_rollforward(
+        f.loc[i - 1, "mva_legacy"], f.loc[i, "net_cf_legacy"], roa
+    )
     f.loc[i, "mva_new"] = _mva_rollforward(f.loc[i - 1, "mva_new"], f.loc[i, "net_cf_new"], roa)
     f.loc[i, "total_mva"] = f.loc[i, "mva_legacy"] + f.loc[i, "mva_new"]
 
 
-def _phase_liability_gl_and_aal(f: pd.DataFrame, liab: pd.DataFrame, i: int, dr_current: float, dr_new: float) -> None:
+def _phase_liability_gl_and_aal(
+    f: pd.DataFrame, liab: pd.DataFrame, i: int, dr_current: float, dr_new: float
+) -> None:
     f.loc[i, "liability_gain_loss_legacy"] = liab["liability_gain_loss_legacy_est"].iloc[i]
     f.loc[i, "liability_gain_loss_new"] = liab["liability_gain_loss_new_est"].iloc[i]
     f.loc[i, "aal_legacy"] = _aal_rollforward(

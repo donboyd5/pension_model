@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import ConfigDict, Field
 
 from pension_model.schemas.base import StrictModel
@@ -39,8 +37,8 @@ class Calibration(StrictModel):
     # entries the loader doesn't understand yet.
     model_config = ConfigDict(extra="allow", frozen=True)
 
-    description: Optional[str] = None
-    source: Optional[str] = None
-    notes: Optional[str] = None
-    cal_factor: Optional[float] = None
+    description: str | None = None
+    source: str | None = None
+    notes: str | None = None
+    cal_factor: float | None = None
     classes: dict[str, ClassCalibration] = Field(default_factory=dict)

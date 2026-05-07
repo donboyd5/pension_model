@@ -24,7 +24,6 @@ from pension_model.config_resolvers import (
 )
 from pension_model.config_schema import EARLY, NON_VESTED, NORM, VESTED, PlanConfig
 
-
 __all__ = [
     "EARLY",
     "NON_VESTED",

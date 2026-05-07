@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pension_model.schemas.base import StrictModel
 
 
@@ -16,8 +14,8 @@ class AgeGroup(StrictModel):
     """
 
     label: str
-    min_age: Optional[int] = None
-    max_age: Optional[int] = None
+    min_age: int | None = None
+    max_age: int | None = None
 
 
 class Modeling(StrictModel):
@@ -33,4 +31,4 @@ class Modeling(StrictModel):
     entrant_salary_at_start_year: bool = False
     use_earliest_retire: bool = False
     male_mp_forward_shift: int = 0
-    age_groups: Optional[list[AgeGroup]] = None
+    age_groups: list[AgeGroup] | None = None

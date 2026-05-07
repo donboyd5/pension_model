@@ -37,7 +37,6 @@ import pandas as pd
 
 from pension_model.core.pipeline_current import _npv
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PLAN_DIR = PROJECT_ROOT / "plans" / "txtrs"
 CONFIG_PATH = PLAN_DIR / "config" / "plan_config.json"
@@ -62,9 +61,7 @@ def build_class_stream(
     mid = amo_period / 2
     spread = amo_period / 5
     seq = np.arange(1, amo_period + 1)
-    weights = (1 / (spread * np.sqrt(2 * np.pi))) * np.exp(
-        -0.5 * ((seq - mid) / spread) ** 2
-    )
+    weights = (1 / (spread * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((seq - mid) / spread) ** 2)
     ann_ratio = weights / weights[0]
     first_payment = pvfb_term_current / _npv(cashflow_rate, ann_ratio)
     return list(first_payment * ann_ratio)

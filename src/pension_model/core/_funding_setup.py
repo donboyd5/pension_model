@@ -1,13 +1,12 @@
 """Funding-model context and setup helpers."""
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from pension_model.config_schema import PlanConfig
-from pension_model.core.pipeline_current import _get_pmt
 from pension_model.core._funding_helpers import (
     _get_init_row,
     _populate_calibrated_nc_rates,
@@ -19,6 +18,7 @@ from pension_model.core._funding_strategies import (
     RateComponent,
     StatutoryContributions,
 )
+from pension_model.core.pipeline_current import _get_pmt
 from pension_model.core.returns import build_return_stream
 
 
@@ -28,7 +28,7 @@ class FundingContext:
 
     dr_current: float
     dr_new: float
-    dr_old: Optional[float]
+    dr_old: float | None
     payroll_growth: float
     amo_pay_growth: float
     amo_period_new: int
@@ -42,14 +42,14 @@ class FundingContext:
     class_names: list
     agg_name: str
     has_drop: bool
-    drop_ref_class: Optional[str]
+    drop_ref_class: str | None
     all_classes: list
     builds_aggregate_in_loop: bool
     has_cb: bool
     has_dc: bool
     funding_policy: str
     init_funding: pd.DataFrame
-    amort_layers: Optional[pd.DataFrame]
+    amort_layers: pd.DataFrame | None
     ret_scen: pd.Series = field(default_factory=lambda: pd.Series(dtype=float))
 
 
@@ -96,10 +96,7 @@ def resolve_funding_context(
     # earnings to classes). Class count alone is insufficient: a
     # single-class plan with corridor smoothing still needs the
     # aggregate built up so the allocate-back step has values to read.
-    builds_aggregate_in_loop = (
-        len(class_names) > 1
-        or ava_strategy.aggregation_level == "plan"
-    )
+    builds_aggregate_in_loop = len(class_names) > 1 or ava_strategy.aggregation_level == "plan"
 
     # ``fund.contribution_strategy`` validity is enforced by the
     # Funding schema (Literal["statutory", "actuarial"]); the
@@ -108,8 +105,7 @@ def resolve_funding_context(
     if fund.contribution_strategy == "statutory":
         stat_rates = fund.statutory_rates
         ee_schedule = [
-            {"from_year": e.from_year, "rate": e.rate}
-            for e in stat_rates.ee_rate_schedule
+            {"from_year": e.from_year, "rate": e.rate} for e in stat_rates.ee_rate_schedule
         ]
         cont_strategy = StatutoryContributions(
             funding_policy=fund.policy,
@@ -150,9 +146,7 @@ def resolve_funding_context(
     )
 
 
-def _build_return_stream_for_funding(
-    constants: PlanConfig, ava_strategy
-) -> pd.Series:
+def _build_return_stream_for_funding(constants: PlanConfig, ava_strategy) -> pd.Series:
     """Return stream for the funding model.
 
     Same as :func:`build_return_stream`, except: when the smoothing
@@ -181,10 +175,7 @@ def resolve_er_rate_components(stat_rates) -> list:
     strategy-side ``RateComponent`` via ``model_dump()`` — the field
     shapes match by design.
     """
-    return [
-        RateComponent.from_config(c.model_dump())
-        for c in stat_rates.er_rate_components
-    ]
+    return [RateComponent.from_config(c.model_dump()) for c in stat_rates.er_rate_components]
 
 
 def setup_funding_frames(ctx: FundingContext) -> dict:
@@ -224,7 +215,7 @@ def setup_amort_state(ctx: FundingContext, funding: dict, constants: PlanConfig)
 
             cur_debt = np.zeros((ctx.n_years, max_col + 1))
             if len(init_bal) > 0:
-                cur_debt[0, :len(init_bal)] = init_bal
+                cur_debt[0, : len(init_bal)] = init_bal
             fut_debt = np.zeros((ctx.n_years, max_col + 1))
 
             cur_pay = np.zeros((ctx.n_years, max_col))
@@ -235,7 +226,7 @@ def setup_amort_state(ctx: FundingContext, funding: dict, constants: PlanConfig)
                         dr_old, ctx.amo_pay_growth, int(cur_per[0, j]), cur_debt[0, j], t=0.5
                     )
             if ctx.funding_lag > 0:
-                cur_pay[0, :ctx.funding_lag] = 0
+                cur_pay[0, : ctx.funding_lag] = 0
 
             fut_pay = np.zeros((ctx.n_years, max_col))
             amo_tables[cn] = {
@@ -258,7 +249,7 @@ def setup_amort_state(ctx: FundingContext, funding: dict, constants: PlanConfig)
     n_amo = max(len(amo_seq_current), len(amo_seq_new), amo_period_new + ctx.funding_lag)
 
     amo_per_current_diag = np.zeros((n_years, n_amo))
-    amo_per_current_diag[0, :len(amo_seq_current)] = amo_seq_current
+    amo_per_current_diag[0, : len(amo_seq_current)] = amo_seq_current
     for row in range(1, n_years):
         amo_per_current_diag[row, 0] = amo_seq_new[0] if len(amo_seq_new) > 0 else 0
     for j in range(1, n_amo):
@@ -281,7 +272,11 @@ def setup_amort_state(ctx: FundingContext, funding: dict, constants: PlanConfig)
     debt_current[0, 0] = f.loc[0, "total_ual_ava"]
     if amo_per_current_diag[0, 0] > 0:
         pay_current[0, 0] = _get_pmt(
-            ctx.dr_current, ctx.amo_pay_growth, int(amo_per_current_diag[0, 0]), debt_current[0, 0], t=0.5
+            ctx.dr_current,
+            ctx.amo_pay_growth,
+            int(amo_per_current_diag[0, 0]),
+            debt_current[0, 0],
+            t=0.5,
         )
 
     return {

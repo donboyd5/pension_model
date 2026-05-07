@@ -9,11 +9,9 @@ class-specific table check ``base_table_map`` first and fall back to
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pension_model.schemas.base import StrictModel
 
 
 class MortalitySpec(StrictModel):
     base_table: str = "general"
-    improvement_scale: Optional[str] = None
+    improvement_scale: str | None = None

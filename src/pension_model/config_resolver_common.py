@@ -17,7 +17,7 @@ def _lookup_reduce_table(table, table_key: str, dist_age: int, yos: int) -> floa
         age_cols = [c for c in table.columns if c != "yos"]
         age_col = int(dist_age) if int(dist_age) in age_cols else None
         if age_col is None:
-            int_cols = [c for c in age_cols if isinstance(c, (int, float))]
+            int_cols = [c for c in age_cols if isinstance(c, int | float)]
             if int_cols:
                 age_col = min(int_cols, key=lambda x: abs(x - dist_age))
         if age_col is not None:

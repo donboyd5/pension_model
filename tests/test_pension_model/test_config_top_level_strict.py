@@ -20,7 +20,6 @@ from pension_model.config_loading import (
     load_plan_config_by_name,
 )
 
-
 pytestmark = [pytest.mark.unit]
 
 

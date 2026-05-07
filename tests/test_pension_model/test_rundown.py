@@ -25,9 +25,10 @@ The test verifies:
 
 import sys
 from pathlib import Path
-import pytest
+
 import numpy as np
 import pandas as pd
+import pytest
 
 pytestmark = [pytest.mark.invariant, pytest.mark.slow, pytest.mark.plan_frs]
 
@@ -45,8 +46,8 @@ def rundown_results():
 
     Returns (liability_dict, funding_dict, constants).
     """
-    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import load_funding_inputs, run_funding_model
+    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.plan_config import load_plan_config_by_name
 
     constants = load_plan_config_by_name("frs")
@@ -69,6 +70,7 @@ def rundown_results():
 # Demographics (liability pipeline)
 # ---------------------------------------------------------------------------
 
+
 class TestRundownDemographics:
     """Verify the population runs down to zero."""
 
@@ -80,7 +82,8 @@ class TestRundownDemographics:
         for i in range(1, len(actives)):
             assert actives[i] <= actives[i - 1] + 1e-6, (
                 f"{class_name} year {i}: active count increased "
-                f"from {actives[i-1]:.1f} to {actives[i]:.1f}")
+                f"from {actives[i-1]:.1f} to {actives[i]:.1f}"
+            )
 
     @pytest.mark.parametrize("class_name", CLASSES)
     def test_active_count_reaches_near_zero(self, class_name, rundown_results):
@@ -91,12 +94,14 @@ class TestRundownDemographics:
         pct_remaining = final / initial * 100 if initial > 0 else 0
         assert pct_remaining < 1.0, (
             f"{class_name}: active count still {pct_remaining:.2f}% "
-            f"of initial after {RUNDOWN_PERIOD} years")
+            f"of initial after {RUNDOWN_PERIOD} years"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Liability AAL rundown
 # ---------------------------------------------------------------------------
+
 
 class TestRundownLiabilities:
     """Verify liabilities run down."""
@@ -111,7 +116,8 @@ class TestRundownLiabilities:
         assert pct_remaining < 0.001, (
             f"{class_name}: AAL still {pct_remaining:.6f}% "
             f"of initial after {RUNDOWN_PERIOD} years "
-            f"(${final:,.0f} remaining)")
+            f"(${final:,.0f} remaining)"
+        )
 
     def test_benefit_payments_eventually_decline(self, rundown_results):
         """Benefits should peak and then decline as retirees die (regular class)."""
@@ -124,7 +130,8 @@ class TestRundownLiabilities:
         if peak_val > 0:
             assert last_quarter_avg < peak_val, (
                 f"Benefits not declining: peak={peak_val:.0f} at year {peak_idx}, "
-                f"last quarter avg={last_quarter_avg:.0f}")
+                f"last quarter avg={last_quarter_avg:.0f}"
+            )
 
     def test_benefits_reach_zero(self, rundown_results):
         """Benefit payments should reach zero — no participants left to pay."""
@@ -134,12 +141,14 @@ class TestRundownLiabilities:
         pct = abs(final_ben) / abs(initial_aal) * 100 if abs(initial_aal) > 0 else 0
         assert pct < 0.001, (
             f"Benefits still {pct:.6f}% of initial AAL after {RUNDOWN_PERIOD} years "
-            f"(${final_ben:,.0f} remaining)")
+            f"(${final_ben:,.0f} remaining)"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Funding model stability
 # ---------------------------------------------------------------------------
+
 
 class TestRundownFundingStability:
     """Verify the funding model doesn't crash or produce NaN over long horizons."""
@@ -149,8 +158,7 @@ class TestRundownFundingStability:
         """Funding output should not contain NaN."""
         f = rundown_results[1][class_name]
         for col in ["total_aal", "total_mva", "total_payroll"]:
-            assert not f[col].isna().any(), (
-                f"{class_name}: NaN in {col}")
+            assert not f[col].isna().any(), f"{class_name}: NaN in {col}"
 
     def test_mva_roll_forward_consistent(self, rundown_results):
         """MVA roll-forward should be internally consistent."""
@@ -165,13 +173,15 @@ class TestRundownFundingStability:
                 actual = f.loc[i, f"mva_{tier}"]
                 if abs(expected) > 1.0:
                     pct_diff = abs(actual - expected) / abs(expected) * 100
-                    assert pct_diff < 0.01, (
-                        f"Year {i}: MVA {tier} roll-forward off by {pct_diff:.4f}%")
+                    assert (
+                        pct_diff < 0.01
+                    ), f"Year {i}: MVA {tier} roll-forward off by {pct_diff:.4f}%"
 
 
 # ---------------------------------------------------------------------------
 # Simplified asset projection (uses actual benefit cash flows)
 # ---------------------------------------------------------------------------
+
 
 class TestRundownAssetProjection:
     """Test a simplified asset projection using actual liability cash flows.
@@ -187,6 +197,7 @@ class TestRundownAssetProjection:
         constants = rundown_results[2]
 
         from pension_model.core.funding_model import load_funding_inputs
+
         funding_dir = constants.resolve_data_dir() / "funding"
         funding_inputs = load_funding_inputs(funding_dir)
         init_funding = funding_inputs["init_funding"]
@@ -208,13 +219,13 @@ class TestRundownAssetProjection:
             ben = liab["tot_ben_refund_est"].iloc[i]
             benefits_paid[i] = ben
 
-            payroll_db = (liab["payroll_db_legacy_est"].iloc[i]
-                          + liab["payroll_db_new_est"].iloc[i])
+            payroll_db = liab["payroll_db_legacy_est"].iloc[i] + liab["payroll_db_new_est"].iloc[i]
             nc_rate_leg = liab["nc_rate_db_legacy_est"].iloc[i] * nc_cal
             nc_rate_new = liab["nc_rate_db_new_est"].iloc[i] * nc_cal
             ee_cont = ee_rate * payroll_db
-            er_nc = ((nc_rate_leg - ee_rate) * liab["payroll_db_legacy_est"].iloc[i]
-                     + max(nc_rate_new - ee_rate, 0) * liab["payroll_db_new_est"].iloc[i])
+            er_nc = (nc_rate_leg - ee_rate) * liab["payroll_db_legacy_est"].iloc[i] + max(
+                nc_rate_new - ee_rate, 0
+            ) * liab["payroll_db_new_est"].iloc[i]
             cont = ee_cont + max(er_nc, 0)
             contributions[i] = cont
 
@@ -222,15 +233,17 @@ class TestRundownAssetProjection:
             mva[i] = mva[i - 1] * (1 + dr) + net_cf * (1 + dr) ** 0.5
             inv_earnings[i] = mva[i] - mva[i - 1] - net_cf
 
-        return pd.DataFrame({
-            "year": liab["year"].values,
-            "mva": mva,
-            "benefits_paid": benefits_paid,
-            "contributions": contributions,
-            "inv_earnings": inv_earnings,
-            "n_active": liab["total_n_active"].values,
-            "total_aal": liab["total_aal_est"].values,
-        })
+        return pd.DataFrame(
+            {
+                "year": liab["year"].values,
+                "mva": mva,
+                "benefits_paid": benefits_paid,
+                "contributions": contributions,
+                "inv_earnings": inv_earnings,
+                "n_active": liab["total_n_active"].values,
+                "total_aal": liab["total_aal_est"].values,
+            }
+        )
 
     def test_cumulative_cash_flow_balance(self, asset_projection):
         """Conservation of value: initial + contrib + earnings = benefits + final."""
@@ -244,8 +257,7 @@ class TestRundownAssetProjection:
         lhs = initial + total_contributions + total_earnings
         rhs = total_benefits + final
         diff_pct = abs(lhs - rhs) / abs(lhs) * 100 if abs(lhs) > 0 else 0
-        assert diff_pct < 0.01, (
-            f"Cash flow imbalance: {diff_pct:.4f}%")
+        assert diff_pct < 0.01, f"Cash flow imbalance: {diff_pct:.4f}%"
 
     def test_nc_only_insufficient_for_underfunded_plan(self, asset_projection):
         """NC-only contributions cannot cover all benefits for an underfunded plan."""
@@ -253,8 +265,9 @@ class TestRundownAssetProjection:
         total_benefits = adf["benefits_paid"].sum()
         initial_mva = adf["mva"].iloc[0]
         total_contributions = adf["contributions"].sum()
-        assert total_benefits > initial_mva + total_contributions, (
-            "Expected underfunded plan to have benefit shortfall with NC-only contributions")
+        assert (
+            total_benefits > initial_mva + total_contributions
+        ), "Expected underfunded plan to have benefit shortfall with NC-only contributions"
 
     def test_asset_trajectory_peaks_and_declines(self, asset_projection):
         """Assets should peak and then decline as benefits exceed contributions."""
@@ -262,13 +275,15 @@ class TestRundownAssetProjection:
         mva = adf["mva"].values
         peak_idx = np.argmax(mva)
         if peak_idx < len(mva) - 10:
-            assert mva[-1] < mva[peak_idx], (
-                f"Assets still growing: peak={mva[peak_idx]:,.0f}, final={mva[-1]:,.0f}")
+            assert (
+                mva[-1] < mva[peak_idx]
+            ), f"Assets still growing: peak={mva[peak_idx]:,.0f}, final={mva[-1]:,.0f}"
 
 
 # ---------------------------------------------------------------------------
 # Diagnostic report (always passes, prints year-by-year summary)
 # ---------------------------------------------------------------------------
+
 
 class TestRundownReport:
     """Print a year-by-year summary table for manual inspection."""
@@ -282,9 +297,13 @@ class TestRundownReport:
         f = funding["regular"]
 
         print(f"\n{'='*120}")
-        print(f"CLOSED-PLAN RUNDOWN: regular class, {RUNDOWN_PERIOD}-year projection, no new entrants")
-        print(f"Discount rate: {constants.economic.dr_current:.1%}, "
-              f"Payroll growth (funding model): {constants.economic.payroll_growth:.2%}")
+        print(
+            f"CLOSED-PLAN RUNDOWN: regular class, {RUNDOWN_PERIOD}-year projection, no new entrants"
+        )
+        print(
+            f"Discount rate: {constants.economic.dr_current:.1%}, "
+            f"Payroll growth (funding model): {constants.economic.payroll_growth:.2%}"
+        )
         print(f"{'='*120}")
 
         header = (
@@ -297,9 +316,7 @@ class TestRundownReport:
         print("-" * len(header))
 
         n = len(f)
-        years_to_print = sorted(set(
-            [0, 1, 2, 5] + list(range(10, n, 10)) + [n - 1]
-        ))
+        years_to_print = sorted(set([0, 1, 2, 5] + list(range(10, n, 10)) + [n - 1]))
 
         for i in years_to_print:
             if i >= n or i >= len(liab):
@@ -335,8 +352,10 @@ class TestRundownReport:
         print(f"  Final AAL (fund):      {f.loc[n-1, 'total_aal']:>18,.0f}")
         print(f"  Final active count:    {liab['total_n_active'].iloc[-1]:>18,.1f}")
 
-        print(f"\n  NOTE: Funding model payroll grows at {constants.economic.payroll_growth:.2%}/yr")
-        print(f"  regardless of actual headcount — this causes funding AAL and MVA")
-        print(f"  to diverge from liability values after actives reach zero.")
+        print(
+            f"\n  NOTE: Funding model payroll grows at {constants.economic.payroll_growth:.2%}/yr"
+        )
+        print("  regardless of actual headcount — this causes funding AAL and MVA")
+        print("  to diverge from liability values after actives reach zero.")
 
         assert True

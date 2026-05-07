@@ -40,8 +40,8 @@ from pension_model.schemas.early_retire_reduction import (
     EarlyRetireRule,
     ReduceCondition,
 )
-from pension_model.schemas.eligibility import EligibilitySpec
 from pension_model.schemas.economic import Economic
+from pension_model.schemas.eligibility import EligibilitySpec
 from pension_model.schemas.funding import (
     AvaSmoothing,
     CorridorAvaSmoothing,
@@ -59,8 +59,8 @@ from pension_model.schemas.grandfathered import (
 )
 from pension_model.schemas.modeling import AgeGroup, Modeling
 from pension_model.schemas.mortality import MortalitySpec
-from pension_model.schemas.plan_design import PlanDesign, PlanDesignRatios
 from pension_model.schemas.partial import partial_model
+from pension_model.schemas.plan_design import PlanDesign, PlanDesignRatios
 from pension_model.schemas.ranges import Ranges
 from pension_model.schemas.term_vested import TermVested
 
@@ -71,7 +71,6 @@ from pension_model.schemas.term_vested import TermVested
 # directly from ``pension_model.schemas.scenario`` instead.
 from pension_model.schemas.tier import Tier, validate_tier_cross_references
 from pension_model.schemas.valuation_inputs import ClassData, ValuationInputs
-
 
 __all__ = [
     "AgeGroup",

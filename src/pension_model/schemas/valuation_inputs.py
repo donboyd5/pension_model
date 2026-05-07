@@ -3,8 +3,6 @@ plus the merged ``class_data`` view used at runtime."""
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import Field
 
 from pension_model.schemas.base import StrictModel
@@ -26,21 +24,19 @@ class ValuationInputs(StrictModel):
     total_active_member: int
     er_dc_cont_rate: float = Field(
         default=0.0,
-        description="Employer DC contribution rate (used when "
-        "benefit_types includes 'dc').",
+        description="Employer DC contribution rate (used when " "benefit_types includes 'dc').",
     )
     val_norm_cost: float
-    val_aal: Optional[float] = Field(
+    val_aal: float | None = Field(
         default=None,
         description="AV-published actuarial accrued liability (used "
         "for component-by-component calibration; optional).",
     )
-    val_payroll: Optional[float] = Field(
+    val_payroll: float | None = Field(
         default=None,
-        description="AV-published payroll for this class (FRS-only "
-        "today).",
+        description="AV-published payroll for this class (FRS-only " "today).",
     )
-    headcount_group: Optional[list[str]] = Field(
+    headcount_group: list[str] | None = Field(
         default=None,
         description="Classes whose headcount totals must agree (FRS "
         "uses this to enforce eco/eso/judges share total_active_member).",

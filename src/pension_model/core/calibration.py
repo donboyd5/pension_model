@@ -13,9 +13,8 @@ The calibration process:
 """
 
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
 
 import pandas as pd
 
@@ -23,16 +22,18 @@ import pandas as pd
 @dataclass
 class CalibrationTargets:
     """Per-class targets from actuarial valuation report."""
-    val_norm_cost: float       # NC rate from AV
-    val_aal: float             # Total AAL from AV
+
+    val_norm_cost: float  # NC rate from AV
+    val_aal: float  # Total AAL from AV
     # Diagnostic-only targets (not calibrated against, but reported)
-    val_payroll: Optional[float] = None
-    val_benefit_payments: Optional[float] = None
+    val_payroll: float | None = None
+    val_benefit_payments: float | None = None
 
 
 @dataclass
 class CalibrationResult:
     """Computed calibration for a single class."""
+
     nc_cal: float
     pvfb_term_current: float
     # Diagnostics: what the model produced before calibration
@@ -76,10 +77,10 @@ def calibrate_class(
 
 
 def run_calibration(
-    liability_results: Dict[str, pd.DataFrame],
-    targets: Dict[str, CalibrationTargets],
+    liability_results: dict[str, pd.DataFrame],
+    targets: dict[str, CalibrationTargets],
     start_year: int,
-) -> Dict[str, CalibrationResult]:
+) -> dict[str, CalibrationResult]:
     """Compute calibration factors for all classes.
 
     liability_results: output from pipeline runs with neutral calibration.
@@ -94,8 +95,8 @@ def run_calibration(
 
 def load_targets_from_init_funding(
     init_funding: pd.DataFrame,
-    val_norm_costs: Dict[str, float],
-) -> Dict[str, CalibrationTargets]:
+    val_norm_costs: dict[str, float],
+) -> dict[str, CalibrationTargets]:
     """Build calibration targets from init_funding_data.csv and known NC rates.
 
     init_funding: DataFrame with columns 'class', 'total_aal', 'total_payroll', etc.
@@ -112,12 +113,14 @@ def load_targets_from_init_funding(
             val_norm_cost=val_norm_costs[cn],
             val_aal=row["total_aal"],
             val_payroll=row.get("total_payroll"),
-            val_benefit_payments=row.get("total_ben_payment") if "total_ben_payment" in row.index else None,
+            val_benefit_payments=(
+                row.get("total_ben_payment") if "total_ben_payment" in row.index else None
+            ),
         )
     return targets
 
 
-def build_targets_from_config(constants) -> Dict[str, CalibrationTargets]:
+def build_targets_from_config(constants) -> dict[str, CalibrationTargets]:
     """Build calibration targets from plan config's valuation_inputs.
 
     Requires each class entry in valuation_inputs to have at least ``val_norm_cost``
@@ -143,8 +146,8 @@ def build_targets_from_config(constants) -> Dict[str, CalibrationTargets]:
 
 
 def format_diagnostics(
-    results: Dict[str, CalibrationResult],
-    targets: Dict[str, CalibrationTargets],
+    results: dict[str, CalibrationResult],
+    targets: dict[str, CalibrationTargets],
     cal_factor: float,
 ) -> str:
     """Format calibration diagnostics as a human-readable string."""
@@ -171,7 +174,10 @@ def format_diagnostics(
 
     # AAL calibration
     lines.append("  AAL calibration (pvfb_term_current = AV AAL - model AAL):")
-    lines.append(f"  {'Class':20s} {'Model AAL($B)':>14s} {'AV AAL($B)':>14s} {'pvfb_term($B)':>14s} {'Gap%':>8s}")
+    lines.append(
+        f"  {'Class':20s} {'Model AAL($B)':>14s} {'AV AAL($B)':>14s}"
+        f" {'pvfb_term($B)':>14s} {'Gap%':>8s}"
+    )
     lines.append(f"  {'-'*20} {'-'*14} {'-'*14} {'-'*14} {'-'*8}")
     for cn in sorted(results.keys()):
         r = results[cn]
@@ -204,9 +210,9 @@ def format_diagnostics(
 
 
 def format_comparison(
-    results: Dict[str, CalibrationResult],
+    results: dict[str, CalibrationResult],
     existing_path: Path,
-) -> Optional[str]:
+) -> str | None:
     """Compare computed calibration to an existing calibration.json.
 
     Returns formatted comparison string, or None if no existing file.
@@ -215,6 +221,7 @@ def format_comparison(
         return None
 
     import json
+
     with open(existing_path) as f:
         existing = json.load(f)
 
@@ -224,8 +231,10 @@ def format_comparison(
 
     lines = []
     lines.append("  Comparison with existing calibration.json:")
-    lines.append(f"  {'Class':20s} {'nc_cal(new)':>12s} {'nc_cal(old)':>12s} {'diff':>10s}  "
-                 f"{'pvfb(new,$B)':>12s} {'pvfb(old,$B)':>12s} {'diff($M)':>10s}")
+    lines.append(
+        f"  {'Class':20s} {'nc_cal(new)':>12s} {'nc_cal(old)':>12s} {'diff':>10s}  "
+        f"{'pvfb(new,$B)':>12s} {'pvfb(old,$B)':>12s} {'diff($M)':>10s}"
+    )
     lines.append(f"  {'-'*20} {'-'*12} {'-'*12} {'-'*10}  {'-'*12} {'-'*12} {'-'*10}")
 
     for cn in sorted(results.keys()):
@@ -245,7 +254,7 @@ def format_comparison(
 
 def write_calibration_json(
     cal_factor: float,
-    results: Dict[str, CalibrationResult],
+    results: dict[str, CalibrationResult],
     output_path: Path,
 ) -> None:
     """Write computed calibration factors to JSON file."""

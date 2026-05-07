@@ -8,8 +8,6 @@ keeps a single :class:`Condition` model so both consumers can reuse it.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 from pension_model.schemas.base import StrictModel
@@ -35,9 +33,9 @@ class Condition(StrictModel):
     rules don't use the empty form.)
     """
 
-    min_age: Optional[int] = None
-    min_yos: Optional[int] = None
-    rule_of: Optional[int] = None
+    min_age: int | None = None
+    min_yos: int | None = None
+    rule_of: int | None = None
 
     def matches(self, age: int, yos: int) -> bool:
         """Scalar predicate evaluation. Returns True iff all declared

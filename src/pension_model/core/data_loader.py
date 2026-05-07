@@ -13,12 +13,18 @@ Entry points:
   - load_plan_data(class_name, constants): per-class loader (called
     internally by load_plan_inputs; still available for debugging).
 """
+
 from pathlib import Path
-import pandas as pd
+from typing import TYPE_CHECKING
+
 import numpy as np
+import pandas as pd
 
 from pension_model.config_schema import PlanConfig
 from pension_model.core.returns import build_return_stream
+
+if TYPE_CHECKING:
+    from pension_model.core.compact_mortality import CompactMortality
 
 
 def load_reduction_tables(constants: PlanConfig) -> dict | None:
@@ -127,6 +133,7 @@ def load_plan_data(
         cache=mortality_cache,
     )
     from pension_model.core.mortality_builder import build_ann_factor_retire_table
+
     ann_factor_key = None
     if ann_factor_retire_cache is not None:
         ann_factor_key = (
@@ -141,8 +148,12 @@ def load_plan_data(
         afr = None
     if afr is None:
         afr = build_ann_factor_retire_table(
-            cm, class_name, constants.ranges.start_year, constants.ranges.model_period,
-            constants.economic.dr_current, constants.benefit.cola.current_retire,
+            cm,
+            class_name,
+            constants.ranges.start_year,
+            constants.ranges.model_period,
+            constants.economic.dr_current,
+            constants.benefit.cola.current_retire,
         )
         if ann_factor_retire_cache is not None:
             ann_factor_retire_cache[ann_factor_key] = afr
@@ -180,8 +191,10 @@ def _get_mortality_cache_key(
         table_name,
         constants.ranges.min_age,
         constants.max_age,
-        constants.ranges.start_year + constants.ranges.model_period
-        + constants.max_age - constants.ranges.min_age,
+        constants.ranges.start_year
+        + constants.ranges.model_period
+        + constants.max_age
+        - constants.ranges.min_age,
         constants.male_mp_forward_shift,
     )
 
@@ -205,8 +218,10 @@ def _build_mortality_from_csv(
     max_age = constants.max_age
 
     cm = build_compact_mortality_from_csv(
-        base_path, imp_path,
-        class_name, table_name=table_name,
+        base_path,
+        imp_path,
+        class_name,
+        table_name=table_name,
         min_age=constants.ranges.min_age,
         max_age=max_age,
         max_year=max_year,
@@ -395,12 +410,15 @@ def _build_years_from_nr_decrements(
     # Retirement rates: extract normal and reduced (early) rates
     normal_mask = ret_df["retire_type"] == "normal"
     early_mask = ret_df["retire_type"] == "early"
-    retire_rates = pd.DataFrame({
-        "age": ret_df[normal_mask]["age"].values,
-        "normal_rate": ret_df[normal_mask]["retire_rate"].values,
-    })
+    retire_rates = pd.DataFrame(
+        {
+            "age": ret_df[normal_mask]["age"].values,
+            "normal_rate": ret_df[normal_mask]["retire_rate"].values,
+        }
+    )
     early_rates = ret_df[early_mask][["age", "retire_rate"]].rename(
-        columns={"retire_rate": "reduced_rate"})
+        columns={"retire_rate": "reduced_rate"}
+    )
     retire_rates = retire_rates.merge(early_rates, on="age", how="outer").fillna(0)
 
     # Get entrant profile for entry_ages
@@ -430,8 +448,10 @@ def _build_years_from_nr_decrements(
     statuses = np.empty(len(df), dtype=object)
     for i in range(len(df)):
         tier_names[i], statuses[i] = get_tier(
-            constants, class_name,
-            int(df.iloc[i]["entry_year"]), int(df.iloc[i]["term_age"]),
+            constants,
+            class_name,
+            int(df.iloc[i]["entry_year"]),
+            int(df.iloc[i]["term_age"]),
             int(df.iloc[i]["yos"]),
             entry_age=int(df.iloc[i]["entry_age"]),
         )
@@ -442,18 +462,28 @@ def _build_years_from_nr_decrements(
     df["is_early_retire"] = df["status"] == "early"
 
     # Find years from normal retirement
-    first_normal = df[df["is_normal_retire"]].groupby(
-        ["entry_year", "entry_age"])["term_age"].min().reset_index()
+    first_normal = (
+        df[df["is_normal_retire"]]
+        .groupby(["entry_year", "entry_age"])["term_age"]
+        .min()
+        .reset_index()
+    )
     first_normal = first_normal.rename(columns={"term_age": "first_normal_age"})
     df = df.merge(first_normal, on=["entry_year", "entry_age"], how="left")
     df["first_normal_age"] = df["first_normal_age"].fillna(r.max_age)
     df["years_from_nr"] = (df["first_normal_age"] - df["term_age"]).clip(lower=0).astype(int)
 
     # Join rates
-    df = df.merge(before10[["yos", "term_rate"]].rename(columns={"term_rate": "before10_rate"}),
-                  on="yos", how="left")
-    df = df.merge(after10[["years_from_nr", "term_rate"]].rename(columns={"term_rate": "after10_rate"}),
-                  on="years_from_nr", how="left")
+    df = df.merge(
+        before10[["yos", "term_rate"]].rename(columns={"term_rate": "before10_rate"}),
+        on="yos",
+        how="left",
+    )
+    df = df.merge(
+        after10[["years_from_nr", "term_rate"]].rename(columns={"term_rate": "after10_rate"}),
+        on="years_from_nr",
+        how="left",
+    )
     df = df.merge(retire_rates, left_on="term_age", right_on="age", how="left")
     df = df.drop(columns=["age"], errors="ignore")
 
@@ -461,11 +491,14 @@ def _build_years_from_nr_decrements(
         df[c] = df[c].fillna(0)
 
     df["separation_rate"] = np.where(
-        df["is_normal_retire"], df["normal_rate"],
+        df["is_normal_retire"],
+        df["normal_rate"],
         np.where(
-            df["is_early_retire"], df["reduced_rate"],
+            df["is_early_retire"],
+            df["reduced_rate"],
             np.where(
-                df["yos"] < 10, df["before10_rate"],
+                df["yos"] < 10,
+                df["before10_rate"],
                 df["after10_rate"],
             ),
         ),
@@ -475,16 +508,23 @@ def _build_years_from_nr_decrements(
     df = df.sort_values(["entry_year", "entry_age", "yos"]).reset_index(drop=True)
     grp = df.groupby(["entry_year", "entry_age"])
     sep_lagged = grp["separation_rate"].shift(1, fill_value=0.0)
-    df["remaining_prob"] = (1 - sep_lagged).groupby(
-        [df["entry_year"], df["entry_age"]]).cumprod()
+    df["remaining_prob"] = (1 - sep_lagged).groupby([df["entry_year"], df["entry_age"]]).cumprod()
     rp_lagged = grp["remaining_prob"].shift(1, fill_value=1.0)
     df["separation_prob"] = rp_lagged - df["remaining_prob"]
 
     df["class_name"] = class_name
     inputs["_separation_rate"] = df[
-        ["entry_year", "entry_age", "term_age", "yos", "term_year",
-         "separation_rate", "remaining_prob", "separation_prob",
-         "class_name"]
+        [
+            "entry_year",
+            "entry_age",
+            "term_age",
+            "yos",
+            "term_year",
+            "separation_rate",
+            "remaining_prob",
+            "separation_prob",
+            "class_name",
+        ]
     ].reset_index(drop=True)
 
     # Load reduction tables if they exist
@@ -509,6 +549,7 @@ _DECREMENT_BUILDERS = {
 # ---------------------------------------------------------------------------
 # Plan-wide stacked loader
 # ---------------------------------------------------------------------------
+
 
 def load_plan_inputs(constants: PlanConfig) -> tuple[PlanConfig, dict]:
     """Load stage 3 data for an entire plan.
@@ -579,9 +620,7 @@ def load_plan_inputs(constants: PlanConfig) -> tuple[PlanConfig, dict]:
     data_dir = constants.resolve_data_dir()
     cashflow_path = data_dir / "funding" / "current_term_vested_cashflow.csv"
     cashflow_df = (
-        pd.read_csv(cashflow_path, float_precision="round_trip")
-        if cashflow_path.exists()
-        else None
+        pd.read_csv(cashflow_path, float_precision="round_trip") if cashflow_path.exists() else None
     )
     for cn in classes:
         pvfb = constants.class_data[cn].pvfb_term_current

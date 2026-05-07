@@ -35,7 +35,6 @@ from pathlib import Path
 import openpyxl
 import pandas as pd
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 PUB_PATH = PROJECT_ROOT / "prep" / "common" / "sources" / "soa_pub2010_amount_mort_rates.xlsx"
@@ -210,11 +209,7 @@ def build_improvement_scale(ultimate: pd.DataFrame) -> pd.DataFrame:
         imp = float(r["improvement"])
         for year in range(SCALE_YEAR_MIN, SCALE_YEAR_MAX + 1):
             rows.append({"age": age, "year": year, "gender": gender, "improvement": imp})
-    return (
-        pd.DataFrame(rows)
-        .sort_values(["gender", "age", "year"])
-        .reset_index(drop=True)
-    )
+    return pd.DataFrame(rows).sort_values(["gender", "age", "year"]).reset_index(drop=True)
 
 
 def _write_csv(df: pd.DataFrame, path: Path) -> None:

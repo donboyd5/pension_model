@@ -15,6 +15,7 @@ R's flow each year:
 import numpy as np
 import pandas as pd
 
+
 def project_workforce(
     initial_active: pd.DataFrame,
     separation_rates: pd.DataFrame,
@@ -68,8 +69,11 @@ def project_workforce(
     if len(separation_rates) > 0:
         sr = separation_rates
         ea_vals = sr["entry_age"].values.astype(int)
-        ta_vals = sr["term_age"].values.astype(int) if "term_age" in sr.columns else (
-            ea_vals + sr["yos"].values.astype(int))
+        ta_vals = (
+            sr["term_age"].values.astype(int)
+            if "term_age" in sr.columns
+            else (ea_vals + sr["yos"].values.astype(int))
+        )
         ey_vals = sr["entry_year"].values.astype(int)
         sr_vals = sr["separation_rate"].values.astype(float)
         yr_vals = ey_vals + (ta_vals - ea_vals)
@@ -79,14 +83,16 @@ def project_workforce(
         ta_idx = ta_vals - min_age  # age_to_idx is contiguous from min_age
         yr_idx = yr_vals - start_year
 
-        valid = ((ea_idx >= 0) & (ta_idx >= 0) & (ta_idx < n_ages)
-                 & (yr_idx >= 0) & (yr_idx < n_years))
+        valid = (
+            (ea_idx >= 0) & (ta_idx >= 0) & (ta_idx < n_ages) & (yr_idx >= 0) & (yr_idx < n_years)
+        )
         sr_clean = np.where(np.isnan(sr_vals), 0.0, sr_vals)
         sep_lookup[ea_idx[valid], ta_idx[valid], yr_idx[valid]] = sr_clean[valid]
 
     # Build benefit decision lookups as numpy-indexed arrays.
     # refund_prob_arr[entry_age_idx, term_age_idx, term_year_idx] -> refund probability
-    # retire_prob_arr[term_year_idx, entry_age_idx, dist_age_idx, dist_year_idx] -> retire probability
+    # retire_prob_arr[term_year_idx, entry_age_idx, dist_age_idx, dist_year_idx]
+    #   -> retire probability
     refund_prob_arr = np.zeros((n_entry, n_ages, n_years))
     retire_prob_arr = np.zeros((n_years, n_entry, n_ages, n_years))
 
@@ -94,8 +100,11 @@ def project_workforce(
         bd = benefit_decisions
         bd_ey = bd["entry_year"].values.astype(int)
         bd_ea = bd["entry_age"].values.astype(int)
-        bd_ta = bd["term_age"].values.astype(int) if "term_age" in bd.columns else (
-            bd_ea + bd["yos"].values.astype(int))
+        bd_ta = (
+            bd["term_age"].values.astype(int)
+            if "term_age" in bd.columns
+            else (bd_ea + bd["yos"].values.astype(int))
+        )
         bd_da = bd["dist_age"].values.astype(int) if "dist_age" in bd.columns else bd_ta
         bd_dec = bd["ben_decision"].values
         bd_yos = bd["yos"].values.astype(int) if "yos" in bd.columns else (bd_ta - bd_ea)
@@ -125,7 +134,9 @@ def project_workforce(
             bd_ei[valid_refund & is_mix],
             bd_ta_idx[valid_refund & is_mix],
             bd_ty_idx[valid_refund & is_mix],
-        ] = 1 - retire_refund_ratio
+        ] = (
+            1 - retire_refund_ratio
+        )
 
         valid_retire = (
             (bd_ei >= 0)
@@ -205,7 +216,8 @@ def project_workforce(
     # Deferred vested members use employee mortality until they reach a
     # retirement-eligible tier (norm/early), then switch to retiree mortality.
     # We batch-resolve tiers per term stock using resolve_tiers_vec.
-    from pension_model.config_resolvers import resolve_tiers_vec as _resolve_tiers_vec, EARLY
+    from pension_model.config_resolvers import EARLY
+    from pension_model.config_resolvers import resolve_tiers_vec as _resolve_tiers_vec
 
     ea_arr_int = np.array(entry_ages, dtype=np.int64)
 
@@ -237,7 +249,7 @@ def project_workforce(
         store["age"].append(cur_ages)
         store["year"].append(year_arr)
         for col_name, col_value in extra_cols:
-            if isinstance(col_value, (int, np.integer)):
+            if isinstance(col_value, int | np.integer):
                 store[col_name].append(np.full(n, col_value, dtype=np.int64))
             else:
                 store[col_name].append(np.asarray(col_value))
@@ -314,7 +326,11 @@ def project_workforce(
             if constants is not None:
                 cn_arr = np.full(len(nz_ei), class_name, dtype=object)
                 _, ret_status = _resolve_tiers_vec(
-                    constants, cn_arr, entry_yr, nz_age, yos_at_term,
+                    constants,
+                    cn_arr,
+                    entry_yr,
+                    nz_age,
+                    yos_at_term,
                 )
                 is_ret = ret_status >= EARLY
             else:

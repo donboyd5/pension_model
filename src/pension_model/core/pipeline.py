@@ -18,24 +18,22 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+
 import numpy as np
 import pandas as pd
 
 from pension_model.config_schema import PlanConfig
 from pension_model.core.benefit_tables import (
     _resolve_sep_type_vec,
-    build_salary_headcount_table,
-    build_entrant_profile,
-    build_salary_benefit_table,
-    build_separation_rate_table,
     build_benefit_table,
-    build_final_benefit_table,
     build_benefit_val_table,
+    build_entrant_profile,
+    build_final_benefit_table,
+    build_salary_benefit_table,
+    build_salary_headcount_table,
+    build_separation_rate_table,
 )
-from pension_model.core.runtime_contracts import ClassRuntimeTables
 from pension_model.core.pipeline_current import (
-    _get_pmt,
     compute_current_retiree_liability,
     compute_current_term_vested_liability,
 )
@@ -45,6 +43,7 @@ from pension_model.core.pipeline_projected import (
     compute_retire_liability,
     compute_term_liability,
 )
+from pension_model.core.runtime_contracts import ClassRuntimeTables
 
 
 @dataclass(frozen=True)
@@ -58,13 +57,13 @@ class PreparedPlanRun:
 
     constants: PlanConfig
     inputs_by_class: dict
-    retained_plan_tables: Optional[dict]
+    retained_plan_tables: dict | None
     table_row_counts: dict[str, int]
     runtime_tables_by_class: dict[str, ClassRuntimeTables]
     stage_timings: dict[str, float]
 
     @property
-    def plan_tables(self) -> Optional[dict]:
+    def plan_tables(self) -> dict | None:
         """Backward-compatible alias for retained stacked plan tables."""
         return self.retained_plan_tables
 
@@ -93,8 +92,9 @@ def _mark_stage(stage_timings: dict[str, float], stage_name: str, started_at: fl
     return time.perf_counter()
 
 
-def compute_adjustment_ratio(class_or_inputs, headcount: pd.DataFrame | None = None,
-                             constants: PlanConfig | None = None) -> float:
+def compute_adjustment_ratio(
+    class_or_inputs, headcount: pd.DataFrame | None = None, constants: PlanConfig | None = None
+) -> float:
     """Return a class headcount adjustment ratio.
 
     Preferred path: pass a class input dict prepared by ``load_plan_inputs``,
@@ -243,20 +243,26 @@ def _build_active_benefit_lookup(
     """Build the active-liability lookup keyed by entry year, age, and service."""
     lookup_cols = ["entry_year", "entry_age", "yos", "salary"]
     if "db" in benefit_types:
-        lookup_cols.extend([
-            "pvfb_db_wealth_at_current_age",
-            "pvfnc_db",
-            "indv_norm_cost",
-        ])
+        lookup_cols.extend(
+            [
+                "pvfb_db_wealth_at_current_age",
+                "pvfnc_db",
+                "indv_norm_cost",
+            ]
+        )
     if "cb" in benefit_types and "pvfb_cb_at_current_age" in benefit_val.columns:
-        lookup_cols.extend([
-            "pvfb_cb_at_current_age",
-            "pvfnc_cb",
-            "indv_norm_cost_cb",
-        ])
-    return benefit_val[lookup_cols].drop_duplicates(
-        subset=["entry_year", "entry_age", "yos"]
-    ).reset_index(drop=True)
+        lookup_cols.extend(
+            [
+                "pvfb_cb_at_current_age",
+                "pvfnc_cb",
+                "indv_norm_cost_cb",
+            ]
+        )
+    return (
+        benefit_val[lookup_cols]
+        .drop_duplicates(subset=["entry_year", "entry_age", "yos"])
+        .reset_index(drop=True)
+    )
 
 
 def _build_term_benefit_lookup(benefit_val: pd.DataFrame) -> pd.DataFrame:
@@ -294,9 +300,13 @@ def _build_current_liability_tables(
 
 def _build_term_discount_lookup(term_discount_rows: pd.DataFrame) -> pd.DataFrame:
     """Normalize terminated-vested discount lookup keys to runtime names."""
-    return term_discount_rows[
-        ["entry_age", "entry_year", "dist_age", "dist_year", "term_year", "cum_mort_dr"]
-    ].rename(columns={"dist_age": "age", "dist_year": "year"}).reset_index(drop=True)
+    return (
+        term_discount_rows[
+            ["entry_age", "entry_year", "dist_age", "dist_year", "term_year", "cum_mort_dr"]
+        ]
+        .rename(columns={"dist_age": "age", "dist_year": "year"})
+        .reset_index(drop=True)
+    )
 
 
 def _build_term_liability_lookup(
@@ -318,8 +328,10 @@ def _build_refund_lookup(refund_rows: pd.DataFrame) -> pd.DataFrame:
     lookup_cols = ["entry_age", "entry_year", "dist_age", "dist_year", "term_year", "db_ee_balance"]
     if "cb_balance" in refund_rows.columns:
         lookup_cols.append("cb_balance")
-    return refund_rows[lookup_cols].rename(columns={"dist_age": "age", "dist_year": "year"}).reset_index(
-        drop=True
+    return (
+        refund_rows[lookup_cols]
+        .rename(columns={"dist_age": "age", "dist_year": "year"})
+        .reset_index(drop=True)
     )
 
 
@@ -328,16 +340,20 @@ def _build_retire_benefit_lookup(retire_benefit_rows: pd.DataFrame) -> pd.DataFr
     lookup_cols = ["entry_age", "entry_year", "dist_year", "term_year", "db_benefit", "cola"]
     if "cb_benefit" in retire_benefit_rows.columns:
         lookup_cols.append("cb_benefit")
-    return retire_benefit_rows[lookup_cols].rename(columns={"dist_year": "retire_year"}).reset_index(
-        drop=True
+    return (
+        retire_benefit_rows[lookup_cols]
+        .rename(columns={"dist_year": "retire_year"})
+        .reset_index(drop=True)
     )
 
 
 def _build_retire_annuity_lookup(retire_annuity_rows: pd.DataFrame) -> pd.DataFrame:
     """Normalize retiree-annuity lookup keys to runtime names."""
-    return retire_annuity_rows[
-        ["entry_age", "entry_year", "dist_year", "term_year", "ann_factor"]
-    ].rename(columns={"dist_year": "year"}).reset_index(drop=True)
+    return (
+        retire_annuity_rows[["entry_age", "entry_year", "dist_year", "term_year", "ann_factor"]]
+        .rename(columns={"dist_year": "year"})
+        .reset_index(drop=True)
+    )
 
 
 def _build_benefit_decision_lookup(
@@ -360,7 +376,6 @@ def _build_benefit_decision_lookup(
     decisions["dist_age"] = decisions["dist_age"].fillna(decisions["term_age"]).astype(int)
     decisions = decisions[decisions["ben_decision"].notna()].reset_index(drop=True)
     return decisions[["entry_year", "entry_age", "yos", "term_age", "dist_age", "ben_decision"]]
-
 
 
 def build_plan_benefit_tables(
@@ -446,7 +461,8 @@ def build_plan_benefit_tables(
     )
     benefit = build_benefit_table(ann_factor_full, salary_benefit, constants)
     final_benefit = build_final_benefit_table(
-        benefit, use_earliest_retire=constants.use_earliest_retire,
+        benefit,
+        use_earliest_retire=constants.use_earliest_retire,
     )
 
     # build_benefit_val_table takes a scalar expected_icr. Multi-class CB
@@ -457,8 +473,12 @@ def build_plan_benefit_tables(
     else:
         scalar_icr = None
     benefit_val = build_benefit_val_table(
-        salary_benefit, final_benefit, separation_rate, constants,
-        expected_icr=scalar_icr, ann_factor_table=ann_factor_full,
+        salary_benefit,
+        final_benefit,
+        separation_rate,
+        constants,
+        expected_icr=scalar_icr,
+        ann_factor_table=ann_factor_full,
     )
     ann_factor = _trim_runtime_ann_factor_table(ann_factor_full)
 
@@ -576,18 +596,27 @@ def _project_and_aggregate_class(
     # Initial active population from this class's salary_headcount
     sh = class_tables.salary_headcount
     valid_entry_ages = set(class_tables.entrant_profile["entry_age"].values)
-    initial_active = sh[sh["entry_age"].isin(valid_entry_ages)][
-        ["entry_age", "age", "count"]].rename(columns={"count": "n_active"}).copy()
+    initial_active = (
+        sh[sh["entry_age"].isin(valid_entry_ages)][["entry_age", "age", "count"]]
+        .rename(columns={"count": "n_active"})
+        .copy()
+    )
     initial_active = initial_active[initial_active["n_active"] > 0]
 
     if on_stage:
         on_stage("workforce")
     cm = class_inputs["_compact_mortality"]
     wf = project_workforce(
-        initial_active, class_tables.separation_rate, ben_decisions, cm,
-        class_tables.entrant_profile, class_name,
-        constants.ranges.start_year, constants.ranges.model_period,
-        constants.economic.pop_growth, constants.benefit.retire_refund_ratio,
+        initial_active,
+        class_tables.separation_rate,
+        ben_decisions,
+        cm,
+        class_tables.entrant_profile,
+        class_name,
+        constants.ranges.start_year,
+        constants.ranges.model_period,
+        constants.economic.pop_growth,
+        constants.benefit.retire_refund_ratio,
         no_new_entrants=no_new_entrants,
         constants=constants,
     )
@@ -595,20 +624,30 @@ def _project_and_aggregate_class(
     if on_stage:
         on_stage("liability")
     active = compute_active_liability(
-        wf["wf_active"], class_tables.active_benefit_lookup, class_name, constants)
+        wf["wf_active"], class_tables.active_benefit_lookup, class_name, constants
+    )
     term = compute_term_liability(
-        wf["wf_term"], class_tables.term_liability_lookup,
-        class_name, constants)
+        wf["wf_term"], class_tables.term_liability_lookup, class_name, constants
+    )
     refund = compute_refund_liability(
-        wf["wf_refund"], class_tables.refund_lookup, class_name, constants)
+        wf["wf_refund"], class_tables.refund_lookup, class_name, constants
+    )
     retire = compute_retire_liability(
-        wf["wf_retire"], class_tables.retire_benefit_lookup, class_tables.retire_annuity_lookup,
-        class_name, constants)
+        wf["wf_retire"],
+        class_tables.retire_benefit_lookup,
+        class_tables.retire_annuity_lookup,
+        class_name,
+        constants,
+    )
 
-    years = pd.DataFrame({"year": range(
-        constants.ranges.start_year,
-        constants.ranges.start_year + constants.ranges.model_period + 1,
-    )})
+    years = pd.DataFrame(
+        {
+            "year": range(
+                constants.ranges.start_year,
+                constants.ranges.start_year + constants.ranges.model_period + 1,
+            )
+        }
+    )
     result = _combine_yearly_liability_tables(
         years,
         [
@@ -648,12 +687,11 @@ def _split_plan_tables_by_class(plan_tables: dict, classes: list) -> dict:
                 for cn, g in groups.items()
             }
         else:
-            by_table_then_class[name] = {cn: df for cn in classes}
+            by_table_then_class[name] = dict.fromkeys(classes, df)
 
     result: dict = {}
     for cn in classes:
-        result[cn] = {name: slices.get(cn)
-                      for name, slices in by_table_then_class.items()}
+        result[cn] = {name: slices.get(cn) for name, slices in by_table_then_class.items()}
     return result
 
 
@@ -677,7 +715,9 @@ def _split_runtime_tables_by_class(
                     benefit_types,
                 )
 
-    final_benefit_slices = _split_plan_tables_by_class({"final_benefit": plan_tables["final_benefit"]}, classes)
+    final_benefit_slices = _split_plan_tables_by_class(
+        {"final_benefit": plan_tables["final_benefit"]}, classes
+    )
     for cn in classes:
         runtime_tables[cn]["benefit_decision_lookup"] = _build_benefit_decision_lookup(
             runtime_tables[cn]["benefit_val"],
@@ -687,18 +727,44 @@ def _split_runtime_tables_by_class(
     benefit = plan_tables["benefit"]
     ann_factor = plan_tables["ann_factor"]
 
-    term_discount_cols = ["class_name", "entry_age", "entry_year", "dist_age", "dist_year", "term_year", "cum_mort_dr"]
-    refund_cols = ["class_name", "entry_age", "entry_year", "dist_age", "dist_year", "term_year", "db_ee_balance"]
+    term_discount_cols = [
+        "class_name",
+        "entry_age",
+        "entry_year",
+        "dist_age",
+        "dist_year",
+        "term_year",
+        "cum_mort_dr",
+    ]
+    refund_cols = [
+        "class_name",
+        "entry_age",
+        "entry_year",
+        "dist_age",
+        "dist_year",
+        "term_year",
+        "db_ee_balance",
+    ]
     if "cb_balance" in benefit.columns:
         refund_cols.append("cb_balance")
-    retire_benefit_cols = ["class_name", "entry_age", "entry_year", "dist_year", "term_year", "db_benefit", "cola"]
+    retire_benefit_cols = [
+        "class_name",
+        "entry_age",
+        "entry_year",
+        "dist_year",
+        "term_year",
+        "db_benefit",
+        "cola",
+    ]
     if "cb_benefit" in benefit.columns:
         retire_benefit_cols.append("cb_benefit")
     annuity_cols = ["class_name", "entry_age", "entry_year", "dist_year", "term_year", "ann_factor"]
 
     benefit_term_groups = dict(tuple(benefit[term_discount_cols].groupby("class_name", sort=False)))
     benefit_refund_groups = dict(tuple(benefit[refund_cols].groupby("class_name", sort=False)))
-    benefit_retire_groups = dict(tuple(benefit[retire_benefit_cols].groupby("class_name", sort=False)))
+    benefit_retire_groups = dict(
+        tuple(benefit[retire_benefit_cols].groupby("class_name", sort=False))
+    )
     annuity_groups = dict(tuple(ann_factor[annuity_cols].groupby("class_name", sort=False)))
 
     for cn in classes:
@@ -706,9 +772,7 @@ def _split_runtime_tables_by_class(
             runtime_tables[cn]["benefit_val"],
             benefit_term_groups[cn],
         )
-        runtime_tables[cn]["refund_lookup"] = _build_refund_lookup(
-            benefit_refund_groups[cn]
-        )
+        runtime_tables[cn]["refund_lookup"] = _build_refund_lookup(benefit_refund_groups[cn])
         runtime_tables[cn]["retire_benefit_lookup"] = _build_retire_benefit_lookup(
             benefit_retire_groups[cn]
         )
@@ -768,11 +832,7 @@ def prepare_plan_run(
         on_stage("benefit_tables")
     plan_tables = build_plan_benefit_tables(inputs_by_class, constants)
     started_at = _mark_stage(stage_timings, "build_plan_benefit_tables", started_at)
-    plan_table_rows = {
-        name: len(df)
-        for name, df in plan_tables.items()
-        if hasattr(df, "__len__")
-    }
+    plan_table_rows = {name: len(df) for name, df in plan_tables.items() if hasattr(df, "__len__")}
 
     classes = list(constants.classes)
     runtime_tables_by_class = _split_runtime_tables_by_class(
@@ -823,11 +883,15 @@ def run_prepared_plan_pipeline(
             sys.stdout.write(f"\r    {pct:3d}%")
             sys.stdout.flush()
         liability[cn] = _project_and_aggregate_class(
-            cn, prepared.runtime_tables_by_class[cn], prepared.inputs_by_class[cn], constants,
-            no_new_entrants=no_new_entrants, on_stage=on_stage,
+            cn,
+            prepared.runtime_tables_by_class[cn],
+            prepared.inputs_by_class[cn],
+            constants,
+            no_new_entrants=no_new_entrants,
+            on_stage=on_stage,
         )
     if progress:
-        sys.stdout.write(f"\r    100% done\n")
+        sys.stdout.write("\r    100% done\n")
         sys.stdout.flush()
 
     return liability

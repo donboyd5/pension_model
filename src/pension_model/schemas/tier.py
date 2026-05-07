@@ -21,7 +21,8 @@ the loader so misspelled references fail at parse time.
 
 from __future__ import annotations
 
-from typing import Literal, Optional, Sequence
+from collections.abc import Sequence
+from typing import Literal
 
 import numpy as np
 from pydantic import model_validator
@@ -54,19 +55,19 @@ class Tier(StrictModel):
     discount_rate_key: str = "dr_current"
     prorate_cola: bool = False
 
-    entry_year_min: Optional[int] = None
-    entry_year_max: Optional[int] = None
-    entry_year_min_param: Optional[Literal["new_year"]] = None
-    entry_year_max_param: Optional[Literal["new_year"]] = None
+    entry_year_min: int | None = None
+    entry_year_max: int | None = None
+    entry_year_min_param: Literal["new_year"] | None = None
+    entry_year_max_param: Literal["new_year"] | None = None
 
-    eligibility: Optional[dict[str, EligibilitySpec]] = None
-    eligibility_same_as: Optional[str] = None
+    eligibility: dict[str, EligibilitySpec] | None = None
+    eligibility_same_as: str | None = None
 
-    early_retire_reduction: Optional[EarlyRetireReduction] = None
-    early_retire_reduction_same_as: Optional[str] = None
+    early_retire_reduction: EarlyRetireReduction | None = None
+    early_retire_reduction_same_as: str | None = None
 
-    assignment: Optional[Literal["grandfathered_rule"]] = None
-    grandfathered_params: Optional[GrandfatheredParams] = None
+    assignment: Literal["grandfathered_rule"] | None = None
+    grandfathered_params: GrandfatheredParams | None = None
     not_grandfathered: bool = False
 
     @model_validator(mode="after")
@@ -87,7 +88,10 @@ class Tier(StrictModel):
                 f"'early_retire_reduction' or "
                 f"'early_retire_reduction_same_as'"
             )
-        if self.early_retire_reduction is not None and self.early_retire_reduction_same_as is not None:
+        if (
+            self.early_retire_reduction is not None
+            and self.early_retire_reduction_same_as is not None
+        ):
             raise ValueError(
                 f"Tier {self.name!r}: cannot declare both "
                 f"'early_retire_reduction' and "
@@ -108,7 +112,7 @@ class Tier(StrictModel):
                 )
         return self
 
-    def entry_year_lo(self, new_year: int) -> Optional[int]:
+    def entry_year_lo(self, new_year: int) -> int | None:
         """Resolved lower bound (inclusive) of this tier's entry-year
         window. ``None`` means unbounded below.
         """
@@ -116,7 +120,7 @@ class Tier(StrictModel):
             return new_year
         return self.entry_year_min
 
-    def entry_year_hi(self, new_year: int) -> Optional[int]:
+    def entry_year_hi(self, new_year: int) -> int | None:
         """Resolved upper bound (exclusive) of this tier's entry-year
         window. ``None`` means unbounded above.
         """
@@ -141,9 +145,7 @@ class Tier(StrictModel):
             return False
         return True
 
-    def entry_year_in_window_vec(
-        self, entry_year: np.ndarray, new_year: int
-    ) -> np.ndarray:
+    def entry_year_in_window_vec(self, entry_year: np.ndarray, new_year: int) -> np.ndarray:
         """Vectorized version of :meth:`entry_year_in_window`."""
         if self.assignment == "grandfathered_rule":
             return np.zeros(len(entry_year), dtype=bool)
@@ -159,8 +161,8 @@ class Tier(StrictModel):
     def resolve_eligibility(
         self,
         group: str,
-        all_tiers: Sequence["Tier"],
-    ) -> Optional[EligibilitySpec]:
+        all_tiers: Sequence[Tier],
+    ) -> EligibilitySpec | None:
         """Resolve this tier's eligibility for ``group``.
 
         Walks ``eligibility_same_as`` references (cycle-checked), then
@@ -174,8 +176,7 @@ class Tier(StrictModel):
             ref = current.eligibility_same_as
             if ref in seen:
                 raise ValueError(
-                    f"Tier {self.name!r}: circular eligibility_same_as "
-                    f"chain at {ref!r}"
+                    f"Tier {self.name!r}: circular eligibility_same_as " f"chain at {ref!r}"
                 )
             seen.add(ref)
             current = _find_tier(ref, all_tiers, source_field="eligibility_same_as")
@@ -185,8 +186,8 @@ class Tier(StrictModel):
 
     def resolve_early_retire_reduction(
         self,
-        all_tiers: Sequence["Tier"],
-    ) -> Optional[EarlyRetireReduction]:
+        all_tiers: Sequence[Tier],
+    ) -> EarlyRetireReduction | None:
         """Resolve this tier's early-retire-reduction spec.
 
         Walks ``early_retire_reduction_same_as`` references
@@ -204,21 +205,16 @@ class Tier(StrictModel):
                     f"early_retire_reduction_same_as chain at {ref!r}"
                 )
             seen.add(ref)
-            current = _find_tier(
-                ref, all_tiers, source_field="early_retire_reduction_same_as"
-            )
+            current = _find_tier(ref, all_tiers, source_field="early_retire_reduction_same_as")
         return current.early_retire_reduction
 
 
-def _find_tier(
-    name: str, tiers: Sequence[Tier], *, source_field: str
-) -> Tier:
+def _find_tier(name: str, tiers: Sequence[Tier], *, source_field: str) -> Tier:
     for t in tiers:
         if t.name == name:
             return t
     raise ValueError(
-        f"{source_field}={name!r} does not match any tier name in "
-        f"{[t.name for t in tiers]}"
+        f"{source_field}={name!r} does not match any tier name in " f"{[t.name for t in tiers]}"
     )
 
 

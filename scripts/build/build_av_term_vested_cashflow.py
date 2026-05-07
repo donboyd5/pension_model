@@ -37,7 +37,6 @@ from pension_model.core.pipeline_current import _npv
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from term_vested_deferred_annuity import deferred_annuity_stream
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 

@@ -17,7 +17,7 @@ Run from project root:
 """
 import sys
 from pathlib import Path
-import numpy as np
+
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -75,11 +75,13 @@ def convert_entrant_profile():
     # Add entrant_dist column
     ep["entrant_dist"] = ep["count"] / ep["count"].sum()
     # Rename to standard column names
-    out = pd.DataFrame({
-        "entry_age": ep["entry_age"],
-        "start_salary": ep["start_sal"],
-        "entrant_dist": ep["entrant_dist"],
-    })
+    out = pd.DataFrame(
+        {
+            "entry_age": ep["entry_age"],
+            "start_salary": ep["start_sal"],
+            "entrant_dist": ep["entrant_dist"],
+        }
+    )
     out.to_csv(OUT / "demographics" / "entrant_profile.csv", index=False)
     print(f"  entrant_profile.csv: {len(out)} rows")
 
@@ -91,12 +93,14 @@ def convert_retiree_distribution():
 
     xlsx_path = RAW_DIR / "TxTRS_BM_Inputs.xlsx"
     rd = load_txtrs_retiree_distribution(xlsx_path)
-    out = pd.DataFrame({
-        "age": rd["age"],
-        "count": rd["n_retire"],
-        "avg_benefit": rd["avg_ben"],
-        "total_benefit": rd["total_ben"],
-    })
+    out = pd.DataFrame(
+        {
+            "age": rd["age"],
+            "count": rd["n_retire"],
+            "avg_benefit": rd["avg_ben"],
+            "total_benefit": rd["total_ben"],
+        }
+    )
     out.to_csv(OUT / "demographics" / "retiree_distribution.csv", index=False)
     print(f"  retiree_distribution.csv: {len(out)} rows")
 
@@ -117,21 +121,25 @@ def convert_termination_rates():
     rows = []
     # Before 10: lookup_type = "yos", lookup_value = YOS
     for _, row in before10.iterrows():
-        rows.append({
-            "lookup_type": "yos",
-            "age": "",
-            "lookup_value": int(row["yos"]),
-            "term_rate": row["term_rate"],
-        })
+        rows.append(
+            {
+                "lookup_type": "yos",
+                "age": "",
+                "lookup_value": int(row["yos"]),
+                "term_rate": row["term_rate"],
+            }
+        )
 
     # After 10: lookup_type = "years_from_nr", lookup_value = years from NR
     for _, row in after10.iterrows():
-        rows.append({
-            "lookup_type": "years_from_nr",
-            "age": "",
-            "lookup_value": int(row["years_from_nr"]),
-            "term_rate": row["term_rate"],
-        })
+        rows.append(
+            {
+                "lookup_type": "years_from_nr",
+                "age": "",
+                "lookup_value": int(row["years_from_nr"]),
+                "term_rate": row["term_rate"],
+            }
+        )
 
     out = pd.DataFrame(rows)
     out.to_csv(OUT / "decrements" / "termination_rates.csv", index=False)
@@ -153,19 +161,23 @@ def convert_retirement_rates():
     for _, row in rr.iterrows():
         age = int(row["age"])
         if row["normal_rate"] > 0 or True:  # Include all ages for completeness
-            rows.append({
-                "age": age,
-                "tier": "all",
-                "retire_type": "normal",
-                "retire_rate": row["normal_rate"],
-            })
+            rows.append(
+                {
+                    "age": age,
+                    "tier": "all",
+                    "retire_type": "normal",
+                    "retire_rate": row["normal_rate"],
+                }
+            )
         if row["reduced_rate"] > 0 or True:
-            rows.append({
-                "age": age,
-                "tier": "all",
-                "retire_type": "early",
-                "retire_rate": row["reduced_rate"],
-            })
+            rows.append(
+                {
+                    "age": age,
+                    "tier": "all",
+                    "retire_type": "early",
+                    "retire_rate": row["reduced_rate"],
+                }
+            )
 
     out = pd.DataFrame(rows).sort_values(["retire_type", "age"]).reset_index(drop=True)
     out.to_csv(OUT / "decrements" / "retirement_rates.csv", index=False)
@@ -188,9 +200,7 @@ def convert_reduction_tables():
     gft = tables["reduced_gft"]
     gft_long = gft.melt(id_vars="yos", var_name="age_col", value_name="reduce_factor")
     # Extract age from column name like "age_55" or "55"
-    gft_long["age"] = gft_long["age_col"].apply(
-        lambda x: int(str(x).replace("age_", "").strip())
-    )
+    gft_long["age"] = gft_long["age_col"].apply(lambda x: int(str(x).replace("age_", "").strip()))
     gft_long = gft_long[["age", "yos", "reduce_factor"]].dropna()
     gft_long["tier"] = "grandfathered"
     gft_long.to_csv(OUT / "decrements" / "reduction_gft.csv", index=False)
@@ -224,25 +234,31 @@ def convert_mortality():
         for _, row in df.iterrows():
             age = int(row["age"])
             for gender in ["female", "male"]:
-                for member_type, col_prefix in [("employee", "employee"),
-                                                 ("retiree", "healthy_retiree")]:
+                for member_type, col_prefix in [
+                    ("employee", "employee"),
+                    ("retiree", "healthy_retiree"),
+                ]:
                     col = f"{col_prefix}_{gender}"
                     qx = row.get(col)
                     if pd.notna(qx):
-                        mort_rows.append({
-                            "age": age,
-                            "gender": gender,
-                            "member_type": member_type,
-                            "table": "teacher_below_median",
-                            "qx": qx,
-                        })
+                        mort_rows.append(
+                            {
+                                "age": age,
+                                "gender": gender,
+                                "member_type": member_type,
+                                "table": "teacher_below_median",
+                                "qx": qx,
+                            }
+                        )
     except Exception as e:
         print(f"  WARNING: Could not read PubT-2010(B): {e}")
 
     if mort_rows:
-        mort_df = pd.DataFrame(mort_rows).sort_values(
-            ["table", "gender", "member_type", "age"]
-        ).reset_index(drop=True)
+        mort_df = (
+            pd.DataFrame(mort_rows)
+            .sort_values(["table", "gender", "member_type", "age"])
+            .reset_index(drop=True)
+        )
         mort_df.to_csv(OUT / "mortality" / "base_rates.csv", index=False)
         print(f"  base_rates.csv: {len(mort_df)} rows")
 
@@ -266,17 +282,19 @@ def convert_mortality():
             for yr_col in year_cols:
                 imp = row[yr_col]
                 if pd.notna(imp):
-                    imp_rows.append({
-                        "age": age,
-                        "year": int(yr_col),
-                        "gender": gender_label,
-                        "improvement": imp,
-                    })
+                    imp_rows.append(
+                        {
+                            "age": age,
+                            "year": int(yr_col),
+                            "gender": gender_label,
+                            "improvement": imp,
+                        }
+                    )
 
     if imp_rows:
-        imp_df = pd.DataFrame(imp_rows).sort_values(
-            ["gender", "age", "year"]
-        ).reset_index(drop=True)
+        imp_df = (
+            pd.DataFrame(imp_rows).sort_values(["gender", "age", "year"]).reset_index(drop=True)
+        )
         imp_df.to_csv(OUT / "mortality" / "improvement_scale.csv", index=False)
         print(f"  improvement_scale.csv: {len(imp_df)} rows")
 
@@ -299,7 +317,7 @@ def convert_funding():
 
 
 def main():
-    print(f"Converting TRS data to stage 3 format")
+    print("Converting TRS data to stage 3 format")
     print(f"  Source: {RAW_DIR}")
     print(f"  Output: {OUT}")
     print()

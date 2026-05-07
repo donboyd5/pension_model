@@ -30,9 +30,7 @@ COMPARE_DIR = PROJECT_ROOT / "output"
 
 def _parse_cell(cell: str) -> tuple[str, str]:
     if "/" not in cell:
-        raise ValueError(
-            f"Cell identifier must be 'plan/scenario'; got {cell!r}"
-        )
+        raise ValueError(f"Cell identifier must be 'plan/scenario'; got {cell!r}")
     plan, scenario = cell.split("/", 1)
     if not plan or not scenario:
         raise ValueError(
@@ -44,7 +42,7 @@ def _parse_cell(cell: str) -> tuple[str, str]:
 def _filter_cell(df: pd.DataFrame, plan: str, scenario: str) -> pd.DataFrame:
     cell = df[(df["plan"] == plan) & (df["scenario"] == scenario)]
     if cell.empty:
-        available = sorted({(p, s) for p, s in zip(df["plan"], df["scenario"])})
+        available = sorted({(p, s) for p, s in zip(df["plan"], df["scenario"], strict=False)})
         raise SystemExit(
             f"No rows for plan={plan} scenario={scenario} in {ALL_RUNS_PATH}. "
             f"Run `make run plan={plan} scenario={scenario}` first.\n"
@@ -82,20 +80,26 @@ def print_summary(comparison: pd.DataFrame, a_label: str, b_label: str) -> None:
         max_pct = grp["pct_diff"].abs().max()
         y0 = grp[grp["year"] == grp["year"].min()].iloc[0] if len(grp) else None
         ylast = grp[grp["year"] == grp["year"].max()].iloc[0] if len(grp) else None
-        summary_rows.append({
-            "metric": metric,
-            "y0_a": float(y0["value_a"]) if y0 is not None else np.nan,
-            "y0_b": float(y0["value_b"]) if y0 is not None else np.nan,
-            "y0_pct": float(y0["pct_diff"]) if y0 is not None else np.nan,
-            "ylast_pct": float(ylast["pct_diff"]) if ylast is not None else np.nan,
-            "max_abs_pct": float(max_pct) if pd.notna(max_pct) else np.nan,
-        })
+        summary_rows.append(
+            {
+                "metric": metric,
+                "y0_a": float(y0["value_a"]) if y0 is not None else np.nan,
+                "y0_b": float(y0["value_b"]) if y0 is not None else np.nan,
+                "y0_pct": float(y0["pct_diff"]) if y0 is not None else np.nan,
+                "ylast_pct": float(ylast["pct_diff"]) if ylast is not None else np.nan,
+                "max_abs_pct": float(max_pct) if pd.notna(max_pct) else np.nan,
+            }
+        )
     summary = pd.DataFrame(summary_rows)
     with pd.option_context(
-        "display.max_rows", None,
-        "display.max_columns", None,
-        "display.width", 140,
-        "display.float_format", lambda v: f"{v:,.4g}" if abs(v) >= 1 else f"{v:.4g}",
+        "display.max_rows",
+        None,
+        "display.max_columns",
+        None,
+        "display.width",
+        140,
+        "display.float_format",
+        lambda v: f"{v:,.4g}" if abs(v) >= 1 else f"{v:.4g}",
     ):
         print(summary.to_string(index=False))
     print()

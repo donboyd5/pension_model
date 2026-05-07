@@ -8,7 +8,6 @@ import pytest
 
 from pension_model.cli import _discover_scenarios, _get_test_targets
 
-
 pytestmark = [pytest.mark.unit]
 
 
@@ -27,18 +26,18 @@ def test_validate_scenarios_subcommand_passes_for_existing_scenarios():
     """All shipped (plan, scenario) pairs must validate cleanly."""
     result = subprocess.run(
         ["pension-model", "validate-scenarios"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
-    assert result.returncode == 0, (
-        f"validate-scenarios failed:\n{result.stdout}\n{result.stderr}"
-    )
+    assert result.returncode == 0, f"validate-scenarios failed:\n{result.stdout}\n{result.stderr}"
     assert "All" in result.stdout and "validated" in result.stdout
 
 
 def test_validate_scenarios_filters_by_plan():
     result = subprocess.run(
         ["pension-model", "validate-scenarios", "--plan", "txtrs"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0
     assert "txtrs" in result.stdout

@@ -21,7 +21,6 @@ from pension_model.core.identity_checks import (
 )
 from pension_model.core.pipeline import run_plan_pipeline
 
-
 pytestmark = [pytest.mark.integration]
 
 
@@ -86,8 +85,10 @@ def test_mva_break_is_caught(txtrs_funding):
     with pytest.raises(IdentityCheckError) as excinfo:
         check_funding_identities(
             perturbed,
-            dr_current=ctx.dr_current, dr_new=ctx.dr_new,
-            ret_scen=ctx.ret_scen, has_cb=ctx.has_cb,
+            dr_current=ctx.dr_current,
+            dr_new=ctx.dr_new,
+            ret_scen=ctx.ret_scen,
+            has_cb=ctx.has_cb,
             skip_classes={"drop"} if ctx.has_drop else set(),
         )
 
@@ -108,8 +109,10 @@ def test_aal_break_is_caught(txtrs_funding):
     with pytest.raises(IdentityCheckError) as excinfo:
         check_funding_identities(
             perturbed,
-            dr_current=ctx.dr_current, dr_new=ctx.dr_new,
-            ret_scen=ctx.ret_scen, has_cb=ctx.has_cb,
+            dr_current=ctx.dr_current,
+            dr_new=ctx.dr_new,
+            ret_scen=ctx.ret_scen,
+            has_cb=ctx.has_cb,
             skip_classes={"drop"} if ctx.has_drop else set(),
         )
 
@@ -125,8 +128,10 @@ def test_nc_dollar_break_is_caught(txtrs_funding):
     with pytest.raises(IdentityCheckError) as excinfo:
         check_funding_identities(
             perturbed,
-            dr_current=ctx.dr_current, dr_new=ctx.dr_new,
-            ret_scen=ctx.ret_scen, has_cb=ctx.has_cb,
+            dr_current=ctx.dr_current,
+            dr_new=ctx.dr_new,
+            ret_scen=ctx.ret_scen,
+            has_cb=ctx.has_cb,
             skip_classes={"drop"} if ctx.has_drop else set(),
         )
 

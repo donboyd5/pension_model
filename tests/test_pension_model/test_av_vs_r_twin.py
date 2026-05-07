@@ -29,12 +29,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from pension_model.runners import run_truth_table
-
+from pension_model.runners import run_truth_table  # noqa: E402  (after sys.path.insert)
 
 PAIRS = [
     ("txtrs", "txtrs-av"),
@@ -118,8 +116,7 @@ def test_year0_anchor_agreement(truth_tables, plan_a, plan_b, scenario):
             )
     assert not failures, (
         f"Year-{y0_year} anchors diverge beyond {Y0_ANCHOR_REL_TOL*100:.2f}% "
-        f"for {plan_a} vs {plan_b} in {scenario}:\n  "
-        + "\n  ".join(failures)
+        f"for {plan_a} vs {plan_b} in {scenario}:\n  " + "\n  ".join(failures)
     )
 
 

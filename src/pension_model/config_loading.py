@@ -7,7 +7,6 @@ core ``PlanConfig`` schema and rule-resolution logic in ``plan_config.py``.
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Optional
 
 from pension_model.config_schema import PlanConfig
 from pension_model.schemas import (
@@ -26,24 +25,25 @@ from pension_model.schemas import (
     validate_tier_cross_references,
 )
 
-
 log = logging.getLogger(__name__)
 
 
 # Post-load fields populated by the loader, not present in
 # plan_config.json source. Excluded from the unknown-key check.
-_LOADER_POPULATED_FIELDS = frozenset({
-    "calibration",
-    "reduce_tables",
-    "class_to_group",
-    "tier_name_to_id",
-    "tier_id_to_name",
-    "tier_id_to_cola_key",
-    "tier_id_to_fas_years",
-    "tier_id_to_dr_key",
-    "tier_id_to_retire_rate_set",
-    "scenario_name",
-})
+_LOADER_POPULATED_FIELDS = frozenset(
+    {
+        "calibration",
+        "reduce_tables",
+        "class_to_group",
+        "tier_name_to_id",
+        "tier_id_to_name",
+        "tier_id_to_cola_key",
+        "tier_id_to_fas_years",
+        "tier_id_to_dr_key",
+        "tier_id_to_retire_rate_set",
+        "scenario_name",
+    }
+)
 
 
 def _expected_top_level_keys() -> set[str]:
@@ -92,9 +92,9 @@ def _deep_merge(base: dict, overrides: dict) -> dict:
     return result
 
 
-def _build_class_to_group(raw: dict) -> Dict[str, str]:
+def _build_class_to_group(raw: dict) -> dict[str, str]:
     """Build class-to-group lookup from ``class_groups`` config."""
-    class_to_group: Dict[str, str] = {}
+    class_to_group: dict[str, str] = {}
     for group_name, members in raw.get("class_groups", {}).items():
         for class_name in members:
             class_to_group[class_name] = group_name
@@ -102,10 +102,10 @@ def _build_class_to_group(raw: dict) -> Dict[str, str]:
 
 
 def _load_calibration_data(
-    calibration_path: Optional[Path],
+    calibration_path: Path | None,
     *,
     skip_class_calibration: bool,
-) -> tuple[Dict[str, ClassCalibration], Optional[float]]:
+) -> tuple[dict[str, ClassCalibration], float | None]:
     """Load calibration payload from JSON when available.
 
     Returns:
@@ -165,11 +165,13 @@ def _build_economic_model(
     they're snapshots from before any scenario merge, computed by the
     loader and supplied alongside.
     """
-    return Economic.model_validate({
-        **eco_raw,
-        "baseline_dr_current": baseline_dr_current,
-        "baseline_model_return": baseline_model_return,
-    })
+    return Economic.model_validate(
+        {
+            **eco_raw,
+            "baseline_dr_current": baseline_dr_current,
+            "baseline_model_return": baseline_model_return,
+        }
+    )
 
 
 def _build_funding_model(fun_raw: dict, eco_raw: dict) -> Funding:
@@ -206,8 +208,8 @@ def _build_decrements_model(raw: dict, *, plan_name: str) -> Decrements:
 
 def load_plan_config(
     config_path: Path,
-    calibration_path: Optional[Path] = None,
-    scenario_path: Optional[Path] = None,
+    calibration_path: Path | None = None,
+    scenario_path: Path | None = None,
     skip_class_calibration: bool = False,
 ) -> PlanConfig:
     """Load a PlanConfig from a JSON file."""
@@ -217,9 +219,7 @@ def load_plan_config(
     check_unknown_top_level_keys(raw)
 
     baseline_dr_current = raw["economic"]["dr_current"]
-    baseline_model_return = raw["economic"].get(
-        "model_return", baseline_dr_current
-    )
+    baseline_model_return = raw["economic"].get("model_return", baseline_dr_current)
 
     scenario_name = None
     scenario_requires: list[str] = []
@@ -278,12 +278,9 @@ def load_plan_config(
     benefit_model = Benefit.model_validate(ben)
     plan_design_model = PlanDesign.model_validate(raw.get("plan_design", {}))
     valuation_models = {
-        cn: ValuationInputs.model_validate(v)
-        for cn, v in raw.get("valuation_inputs", {}).items()
+        cn: ValuationInputs.model_validate(v) for cn, v in raw.get("valuation_inputs", {}).items()
     }
-    benefit_mult_model = BenefitMultipliers.model_validate(
-        raw.get("benefit_multipliers", {})
-    )
+    benefit_mult_model = BenefitMultipliers.model_validate(raw.get("benefit_multipliers", {}))
 
     from pension_model.schemas import DataSpec, MortalitySpec, TermVested
 
@@ -291,9 +288,7 @@ def load_plan_config(
         raw.get("data", {"data_dir": f"plans/{raw['plan_name']}/data"})
     )
     mortality_model = (
-        MortalitySpec.model_validate(raw["mortality"])
-        if raw.get("mortality") is not None
-        else None
+        MortalitySpec.model_validate(raw["mortality"]) if raw.get("mortality") is not None else None
     )
     term_vested_model = (
         TermVested.model_validate(raw["term_vested"])
@@ -323,12 +318,8 @@ def load_plan_config(
         salary_growth_col_map=raw.get("salary_growth_col_map", {}),
         base_table_map=raw.get("base_table_map", {}),
         design_ratio_group_map=raw.get("design_ratio_group_map", {}),
-        inapplicable_summary_columns=tuple(
-            raw.get("inapplicable_summary_columns", ())
-        ),
-        inapplicable_truth_table_columns=tuple(
-            raw.get("inapplicable_truth_table_columns", ())
-        ),
+        inapplicable_summary_columns=tuple(raw.get("inapplicable_summary_columns", ())),
+        inapplicable_truth_table_columns=tuple(raw.get("inapplicable_truth_table_columns", ())),
         notes=raw.get("notes", {}),
         calibration=calibration,
         class_to_group=class_to_group,
@@ -343,6 +334,7 @@ def load_plan_config(
     # Fatal: legs must be non-overlapping and cover the full
     # entry-year range. Raises ValueError on misconfiguration.
     from pension_model.config_validation import validate_funding_legs
+
     validate_funding_legs(config)
 
     # Fatal: scenario's declared 'requires' list must resolve to
@@ -351,6 +343,7 @@ def load_plan_config(
     # plan with no DROP).
     if scenario_requires:
         from pension_model.schemas.scenario import check_scenario_requires
+
         check_scenario_requires(config, scenario_requires)
 
     for warning in config.validate():
@@ -359,7 +352,7 @@ def load_plan_config(
     return config
 
 
-def discover_plans(plans_dir: Optional[Path] = None) -> dict[str, Path]:
+def discover_plans(plans_dir: Path | None = None) -> dict[str, Path]:
     """Return {plan_name: plan_config.json path} for discovered plans."""
     if plans_dir is None:
         plans_dir = Path(__file__).parents[2] / "plans"
@@ -377,7 +370,7 @@ def discover_plans(plans_dir: Optional[Path] = None) -> dict[str, Path]:
 
 def load_plan_config_by_name(
     plan_name: str,
-    calibration_path: Optional[Path] = None,
+    calibration_path: Path | None = None,
 ) -> PlanConfig:
     """Load a plan config by plan directory name."""
     plans = discover_plans()

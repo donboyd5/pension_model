@@ -45,14 +45,14 @@ pytestmark = [
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-FRS_CLASSES = ["regular", "special", "admin", "eco", "eso",
-               "judges", "senior_management"]
+FRS_CLASSES = ["regular", "special", "admin", "eco", "eso", "judges", "senior_management"]
 FRS_BASELINES = Path(__file__).parent.parent.parent / "plans" / "frs" / "baselines"
 
 
 @pytest.fixture(scope="module")
 def frs_config():
     from pension_model.plan_config import load_plan_config_by_name
+
     return load_plan_config_by_name("frs")
 
 
@@ -81,17 +81,14 @@ def test_stage3_mortality_matches_excel(class_name, frs_config, raw_dir):
         pytest.skip("R_model Excel inputs or stage 3 mortality CSVs not available")
 
     cm_csv = _build_mortality_from_csv(frs_config, mort_dir, class_name)
-    cm_xlsx = build_compact_mortality_from_excel(
-        pub2010, mp2018, class_name, constants=frs_config
-    )
+    cm_xlsx = build_compact_mortality_from_excel(pub2010, mp2018, class_name, constants=frs_config)
 
     max_diff = 0.0
     for age in range(18, 121):
         for year in (2022, 2030, 2050, 2080):
             for is_retiree in (True, False):
                 d = abs(
-                    cm_csv.get_rate(age, year, is_retiree)
-                    - cm_xlsx.get_rate(age, year, is_retiree)
+                    cm_csv.get_rate(age, year, is_retiree) - cm_xlsx.get_rate(age, year, is_retiree)
                 )
                 if d > max_diff:
                     max_diff = d
@@ -125,16 +122,19 @@ def test_stage3_mortality_uses_safety_table(class_name, frs_config):
         table_name="safety",
         min_age=frs_config.ranges.min_age,
         max_age=frs_config.ranges.max_age,
-        max_year=(frs_config.ranges.start_year + frs_config.ranges.model_period
-                  + frs_config.ranges.max_age - frs_config.ranges.min_age),
+        max_year=(
+            frs_config.ranges.start_year
+            + frs_config.ranges.model_period
+            + frs_config.ranges.max_age
+            - frs_config.ranges.min_age
+        ),
         constants=frs_config,
         male_mp_forward_shift=0,
     )
 
     # Spot-check one rate that differs between safety and general
     assert (
-        abs(cm_via_loader.get_rate(30, 2022, False)
-            - cm_safety.get_rate(30, 2022, False)) < 1e-12
+        abs(cm_via_loader.get_rate(30, 2022, False) - cm_safety.get_rate(30, 2022, False)) < 1e-12
     ), f"{class_name} should load the safety table via base_table_map"
 
 
@@ -142,8 +142,8 @@ def test_stage3_mortality_uses_safety_table(class_name, frs_config):
 # Bug 2 regression: compute_adjustment_ratio must handle long-format headcount
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("class_name", ["regular", "special", "admin",
-                                        "senior_management"])
+
+@pytest.mark.parametrize("class_name", ["regular", "special", "admin", "senior_management"])
 def test_adj_ratio_handles_long_format(class_name, frs_config):
     """`compute_adjustment_ratio` must sum the 'count' column for stage 3
     long-format headcount, not `iloc[:, 1:].sum().sum()` which would add
@@ -166,8 +166,7 @@ def test_adj_ratio_handles_long_format(class_name, frs_config):
 
     # Independently compute expected value
     expected_denom = float(hc_long["count"].sum())
-    expected_adj = (frs_config.class_data[class_name].total_active_member
-                    / expected_denom)
+    expected_adj = frs_config.class_data[class_name].total_active_member / expected_denom
 
     assert abs(adj - expected_adj) < 1e-12, (
         f"{class_name}: adj_ratio={adj} but expected {expected_adj} "
@@ -178,6 +177,7 @@ def test_adj_ratio_handles_long_format(class_name, frs_config):
 # ---------------------------------------------------------------------------
 # Bug 3 regression: admin must use regular-group design ratios (matching R)
 # ---------------------------------------------------------------------------
+
 
 def test_admin_design_ratios_match_r(frs_config):
     """Admin must get regular-group DB design ratios (0.75, 0.25, 0.25),
@@ -200,14 +200,17 @@ def test_special_still_uses_special_design_ratios(frs_config):
     the 'special' class itself, which really does use special-group ratios
     (0.95, 0.85, 0.75) in R."""
     ratios = frs_config.get_design_ratios("special")
-    assert ratios["db"] == (0.95, 0.85, 0.75), (
-        f"special must use special-group DB ratios, got {ratios['db']}"
-    )
+    assert ratios["db"] == (
+        0.95,
+        0.85,
+        0.75,
+    ), f"special must use special-group DB ratios, got {ratios['db']}"
 
 
 # ---------------------------------------------------------------------------
 # End-to-end: stage 3 pipeline must reproduce R's total_aal_est exactly
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def stage3_liability(frs_config):
@@ -266,33 +269,38 @@ def test_unknown_retirement_rate_set_raises(frs_config, tmp_path):
     silent-fallback code would absorb without warning.
     """
     import pandas as pd
+
     from pension_model.core.data_loader import _build_yos_only_decrements
 
     # Force one tier to declare an unknown rate set. tier_id_to_retire_rate_set
     # is a tuple[str, ...] cached on PlanConfig.
-    bogus = frs_config.model_copy(update={
-        "tier_id_to_retire_rate_set": ("before_2011", "bogus_set", "2011_or_later"),
-    })
+    bogus = frs_config.model_copy(
+        update={
+            "tier_id_to_retire_rate_set": ("before_2011", "bogus_set", "2011_or_later"),
+        }
+    )
 
     # A valid term_df shape with the lookup_type column the loader keys on
-    term_df = pd.DataFrame({
-        "lookup_type": ["yos"] * 2,
-        "lookup_value": [0, 1],
-        "age": [25, 26],
-        "term_rate": [0.1, 0.1],
-    })
+    term_df = pd.DataFrame(
+        {
+            "lookup_type": ["yos"] * 2,
+            "lookup_value": [0, 1],
+            "age": [25, 26],
+            "term_rate": [0.1, 0.1],
+        }
+    )
     # ret_df has only the rate sets FRS already declares — bogus_set is missing
-    ret_df = pd.DataFrame({
-        "age": [55, 55],
-        "rate_set": ["before_2011", "2011_or_later"],
-        "retire_type": ["normal", "normal"],
-        "retire_rate": [0.05, 0.04],
-    })
+    ret_df = pd.DataFrame(
+        {
+            "age": [55, 55],
+            "rate_set": ["before_2011", "2011_or_later"],
+            "retire_type": ["normal", "normal"],
+            "retire_rate": [0.05, 0.04],
+        }
+    )
 
     with pytest.raises(ValueError, match="bogus_set"):
-        _build_yos_only_decrements(
-            {}, bogus, term_df, ret_df, tmp_path, "regular"
-        )
+        _build_yos_only_decrements({}, bogus, term_df, ret_df, tmp_path, "regular")
 
 
 def test_unknown_decrements_method_raises():
@@ -302,6 +310,7 @@ def test_unknown_decrements_method_raises():
     fails validation before reaching the dispatch in _load_decrements.
     """
     from pydantic import ValidationError
+
     from pension_model.schemas import Decrements
 
     with pytest.raises(ValidationError, match="made_up_method"):
@@ -315,12 +324,14 @@ def test_overlapping_funding_legs_raises(frs_config):
     from pension_model.config_validation import validate_funding_legs
     from pension_model.schemas import LegDef
 
-    new_funding = frs_config.funding.model_copy(update={
-        "legs": [
-            LegDef(name="legacy", entry_year_max=2030),
-            LegDef(name="new", entry_year_min=2020),  # overlap 2020-2029
-        ],
-    })
+    new_funding = frs_config.funding.model_copy(
+        update={
+            "legs": [
+                LegDef(name="legacy", entry_year_max=2030),
+                LegDef(name="new", entry_year_min=2020),  # overlap 2020-2029
+            ],
+        }
+    )
     bogus = frs_config.model_copy(update={"funding": new_funding})
 
     with pytest.raises(ValueError, match="overlap"):
@@ -334,12 +345,14 @@ def test_gappy_funding_legs_raises(frs_config):
     from pension_model.config_validation import validate_funding_legs
     from pension_model.schemas import LegDef
 
-    new_funding = frs_config.funding.model_copy(update={
-        "legs": [
-            LegDef(name="legacy", entry_year_max=2010),
-            LegDef(name="new", entry_year_min=2020),  # gap 2010-2019
-        ],
-    })
+    new_funding = frs_config.funding.model_copy(
+        update={
+            "legs": [
+                LegDef(name="legacy", entry_year_max=2010),
+                LegDef(name="new", entry_year_min=2020),  # gap 2010-2019
+            ],
+        }
+    )
     bogus = frs_config.model_copy(update={"funding": new_funding})
 
     with pytest.raises(ValueError, match="not covered"):
@@ -381,9 +394,7 @@ def test_missing_per_class_nra_raises(frs_config):
 
     # 'regular' isn't in the map and no default — should raise.
     with pytest.raises(ValueError, match="no 'default'"):
-        get_reduce_factor(
-            bogus, "regular", "tier_1", "early", dist_age=58, yos=10, entry_year=1990
-        )
+        get_reduce_factor(bogus, "regular", "tier_1", "early", dist_age=58, yos=10, entry_year=1990)
 
 
 def test_unknown_contribution_strategy_raises(frs_config):
@@ -391,6 +402,7 @@ def test_unknown_contribution_strategy_raises(frs_config):
     a clear ValueError from resolve_funding_context.
     """
     from pydantic import ValidationError
+
     from pension_model.schemas import Funding
 
     # Build a Funding payload with an unsupported contribution_strategy.
@@ -408,6 +420,7 @@ def test_statutory_strategy_requires_rates_block(frs_config):
     Funding model_validator.
     """
     from pydantic import ValidationError
+
     from pension_model.schemas import Funding
 
     # FRS today is "actuarial" with no statutory_rates. Build a payload
@@ -427,6 +440,7 @@ def test_missing_rule_nra_raises(frs_config):
     the NRA on a rule when the plan_config.json loads.
     """
     from pydantic import ValidationError
+
     from pension_model.schemas import Tier
 
     # Build a tier raw dict whose ERR rule-list has a linear rule

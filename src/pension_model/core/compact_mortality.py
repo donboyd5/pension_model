@@ -11,9 +11,10 @@ pre-computed 3M-row table. Later, we'll build directly from the raw
 Excel mortality tables.
 """
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 
 class CompactMortality:
@@ -66,8 +67,9 @@ class CompactMortality:
             return grid[ai, yi]
         return 0.0
 
-    def get_rates_vec(self, ages: np.ndarray, years: np.ndarray,
-                      is_retiree: bool = False) -> np.ndarray:
+    def get_rates_vec(
+        self, ages: np.ndarray, years: np.ndarray, is_retiree: bool = False
+    ) -> np.ndarray:
         """Get mortality rates for vectors of (age, year)."""
         grid = self._ret_grid if is_retiree else self._emp_grid
         ai = ages - self._age_offset
@@ -77,9 +79,9 @@ class CompactMortality:
         yi = np.clip(yi, 0, grid.shape[1] - 1)
         return grid[ai, yi]
 
-    def get_survival_discount(self, start_age: int, start_year: int,
-                              end_age: int, dr: float,
-                              is_retiree: bool = False) -> np.ndarray:
+    def get_survival_discount(
+        self, start_age: int, start_year: int, end_age: int, dr: float, is_retiree: bool = False
+    ) -> np.ndarray:
         """
         Compute cumulative survival × discount from start_age to end_age.
 
@@ -117,12 +119,18 @@ def extract_compact_mortality(mort_table_path: Path, class_name: str) -> Compact
     # Split by retirement status
     mort["is_retired"] = mort["tier_at_dist_age"].str.contains("norm|early")
 
-    employee = (mort[~mort["is_retired"]]
-                .groupby(["dist_age", "dist_year"])["mort_final"]
-                .first().reset_index())
+    employee = (
+        mort[~mort["is_retired"]]
+        .groupby(["dist_age", "dist_year"])["mort_final"]
+        .first()
+        .reset_index()
+    )
 
-    retiree = (mort[mort["is_retired"]]
-               .groupby(["dist_age", "dist_year"])["mort_final"]
-               .first().reset_index())
+    retiree = (
+        mort[mort["is_retired"]]
+        .groupby(["dist_age", "dist_year"])["mort_final"]
+        .first()
+        .reset_index()
+    )
 
     return CompactMortality(employee, retiree)

@@ -43,7 +43,4 @@ class ClassRuntimeTables:
 
     def row_counts(self) -> dict[str, int]:
         """Return row counts for the contained runtime tables."""
-        return {
-            name: len(frame)
-            for name, frame in self.as_dict().items()
-        }
+        return {name: len(frame) for name, frame in self.as_dict().items()}

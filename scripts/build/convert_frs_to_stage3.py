@@ -18,6 +18,7 @@ Run from project root:
 """
 import sys
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -78,14 +79,16 @@ def convert_salary_growth():
     # Check if all classes have the same growth rates
     cols = [col_map[c] for c in CLASSES]
     values = src[cols].values
-    all_same = all(np.allclose(values[:, 0], values[:, i], equal_nan=True) for i in range(1, len(cols)))
+    all_same = all(
+        np.allclose(values[:, 0], values[:, i], equal_nan=True) for i in range(1, len(cols))
+    )
 
     if all_same:
         # Single file for all classes
         out = src[["yos"]].copy()
         out["salary_increase"] = src[col_map["regular"]]
         out.to_csv(OUT / "demographics" / "salary_growth.csv", index=False)
-        print("  salary_growth.csv (shared): {} rows".format(len(out)))
+        print(f"  salary_growth.csv (shared): {len(out)} rows")
     else:
         # Separate files per class
         for cls in CLASSES:
@@ -99,12 +102,14 @@ def convert_retiree_distribution():
     """Convert retiree distribution to standard columns."""
     print("Converting retiree distribution...")
     src = pd.read_csv(BASELINE / "retiree_distribution.csv")
-    out = pd.DataFrame({
-        "age": src["age"],
-        "count": src["n_retire"],
-        "avg_benefit": src["avg_ben"],
-        "total_benefit": src["total_ben"],
-    })
+    out = pd.DataFrame(
+        {
+            "age": src["age"],
+            "count": src["n_retire"],
+            "avg_benefit": src["avg_ben"],
+            "total_benefit": src["total_ben"],
+        }
+    )
     out.to_csv(OUT / "demographics" / "retiree_distribution.csv", index=False)
     print(f"  retiree_distribution.csv: {len(out)} rows")
 
@@ -148,12 +153,14 @@ def convert_termination_rates():
                     continue
                 lo, hi = age_group_ranges[col]
                 for age in range(lo, hi + 1):
-                    rows.append({
-                        "lookup_type": "yos",
-                        "age": age,
-                        "lookup_value": yos,
-                        "term_rate": rate,
-                    })
+                    rows.append(
+                        {
+                            "lookup_type": "yos",
+                            "age": age,
+                            "lookup_value": yos,
+                            "term_rate": rate,
+                        }
+                    )
 
         out = pd.DataFrame(rows).sort_values(["age", "lookup_value"]).reset_index(drop=True)
         out_path = OUT / "decrements" / f"{sep_cls}_termination_rates.csv"
@@ -175,8 +182,10 @@ def convert_retirement_rates():
         rows = []
         for tier_num in [1, 2]:
             tier_name = f"tier_{tier_num}"
-            for retire_type, prefix in [("normal", "normal_retire_rate"),
-                                         ("early", "early_retire_rate")]:
+            for retire_type, prefix in [
+                ("normal", "normal_retire_rate"),
+                ("early", "early_retire_rate"),
+            ]:
                 fname = f"{sep_cls}_{prefix}_tier{tier_num}.csv"
                 fpath = BASELINE / "decrement_tables" / fname
                 if not fpath.exists():
@@ -187,12 +196,14 @@ def convert_retirement_rates():
                 for _, row in src.iterrows():
                     rate = row[rate_col]
                     if pd.notna(rate):
-                        rows.append({
-                            "age": int(row["age"]),
-                            "tier": tier_name,
-                            "retire_type": retire_type,
-                            "retire_rate": rate,
-                        })
+                        rows.append(
+                            {
+                                "age": int(row["age"]),
+                                "tier": tier_name,
+                                "retire_type": retire_type,
+                                "retire_rate": rate,
+                            }
+                        )
 
         out = pd.DataFrame(rows).sort_values(["tier", "retire_type", "age"]).reset_index(drop=True)
         out_path = OUT / "decrements" / f"{sep_cls}_retirement_rates.csv"
@@ -235,23 +246,29 @@ def convert_mortality():
         for _, row in df.iterrows():
             age = int(row["age"])
             for gender in ["female", "male"]:
-                for member_type, col_prefix in [("employee", "employee"),
-                                                 ("retiree", "healthy_retiree")]:
+                for member_type, col_prefix in [
+                    ("employee", "employee"),
+                    ("retiree", "healthy_retiree"),
+                ]:
                     col = f"{col_prefix}_{gender}"
                     qx = row.get(col)
                     if pd.notna(qx):
-                        mort_rows.append({
-                            "age": age,
-                            "gender": gender,
-                            "member_type": member_type,
-                            "table": table_label,
-                            "qx": qx,
-                        })
+                        mort_rows.append(
+                            {
+                                "age": age,
+                                "gender": gender,
+                                "member_type": member_type,
+                                "table": table_label,
+                                "qx": qx,
+                            }
+                        )
 
     if mort_rows:
-        mort_df = pd.DataFrame(mort_rows).sort_values(
-            ["table", "gender", "member_type", "age"]
-        ).reset_index(drop=True)
+        mort_df = (
+            pd.DataFrame(mort_rows)
+            .sort_values(["table", "gender", "member_type", "age"])
+            .reset_index(drop=True)
+        )
         mort_df.to_csv(OUT / "mortality" / "base_rates.csv", index=False)
         print(f"  base_rates.csv: {len(mort_df)} rows")
 
@@ -276,17 +293,19 @@ def convert_mortality():
             for yr_col in year_cols:
                 imp = row[yr_col]
                 if pd.notna(imp):
-                    imp_rows.append({
-                        "age": age,
-                        "year": int(yr_col),
-                        "gender": gender_label,
-                        "improvement": imp,
-                    })
+                    imp_rows.append(
+                        {
+                            "age": age,
+                            "year": int(yr_col),
+                            "gender": gender_label,
+                            "improvement": imp,
+                        }
+                    )
 
     if imp_rows:
-        imp_df = pd.DataFrame(imp_rows).sort_values(
-            ["gender", "age", "year"]
-        ).reset_index(drop=True)
+        imp_df = (
+            pd.DataFrame(imp_rows).sort_values(["gender", "age", "year"]).reset_index(drop=True)
+        )
         imp_df.to_csv(OUT / "mortality" / "improvement_scale.csv", index=False)
         print(f"  improvement_scale.csv: {len(imp_df)} rows")
 
@@ -300,11 +319,13 @@ def convert_funding():
     if amort_src.exists():
         src = pd.read_csv(amort_src)
         # Standardize column names
-        out = src.rename(columns={
-            "class": "class",
-            "amo_period": "amo_period",
-            "amo_balance": "amo_balance",
-        })
+        out = src.rename(
+            columns={
+                "class": "class",
+                "amo_period": "amo_period",
+                "amo_balance": "amo_balance",
+            }
+        )
         # Keep only the columns we need
         keep_cols = ["class", "amo_period", "amo_balance"]
         extra = [c for c in out.columns if c in ["date"]]
@@ -312,8 +333,9 @@ def convert_funding():
         out.to_csv(OUT / "funding" / "amort_layers.csv", index=False)
         print(f"  amort_layers.csv: {len(out)} rows")
 
+
 def main():
-    print(f"Converting FRS data to stage 3 format")
+    print("Converting FRS data to stage 3 format")
     print(f"  Source: {BASELINE}")
     print(f"  Output: {OUT}")
     print()

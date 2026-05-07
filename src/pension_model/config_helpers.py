@@ -1,11 +1,9 @@
 """Config-derived helper functions used outside the main loader/schema module."""
 
-from typing import Tuple
-
 from pension_model.config_schema import PlanConfig
 
 
-def get_plan_design_ratios(config: PlanConfig, class_name: str) -> Tuple[float, float, float]:
+def get_plan_design_ratios(config: PlanConfig, class_name: str) -> tuple[float, float, float]:
     """Return ``(before, after, new)`` DB plan-design ratios."""
     group = config.class_group(class_name)
     ratios = config.plan_design_defs.get(group, config.plan_design_defs.get("default", {}))

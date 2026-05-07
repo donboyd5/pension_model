@@ -13,15 +13,14 @@ Usage:
 Plans are auto-discovered from ``plans/<plan>/config/plan_config.json``.
 """
 
+import argparse
 import sys
 import time
-import argparse
 import warnings
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
 
 OUTPUT_BASE = Path("output")
 
@@ -29,6 +28,7 @@ OUTPUT_BASE = Path("output")
 # ---------------------------------------------------------------------------
 # Formatting helpers
 # ---------------------------------------------------------------------------
+
 
 def _fmt_dollars(val):
     """Format a dollar value in billions."""
@@ -59,12 +59,21 @@ def _fmt_smoothing(cfg):
 
 # Columns in summary.csv (plan-wide, by year).
 SUMMARY_COLUMNS = [
-    "plan", "year",
-    "n_active", "payroll", "benefits",
-    "aal", "ual_ava", "ual_mva",
-    "er_cont", "ee_cont",
-    "mva", "ava", "invest_income",
-    "fr_mva", "fr_ava",
+    "plan",
+    "year",
+    "n_active",
+    "payroll",
+    "benefits",
+    "aal",
+    "ual_ava",
+    "ual_mva",
+    "er_cont",
+    "ee_cont",
+    "mva",
+    "ava",
+    "invest_income",
+    "fr_mva",
+    "fr_ava",
 ]
 
 
@@ -134,28 +143,31 @@ def build_plan_summary(plan_name, liability, funding, constants):
     def _safe(arr):
         return arr if arr is not None else np.full(n_rows, np.nan)
 
-    return pd.DataFrame({
-        "plan": plan_name,
-        "year": pd.array(year, dtype="Int64") if year is not None else range(n_rows),
-        "n_active": _safe(n_active),
-        "payroll": _safe(payroll),
-        "benefits": _safe(benefits),
-        "aal": _safe(aal),
-        "ual_ava": _safe(ual_ava),
-        "ual_mva": _safe(ual_mva),
-        "er_cont": _safe(er_cont),
-        "ee_cont": _safe(ee_cont),
-        "mva": _safe(mva),
-        "ava": _safe(ava),
-        "invest_income": _safe(invest_income),
-        "fr_mva": _safe(fr_mva),
-        "fr_ava": _safe(fr_ava),
-    })[SUMMARY_COLUMNS]
+    return pd.DataFrame(
+        {
+            "plan": plan_name,
+            "year": pd.array(year, dtype="Int64") if year is not None else range(n_rows),
+            "n_active": _safe(n_active),
+            "payroll": _safe(payroll),
+            "benefits": _safe(benefits),
+            "aal": _safe(aal),
+            "ual_ava": _safe(ual_ava),
+            "ual_mva": _safe(ual_mva),
+            "er_cont": _safe(er_cont),
+            "ee_cont": _safe(ee_cont),
+            "mva": _safe(mva),
+            "ava": _safe(ava),
+            "invest_income": _safe(invest_income),
+            "fr_mva": _safe(fr_mva),
+            "fr_ava": _safe(fr_ava),
+        }
+    )[SUMMARY_COLUMNS]
 
 
 # ---------------------------------------------------------------------------
 # Console output
 # ---------------------------------------------------------------------------
+
 
 def print_parameters(constants):
     """Print key model parameters."""
@@ -164,7 +176,7 @@ def print_parameters(constants):
     fn = constants.funding
     rn = constants.ranges
 
-    print(f"\n  Parameters (baseline defaults):")
+    print("\n  Parameters (baseline defaults):")
     print(f"    Discount rate:          {ec.dr_current:.1%}")
     print(f"    Investment return:      {ec.model_return:.1%}")
     print(f"    Payroll growth:         {ec.payroll_growth:.2%}")
@@ -172,7 +184,10 @@ def print_parameters(constants):
     print(f"    Funding policy:         {fn.policy}")
     print(f"    Amortization:           {fn.amo_method}, {fn.amo_period_new}-year period")
     print(f"    Asset smoothing:        {_fmt_smoothing(fn)}")
-    print(f"    Projection horizon:     {rn.model_period} years from {rn.start_year} valuation (through {rn.start_year + rn.model_period})")
+    print(
+        f"    Projection horizon:     {rn.model_period} years from {rn.start_year} valuation"
+        f" (through {rn.start_year + rn.model_period})"
+    )
     print(f"    Plan config:            {constants.plan_name}")
 
 
@@ -181,21 +196,49 @@ def print_summary_table(summary):
     y1 = summary.iloc[0]
     y_last = summary.iloc[-1]
 
-    print(f"\n  Summary (all groups combined):")
+    print("\n  Summary (all groups combined):")
     col1 = f"Valuation ({int(y1['year'])})"
     col2 = f"Final ({int(y_last['year'])})"
     print(f"  {'':30s} {col1:>16s}  {col2:>16s}")
-    print(f"  {'Assets (AVA)':30s} {_fmt_dollars(y1['ava']):>16s}  {_fmt_dollars(y_last['ava']):>16s}")
-    print(f"  {'Assets (MVA)':30s} {_fmt_dollars(y1['mva']):>16s}  {_fmt_dollars(y_last['mva']):>16s}")
-    print(f"  {'Liabilities (AAL)':30s} {_fmt_dollars(y1['aal']):>16s}  {_fmt_dollars(y_last['aal']):>16s}")
-    print(f"  {'Unfunded liability (UAL)':30s} {_fmt_dollars(y1['ual_ava']):>16s}  {_fmt_dollars(y_last['ual_ava']):>16s}")
-    print(f"  {'Funded ratio (AVA)':30s} {_fmt_pct(y1['fr_ava']):>16s}  {_fmt_pct(y_last['fr_ava']):>16s}")
-    print(f"  {'Funded ratio (MVA)':30s} {_fmt_pct(y1['fr_mva']):>16s}  {_fmt_pct(y_last['fr_mva']):>16s}")
+    print(
+        f"  {'Assets (AVA)':30s} {_fmt_dollars(y1['ava']):>16s}  {_fmt_dollars(y_last['ava']):>16s}"
+    )
+    print(
+        f"  {'Assets (MVA)':30s} {_fmt_dollars(y1['mva']):>16s}  {_fmt_dollars(y_last['mva']):>16s}"
+    )
+    print(
+        f"  {'Liabilities (AAL)':30s} "
+        f"{_fmt_dollars(y1['aal']):>16s}  {_fmt_dollars(y_last['aal']):>16s}"
+    )
+    print(
+        f"  {'Unfunded liability (UAL)':30s} "
+        f"{_fmt_dollars(y1['ual_ava']):>16s}  {_fmt_dollars(y_last['ual_ava']):>16s}"
+    )
+    print(
+        f"  {'Funded ratio (AVA)':30s} "
+        f"{_fmt_pct(y1['fr_ava']):>16s}  {_fmt_pct(y_last['fr_ava']):>16s}"
+    )
+    print(
+        f"  {'Funded ratio (MVA)':30s} "
+        f"{_fmt_pct(y1['fr_mva']):>16s}  {_fmt_pct(y_last['fr_mva']):>16s}"
+    )
     print(f"  {'Active members':30s} {y1['n_active']:>16,.0f}  {y_last['n_active']:>16,.0f}")
-    print(f"  {'Payroll':30s} {_fmt_dollars(y1['payroll']):>16s}  {_fmt_dollars(y_last['payroll']):>16s}")
-    print(f"  {'Benefit payments':30s} {_fmt_dollars(y1['benefits']):>16s}  {_fmt_dollars(y_last['benefits']):>16s}")
-    print(f"  {'Employer contributions':30s} {_fmt_dollars(y1['er_cont']):>16s}  {_fmt_dollars(y_last['er_cont']):>16s}")
-    print(f"  {'Employee contributions':30s} {_fmt_dollars(y1['ee_cont']):>16s}  {_fmt_dollars(y_last['ee_cont']):>16s}")
+    print(
+        f"  {'Payroll':30s} "
+        f"{_fmt_dollars(y1['payroll']):>16s}  {_fmt_dollars(y_last['payroll']):>16s}"
+    )
+    print(
+        f"  {'Benefit payments':30s} "
+        f"{_fmt_dollars(y1['benefits']):>16s}  {_fmt_dollars(y_last['benefits']):>16s}"
+    )
+    print(
+        f"  {'Employer contributions':30s} "
+        f"{_fmt_dollars(y1['er_cont']):>16s}  {_fmt_dollars(y_last['er_cont']):>16s}"
+    )
+    print(
+        f"  {'Employee contributions':30s} "
+        f"{_fmt_dollars(y1['ee_cont']):>16s}  {_fmt_dollars(y_last['ee_cont']):>16s}"
+    )
 
 
 def _write_outputs(summary, liability_stacked, output_dir):
@@ -204,8 +247,10 @@ def _write_outputs(summary, liability_stacked, output_dir):
     summary.to_csv(output_dir / "summary.csv", index=False)
     liability_stacked.to_csv(output_dir / "liability_stacked.csv", index=False)
 
-    rel = output_dir.relative_to(Path.cwd()) if output_dir.is_relative_to(Path.cwd()) else output_dir
-    print(f"\n  Files:")
+    rel = (
+        output_dir.relative_to(Path.cwd()) if output_dir.is_relative_to(Path.cwd()) else output_dir
+    )
+    print("\n  Files:")
     print(f"    {rel}/summary.csv            - plan-wide summary by year")
     print(f"    {rel}/liability_stacked.csv  - liability detail by class and year")
 
@@ -213,6 +258,7 @@ def _write_outputs(summary, liability_stacked, output_dir):
 # ---------------------------------------------------------------------------
 # Truth table (optional, for R-vs-Python comparison)
 # ---------------------------------------------------------------------------
+
 
 def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
     """Build the Python truth table, write CSV + Excel sheet.
@@ -230,6 +276,7 @@ def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
 
         from pension_model.output_uniformity import assert_output_uniformity
         from pension_model.truth_table import TRUTH_TABLE_COLUMNS
+
         assert_output_uniformity(
             df,
             canonical_columns=TRUTH_TABLE_COLUMNS,
@@ -259,10 +306,7 @@ def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
         r_csv = Path("plans") / plan_name / "baselines" / "r_truth_table.csv"
         if scenario:
             scenario_r_csv = (
-                Path("plans")
-                / plan_name
-                / "baselines"
-                / f"r_truth_table_{scenario}.csv"
+                Path("plans") / plan_name / "baselines" / f"r_truth_table_{scenario}.csv"
             )
             if scenario_r_csv.exists():
                 r_csv = scenario_r_csv
@@ -275,13 +319,15 @@ def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
             for col in numeric_cols:
                 side_by_side[f"{col}_R"] = r_df[col]
                 side_by_side[f"{col}_Py"] = df[col] if col in df.columns else pd.NA
-                side_by_side[f"{col}_diff"] = (
-                    df[col] - r_df[col] if col in df.columns else pd.NA)
-            upsert_sheet_to_excel(
-                pd.DataFrame(side_by_side), xlsx_path, f"{sheet_token}_diff")
+                side_by_side[f"{col}_diff"] = df[col] - r_df[col] if col in df.columns else pd.NA
+            upsert_sheet_to_excel(pd.DataFrame(side_by_side), xlsx_path, f"{sheet_token}_diff")
 
-        rel_csv = csv_path.relative_to(Path.cwd()) if csv_path.is_relative_to(Path.cwd()) else csv_path
-        rel_xlsx = xlsx_path.relative_to(Path.cwd()) if xlsx_path.is_relative_to(Path.cwd()) else xlsx_path
+        rel_csv = (
+            csv_path.relative_to(Path.cwd()) if csv_path.is_relative_to(Path.cwd()) else csv_path
+        )
+        rel_xlsx = (
+            xlsx_path.relative_to(Path.cwd()) if xlsx_path.is_relative_to(Path.cwd()) else xlsx_path
+        )
         print(f"    {rel_csv}")
         print(f"    {rel_xlsx} (sheet '{sheet_token}_Py')")
     except Exception as e:  # noqa: BLE001 — diagnostic aid must not crash the run
@@ -292,16 +338,18 @@ def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
 # Pipeline executor
 # ---------------------------------------------------------------------------
 
+
 def _execute_pipeline(constants, *, check_identities: bool = False):
     """Run liability + funding pipeline for any plan.
 
     Returns (liability_dict, funding_dict, liability_stacked).
     Funding is always a dict (from run_funding_model).
     """
-    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import (
-        load_funding_inputs, run_funding_model,
+        load_funding_inputs,
+        run_funding_model,
     )
+    from pension_model.core.pipeline import run_plan_pipeline
 
     # Fail fast if required data files are missing
     missing = constants.validate_data_files()
@@ -315,12 +363,12 @@ def _execute_pipeline(constants, *, check_identities: bool = False):
     # manifest is the per-plan source of truth, and may declare files
     # the hardcoded validator above doesn't know about).
     from pension_model.config_validation import validate_data_manifest
+
     manifest_missing = validate_data_manifest(constants)
     if manifest_missing:
         raise FileNotFoundError(
             f"Missing files declared in data_manifest.json for plan "
-            f"'{constants.plan_name}':\n"
-            + "\n".join(f"  - {p}" for p in manifest_missing)
+            f"'{constants.plan_name}':\n" + "\n".join(f"  - {p}" for p in manifest_missing)
         )
 
     seen_stages = set()
@@ -353,7 +401,9 @@ def _execute_pipeline(constants, *, check_identities: bool = False):
     funding_inputs = load_funding_inputs(funding_dir)
 
     funding = run_funding_model(
-        liability, funding_inputs, constants,
+        liability,
+        funding_inputs,
+        constants,
         check_identities=check_identities,
     )
 
@@ -363,6 +413,7 @@ def _execute_pipeline(constants, *, check_identities: bool = False):
 # ---------------------------------------------------------------------------
 # Unified plan runner
 # ---------------------------------------------------------------------------
+
 
 def _run_plan(constants, args):
     """Run any plan's pipeline and emit standardized output."""
@@ -393,6 +444,7 @@ def _run_plan(constants, args):
     summary = build_plan_summary(plan_name, liability, funding, constants)
 
     from pension_model.output_uniformity import assert_output_uniformity
+
     assert_output_uniformity(
         summary,
         canonical_columns=SUMMARY_COLUMNS,
@@ -413,14 +465,18 @@ def _run_plan(constants, args):
 # Calibration
 # ---------------------------------------------------------------------------
 
+
 def cmd_calibrate(args):
     """Run calibration: compute nc_cal and pvfb_term_current from AV targets."""
-    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.config_loading import discover_plans, load_plan_config
     from pension_model.core.calibration import (
-        build_targets_from_config, run_calibration, format_diagnostics,
-        format_comparison, write_calibration_json,
+        build_targets_from_config,
+        format_comparison,
+        format_diagnostics,
+        run_calibration,
+        write_calibration_json,
     )
+    from pension_model.core.pipeline import run_plan_pipeline
 
     plan_name = args.plan_name
 
@@ -451,7 +507,7 @@ def cmd_calibrate(args):
     targets = build_targets_from_config(constants)
     if not targets:
         print(f"  No calibration targets found in valuation_inputs for {plan_name!r}.")
-        print(f"  Each class needs val_norm_cost and val_aal in valuation_inputs.")
+        print("  Each class needs val_norm_cost and val_aal in valuation_inputs.")
         sys.exit(1)
 
     # Run pipeline with neutral calibration
@@ -497,6 +553,7 @@ def _load_plan_test_manifest(plan_name: str) -> list[str]:
     will run only ``DEFAULT_CORE_TEST_FILES`` for that plan.
     """
     import json
+
     from pension_model.config_loading import discover_plans
 
     plans = discover_plans()
@@ -542,6 +599,7 @@ def run_tests(plan_name: str | None = None) -> bool:
     to run every test in the suite.
     """
     import subprocess
+
     targets = _get_test_targets(plan_name)
     _print_test_banner(plan_name, targets)
     # When stdout is piped, the prints above can stay buffered until
@@ -556,6 +614,7 @@ def run_tests(plan_name: str | None = None) -> bool:
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
+
 
 def cmd_run(args):
     """Dispatch `pension-model run <plan>` to the unified runner."""
@@ -635,9 +694,7 @@ def cmd_validate_scenarios(args):
         sys.exit(2)
 
     plan_filter = {args.plan} if getattr(args, "plan", None) else set(plans)
-    scenario_filter = (
-        {args.scenario} if getattr(args, "scenario", None) else set(scenarios)
-    )
+    scenario_filter = {args.scenario} if getattr(args, "scenario", None) else set(scenarios)
 
     pairs: list[tuple[str, str]] = [
         (p, s)
@@ -774,16 +831,18 @@ def cmd_benchmark(args):
 
             timing_parts = [
                 "build_plan_benefit_tables="
-                + _format_delta(plan_comparison["stage_timings"]["build_plan_benefit_tables"], suffix="s"),
-                "liability="
-                + _format_delta(plan_comparison["liability_timing"], suffix="s"),
+                + _format_delta(
+                    plan_comparison["stage_timings"]["build_plan_benefit_tables"], suffix="s"
+                ),
+                "liability=" + _format_delta(plan_comparison["liability_timing"], suffix="s"),
                 "prepare_peak="
-                + _format_delta(plan_comparison["prepare_peak_bytes"], scale=1024 * 1024, suffix="MiB"),
+                + _format_delta(
+                    plan_comparison["prepare_peak_bytes"], scale=1024 * 1024, suffix="MiB"
+                ),
             ]
             if plan_comparison["funding_timing"]["current"] is not None:
                 timing_parts.append(
-                    "funding="
-                    + _format_delta(plan_comparison["funding_timing"], suffix="s")
+                    "funding=" + _format_delta(plan_comparison["funding_timing"], suffix="s")
                 )
             print(f"  {plan_name}: " + ", ".join(timing_parts))
 
@@ -792,58 +851,95 @@ def main():
     warnings.filterwarnings("ignore")
 
     from pension_model.config_loading import discover_plans
+
     discovered = sorted(discover_plans().keys())
 
     parser = argparse.ArgumentParser(prog="pension-model", description="Pension model CLI")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     run_p = subparsers.add_parser("run", help="Run a plan's liability + funding pipeline")
-    run_p.add_argument("plan", choices=discovered or None,
-                       help=f"Plan to run. Discovered: {', '.join(discovered) or '(none)'}")
+    run_p.add_argument(
+        "plan",
+        choices=discovered or None,
+        help=f"Plan to run. Discovered: {', '.join(discovered) or '(none)'}",
+    )
     run_p.add_argument("--no-test", action="store_true", help="Skip tests after the run")
     run_p.add_argument("--test-only", action="store_true", help="Run tests only, skip the model")
-    run_p.add_argument("--truth-table", action="store_true",
-                       help="Write R-vs-Python truth table to CSV and Excel")
-    run_p.add_argument("--scenario", type=str, default=None,
-                       help="Path to scenario JSON file (overrides baseline assumptions)")
-    run_p.add_argument("--check-identities", action="store_true",
-                       help="Verify MVA, AAL, and NC-dollar identities on funding output")
-    run_p.add_argument("--full-suite", action="store_true",
-                       help="Run the full pytest suite after the model run "
-                            "(default: plan-scoped tests only)")
+    run_p.add_argument(
+        "--truth-table", action="store_true", help="Write R-vs-Python truth table to CSV and Excel"
+    )
+    run_p.add_argument(
+        "--scenario",
+        type=str,
+        default=None,
+        help="Path to scenario JSON file (overrides baseline assumptions)",
+    )
+    run_p.add_argument(
+        "--check-identities",
+        action="store_true",
+        help="Verify MVA, AAL, and NC-dollar identities on funding output",
+    )
+    run_p.add_argument(
+        "--full-suite",
+        action="store_true",
+        help="Run the full pytest suite after the model run " "(default: plan-scoped tests only)",
+    )
 
     cal = subparsers.add_parser("calibrate", help="Compute calibration factors")
-    cal.add_argument("plan_name", choices=discovered or None,
-                     help=f"Plan to calibrate. Discovered: {', '.join(discovered) or '(none)'}")
+    cal.add_argument(
+        "plan_name",
+        choices=discovered or None,
+        help=f"Plan to calibrate. Discovered: {', '.join(discovered) or '(none)'}",
+    )
     cal.add_argument("--write", action="store_true", help="Write calibration to JSON")
     cal.add_argument("--output", type=str, default=None, help="Output path for calibration JSON")
 
     subparsers.add_parser("list", help="List discovered plans")
 
     bench = subparsers.add_parser("benchmark", help="Profile runtime stages for one or more plans")
-    bench.add_argument("plan", nargs="?", choices=discovered or None,
-                       help=f"Plan to benchmark. Omit to benchmark all discovered plans.")
-    bench.add_argument("--repeats", type=int, default=2,
-                       help="Number of benchmark runs per plan (default: 2)")
-    bench.add_argument("--include-funding", action="store_true",
-                       help="Also profile the funding stage")
-    bench.add_argument("--research-mode", action="store_true",
-                       help="Retain full stacked plan tables for debug and research inspection")
-    bench.add_argument("--baseline-out", type=str, default=None,
-                       help="Write a JSON runtime baseline summarizing the benchmark runs")
-    bench.add_argument("--compare-baseline", type=str, default=None,
-                       help="Compare the current benchmark summary against a saved baseline JSON")
+    bench.add_argument(
+        "plan",
+        nargs="?",
+        choices=discovered or None,
+        help="Plan to benchmark. Omit to benchmark all discovered plans.",
+    )
+    bench.add_argument(
+        "--repeats", type=int, default=2, help="Number of benchmark runs per plan (default: 2)"
+    )
+    bench.add_argument(
+        "--include-funding", action="store_true", help="Also profile the funding stage"
+    )
+    bench.add_argument(
+        "--research-mode",
+        action="store_true",
+        help="Retain full stacked plan tables for debug and research inspection",
+    )
+    bench.add_argument(
+        "--baseline-out",
+        type=str,
+        default=None,
+        help="Write a JSON runtime baseline summarizing the benchmark runs",
+    )
+    bench.add_argument(
+        "--compare-baseline",
+        type=str,
+        default=None,
+        help="Compare the current benchmark summary against a saved baseline JSON",
+    )
 
     val_scen = subparsers.add_parser(
         "validate-scenarios",
         help="Load every (plan, scenario) pair and report failures up front",
     )
     val_scen.add_argument(
-        "--plan", choices=discovered or None, default=None,
+        "--plan",
+        choices=discovered or None,
+        default=None,
         help="Restrict to one plan",
     )
     val_scen.add_argument(
-        "--scenario", default=None,
+        "--scenario",
+        default=None,
         help="Restrict to one scenario name (the JSON stem)",
     )
 

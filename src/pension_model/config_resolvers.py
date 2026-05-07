@@ -1,6 +1,5 @@
 """Stable public resolver API."""
 
-from pension_model.config_schema import EARLY, NON_VESTED, NORM, VESTED
 from pension_model.config_resolvers_scalar import (
     get_ben_mult,
     get_reduce_factor,
@@ -12,7 +11,7 @@ from pension_model.config_resolvers_vectorized import (
     resolve_reduce_factor_vec,
     resolve_tiers_vec,
 )
-
+from pension_model.config_schema import EARLY, NON_VESTED, NORM, VESTED
 
 __all__ = [
     "EARLY",

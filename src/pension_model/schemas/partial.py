@@ -36,7 +36,7 @@ Design notes:
 from __future__ import annotations
 
 import types
-from typing import Any, Optional, Union, get_args, get_origin
+from typing import Any, Union, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
@@ -44,8 +44,8 @@ from pydantic import BaseModel, ConfigDict, Field, create_model
 def partial_model(
     cls: type[BaseModel],
     *,
-    extra: Optional[str] = None,
-    _cache: Optional[dict[type[BaseModel], type[BaseModel]]] = None,
+    extra: str | None = None,
+    _cache: dict[type[BaseModel], type[BaseModel]] | None = None,
 ) -> type[BaseModel]:
     """Build a recursive partial of ``cls``.
 
@@ -76,7 +76,7 @@ def partial_model(
         kwargs: dict[str, Any] = {"default": None}
         if field_info.alias is not None:
             kwargs["alias"] = field_info.alias
-        fields[name] = (Optional[partial_ann], Field(**kwargs))
+        fields[name] = (partial_ann | None, Field(**kwargs))
 
     parent_extra = (cls.model_config or {}).get("extra", "ignore")
     final_extra = extra if extra is not None else parent_extra
@@ -107,6 +107,6 @@ def _partialize_annotation(
     origin = get_origin(annotation)
     if origin is Union or origin is types.UnionType:
         new_args = tuple(_partialize_annotation(a, cache) for a in get_args(annotation))
-        return Union[new_args]  # type: ignore[return-value]
+        return Union[new_args]  # type: ignore[return-value]  # noqa: UP007  (runtime Union construction)
 
     return annotation

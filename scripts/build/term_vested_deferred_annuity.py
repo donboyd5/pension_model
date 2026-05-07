@@ -88,7 +88,7 @@ def deferred_annuity_stream(
     if abs(g - 1.0) < 1e-12:
         factor = payout_years * v ** (deferral_years + 1)
     else:
-        factor = v ** (deferral_years + 1) * (1.0 - g ** payout_years) / (1.0 - g)
+        factor = v ** (deferral_years + 1) * (1.0 - g**payout_years) / (1.0 - g)
 
     c = pvfb_term_current / factor
 

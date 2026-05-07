@@ -9,8 +9,8 @@ Verifies that:
 
 import sys
 from pathlib import Path
+
 import pytest
-import numpy as np
 
 pytestmark = [pytest.mark.regression, pytest.mark.plan_frs]
 
@@ -24,11 +24,12 @@ CLASSES = ["regular", "special", "admin", "eco", "eso", "judges", "senior_manage
 @pytest.fixture(scope="module")
 def calibration_results():
     """Run calibration and return (results, targets, constants)."""
+    from pension_model.core.calibration import (
+        build_targets_from_config,
+        run_calibration,
+    )
     from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.plan_config import load_plan_config_by_name
-    from pension_model.core.calibration import (
-        build_targets_from_config, run_calibration,
-    )
 
     # Load with calibration file to get cal_factor (a calibration parameter,
     # not plan design), but neutralize nc_cal and pvfb_term_current so the
@@ -53,6 +54,7 @@ def calibration_results():
 def test_nc_cal_matches_json(calibration_results, class_name):
     """Computed nc_cal should match the value in calibration.json."""
     import json
+
     results, _, _ = calibration_results
 
     json_path = FRS_CONFIG_DIR / "calibration.json"
@@ -62,15 +64,16 @@ def test_nc_cal_matches_json(calibration_results, class_name):
     computed = results[class_name].nc_cal
     expected = cal_json["classes"][class_name]["nc_cal"]
     # JSON serialization introduces small rounding; allow 1e-6 tolerance
-    assert abs(computed - expected) < 1e-6, (
-        f"{class_name}: computed nc_cal={computed:.10f} vs JSON={expected:.10f}"
-    )
+    assert (
+        abs(computed - expected) < 1e-6
+    ), f"{class_name}: computed nc_cal={computed:.10f} vs JSON={expected:.10f}"
 
 
 @pytest.mark.parametrize("class_name", CLASSES)
 def test_pvfb_term_matches_json(calibration_results, class_name):
     """Computed pvfb_term_current should match JSON value (within rounding)."""
     import json
+
     results, _, _ = calibration_results
 
     json_path = FRS_CONFIG_DIR / "calibration.json"
@@ -80,9 +83,9 @@ def test_pvfb_term_matches_json(calibration_results, class_name):
     computed = results[class_name].pvfb_term_current
     expected = cal_json["classes"][class_name]["pvfb_term_current"]
     # Allow $1 tolerance (float precision vs integer in JSON)
-    assert abs(computed - expected) < 1.0, (
-        f"{class_name}: computed pvfb_term={computed:.2f} vs JSON={expected:.2f}"
-    )
+    assert (
+        abs(computed - expected) < 1.0
+    ), f"{class_name}: computed pvfb_term={computed:.2f} vs JSON={expected:.2f}"
 
 
 @pytest.mark.parametrize("class_name", ["regular", "special"])
@@ -99,6 +102,7 @@ def test_nc_cal_near_one_for_large_classes(calibration_results, class_name):
 def test_diagnostics_format(calibration_results):
     """Diagnostics string should contain expected sections."""
     from pension_model.core.calibration import format_diagnostics
+
     results, targets, constants = calibration_results
     output = format_diagnostics(results, targets, constants.benefit.cal_factor)
     assert "Calibration Diagnostics" in output

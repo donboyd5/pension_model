@@ -38,8 +38,7 @@ NON_METRIC_COLS = {"plan", "year"}
 def truth_table_to_long(plan: str, scenario: str, df: pd.DataFrame) -> pd.DataFrame:
     """Reshape a truth-table DataFrame into the canonical long format."""
     metric_cols = [
-        c for c in df.columns
-        if c not in NON_METRIC_COLS and pd.api.types.is_numeric_dtype(df[c])
+        c for c in df.columns if c not in NON_METRIC_COLS and pd.api.types.is_numeric_dtype(df[c])
     ]
     long = df.melt(
         id_vars=["year"],
@@ -59,9 +58,7 @@ def upsert_rows(new_rows: pd.DataFrame, path: Path) -> None:
         existing = pd.read_csv(path)
         plan = new_rows["plan"].iloc[0]
         scenario = new_rows["scenario"].iloc[0]
-        keep = existing[
-            ~((existing["plan"] == plan) & (existing["scenario"] == scenario))
-        ]
+        keep = existing[~((existing["plan"] == plan) & (existing["scenario"] == scenario))]
         combined = pd.concat([keep, new_rows], ignore_index=True)
     else:
         combined = new_rows
@@ -89,8 +86,7 @@ def main() -> None:
     long = truth_table_to_long(args.plan, args.scenario, tt)
     upsert_rows(long, args.output)
     print(
-        f"Wrote {len(long)} rows for plan={args.plan} scenario={args.scenario} "
-        f"to {args.output}"
+        f"Wrote {len(long)} rows for plan={args.plan} scenario={args.scenario} " f"to {args.output}"
     )
 
 

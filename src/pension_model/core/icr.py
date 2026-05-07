@@ -18,8 +18,7 @@ def _geo_return(returns: np.ndarray) -> float:
     return np.prod(1.0 + returns) ** (1.0 / len(returns)) - 1.0
 
 
-def smooth_return(returns: np.ndarray, floor: float, cap: float,
-                  upside_share: float) -> float:
+def smooth_return(returns: np.ndarray, floor: float, cap: float, upside_share: float) -> float:
     """Smoothed ICR: floor + upside_share * max(0, geo_return - floor), capped.
 
     Formula: min(cap, max(floor, floor + upside_share * (geo_return - floor)))
@@ -35,7 +34,7 @@ def _est_arith_return(geo_return: float, sd: float) -> float:
     R's est_arith_return: arith = (1 + geo) * exp(sd^2 / 2) - 1
     Approximation: arith ≈ geo + sd^2 / 2
     """
-    return (1 + geo_return) * np.exp(sd ** 2 / 2) - 1
+    return (1 + geo_return) * np.exp(sd**2 / 2) - 1
 
 
 def compute_expected_icr(
@@ -83,7 +82,7 @@ def compute_expected_icr(
     smooth_rows = total_rows - smooth_period + 1
     smoothed = np.zeros((smooth_rows, n_simulations))
     for i in range(smooth_rows):
-        window = returns_matrix[i:i + smooth_period, :]
+        window = returns_matrix[i : i + smooth_period, :]
         for j in range(n_simulations):
             smoothed[i, j] = smooth_return(window[:, j], floor, cap, upside_share)
 
@@ -141,7 +140,7 @@ def compute_actual_icr_series(
         if i < smooth_period - 1:
             actual_icr[i] = floor
         else:
-            window = inv_returns[i - smooth_period + 1:i + 1]
+            window = inv_returns[i - smooth_period + 1 : i + 1]
             actual_icr[i] = smooth_return(window, floor, cap, upside_share)
 
     return pd.Series(actual_icr, index=year_list)

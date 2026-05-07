@@ -18,16 +18,16 @@ Usage:
     python scripts/build_r_truth_tables.py
 """
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from pension_model.truth_table import (  # noqa: E402
     build_r_truth_table,
-    upsert_sheet_to_excel,
     format_truth_table_for_log,
+    upsert_sheet_to_excel,
     write_diff_sheet_with_formulas,
 )
 
@@ -63,9 +63,7 @@ def main():
     # *_Py sheets so they update automatically whenever the pipeline rewrites
     # the Py sheet.
     print("\nWriting diff sheets (live formulas: Py - R)")
-    write_diff_sheet_with_formulas(
-        out_path, "frs_diff", "frs_R", "frs_Py", n_rows=len(frs_r)
-    )
+    write_diff_sheet_with_formulas(out_path, "frs_diff", "frs_R", "frs_Py", n_rows=len(frs_r))
     write_diff_sheet_with_formulas(
         out_path, "txtrs_diff", "txtrs_R", "txtrs_Py", n_rows=len(txtrs_r)
     )

@@ -14,7 +14,7 @@ content inside ``notes`` instead.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -38,7 +38,6 @@ from pension_model.schemas import (
     ValuationInputs,
     validate_tier_cross_references,
 )
-
 
 NON_VESTED = 0
 VESTED = 1
@@ -74,8 +73,8 @@ class PlanConfig(BaseModel):
     plan_name: str
     plan_description: str = ""
 
-    classes: Tuple[str, ...]
-    class_groups: Dict[str, List[str]] = Field(default_factory=dict)
+    classes: tuple[str, ...]
+    class_groups: dict[str, list[str]] = Field(default_factory=dict)
 
     economic: Economic
     ranges: Ranges
@@ -84,20 +83,20 @@ class PlanConfig(BaseModel):
     funding: Funding
     benefit: Benefit
 
-    valuation_inputs: Dict[str, ValuationInputs] = Field(default_factory=dict)
+    valuation_inputs: dict[str, ValuationInputs] = Field(default_factory=dict)
     plan_design: PlanDesign = Field(default_factory=PlanDesign)
     benefit_mult_defs: BenefitMultipliers = Field(
         default_factory=BenefitMultipliers, alias="benefit_multipliers"
     )
-    tier_defs: Tuple[Tier, ...] = Field(default=(), alias="tiers")
+    tier_defs: tuple[Tier, ...] = Field(default=(), alias="tiers")
 
     data: DataSpec
-    mortality: Optional[MortalitySpec] = None
-    term_vested: Optional[TermVested] = None
+    mortality: MortalitySpec | None = None
+    term_vested: TermVested | None = None
 
-    salary_growth_col_map: Dict[str, str] = Field(default_factory=dict)
-    base_table_map: Dict[str, str] = Field(default_factory=dict)
-    design_ratio_group_map: Dict[str, str] = Field(default_factory=dict)
+    salary_growth_col_map: dict[str, str] = Field(default_factory=dict)
+    base_table_map: dict[str, str] = Field(default_factory=dict)
+    design_ratio_group_map: dict[str, str] = Field(default_factory=dict)
 
     # Output-uniformity declaration: columns in the canonical summary
     # and truth-table outputs that are structurally inapplicable to
@@ -105,24 +104,24 @@ class PlanConfig(BaseModel):
     # plans populate every column, so this is empty; it exists so a
     # future plan can be honest about what it does and does not
     # produce, and the runtime can assert the rest are populated.
-    inapplicable_summary_columns: Tuple[str, ...] = ()
-    inapplicable_truth_table_columns: Tuple[str, ...] = ()
+    inapplicable_summary_columns: tuple[str, ...] = ()
+    inapplicable_truth_table_columns: tuple[str, ...] = ()
 
-    notes: Dict[str, Any] = Field(default_factory=dict)
+    notes: dict[str, Any] = Field(default_factory=dict)
 
-    scenario_name: Optional[str] = Field(default=None, alias="_scenario_name")
+    scenario_name: str | None = Field(default=None, alias="_scenario_name")
 
     # Populated post-load (calibration is read from a sibling file;
     # reduce_tables and the lookup caches are built during loading).
-    calibration: Dict[str, ClassCalibration] = Field(default_factory=dict)
-    reduce_tables: Optional[Dict[str, Any]] = None
-    class_to_group: Dict[str, str] = Field(default_factory=dict)
-    tier_name_to_id: Dict[str, int] = Field(default_factory=dict)
-    tier_id_to_name: Tuple[str, ...] = ()
-    tier_id_to_cola_key: Tuple[str, ...] = ()
-    tier_id_to_fas_years: Tuple[int, ...] = ()
-    tier_id_to_dr_key: Tuple[str, ...] = ()
-    tier_id_to_retire_rate_set: Tuple[str, ...] = ()
+    calibration: dict[str, ClassCalibration] = Field(default_factory=dict)
+    reduce_tables: dict[str, Any] | None = None
+    class_to_group: dict[str, str] = Field(default_factory=dict)
+    tier_name_to_id: dict[str, int] = Field(default_factory=dict)
+    tier_id_to_name: tuple[str, ...] = ()
+    tier_id_to_cola_key: tuple[str, ...] = ()
+    tier_id_to_fas_years: tuple[int, ...] = ()
+    tier_id_to_dr_key: tuple[str, ...] = ()
+    tier_id_to_retire_rate_set: tuple[str, ...] = ()
 
     # ------------------------------------------------------------------
     # Cross-reference validation. tier_defs ``*_same_as`` references
@@ -174,7 +173,7 @@ class PlanConfig(BaseModel):
         return self.economic.model_return  # type: ignore[return-value]
 
     @property
-    def asset_return_path(self) -> Optional[dict]:
+    def asset_return_path(self) -> dict | None:
         return self.economic.asset_return_path
 
     @property
@@ -226,7 +225,7 @@ class PlanConfig(BaseModel):
         return self.benefit.fas_years_default
 
     @property
-    def benefit_types(self) -> Tuple[str, ...]:
+    def benefit_types(self) -> tuple[str, ...]:
         return tuple(self.benefit.benefit_types)
 
     @property
@@ -262,11 +261,11 @@ class PlanConfig(BaseModel):
         return self.modeling.male_mp_forward_shift
 
     @property
-    def cola_proration_cutoff_year(self) -> Optional[int]:
+    def cola_proration_cutoff_year(self) -> int | None:
         return self.cola.proration_cutoff_year
 
     @property
-    def plan_design_cutoff_year(self) -> Optional[int]:
+    def plan_design_cutoff_year(self) -> int | None:
         return self.plan_design.cutoff_year
 
     @property
@@ -288,7 +287,7 @@ class PlanConfig(BaseModel):
         return self.funding.has_drop
 
     @property
-    def drop_reference_class(self) -> Optional[str]:
+    def drop_reference_class(self) -> str | None:
         return self.funding.drop_reference_class
 
     @property
@@ -297,7 +296,7 @@ class PlanConfig(BaseModel):
         return self.funding.statutory_rates
 
     @property
-    def amo_period_current(self) -> Optional[int]:
+    def amo_period_current(self) -> int | None:
         return self.funding.amo_period_current
 
     @property
@@ -340,7 +339,7 @@ class PlanConfig(BaseModel):
         return self.funding.ava_smoothing
 
     @property
-    def funding_legs(self) -> Tuple[Tuple[str, Optional[int], Optional[int]], ...]:
+    def funding_legs(self) -> tuple[tuple[str, int | None, int | None], ...]:
         """Resolved funding legs as ``((name, lo, hi), ...)``.
 
         ``lo`` is inclusive, ``hi`` is exclusive — same convention as
@@ -384,7 +383,7 @@ class PlanConfig(BaseModel):
         return self.ranges.max_year
 
     @property
-    def class_data(self) -> Dict[str, ClassData]:
+    def class_data(self) -> dict[str, ClassData]:
         """Per-class merged view of valuation_inputs + calibration.
 
         Returns typed ``ClassData`` objects, one per class. Same
@@ -418,7 +417,7 @@ class PlanConfig(BaseModel):
             for name, ratios in self.plan_design.groups.items()
         }
 
-    def get_design_ratios(self, class_name: str) -> Dict[str, Tuple[float, float, float]]:
+    def get_design_ratios(self, class_name: str) -> dict[str, tuple[float, float, float]]:
         group_name = self.design_ratio_group_map.get(class_name, self.class_group(class_name))
         ratios = (
             self.plan_design.group(group_name)
@@ -444,9 +443,7 @@ class PlanConfig(BaseModel):
     def class_group(self, class_name: str) -> str:
         return self.class_to_group.get(class_name, "default")
 
-    def resolve_ben_mult(
-        self, class_name: str, tier_name: str
-    ) -> Optional[MultiplierRules]:
+    def resolve_ben_mult(self, class_name: str, tier_name: str) -> MultiplierRules | None:
         """Look up the typed :class:`MultiplierRules` for a (class, tier).
 
         Encapsulates the ``all_tiers`` / ``<tier>_same_as`` / direct
@@ -467,8 +464,10 @@ class PlanConfig(BaseModel):
 
     def validate(self) -> list:
         from pension_model.config_validation import validate_config
+
         return validate_config(self)
 
     def validate_data_files(self) -> list:
         from pension_model.config_validation import validate_data_files
+
         return validate_data_files(self)
