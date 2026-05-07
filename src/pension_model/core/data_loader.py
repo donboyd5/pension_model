@@ -13,7 +13,6 @@ Entry points:
   - load_plan_data(class_name, constants): per-class loader (called
     internally by load_plan_inputs; still available for debugging).
 """
-from dataclasses import replace
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -550,7 +549,7 @@ def load_plan_inputs(constants: PlanConfig) -> tuple[PlanConfig, dict]:
             reduction_tables = rt
             break
 
-    constants = replace(constants, reduce_tables=reduction_tables)
+    constants = constants.model_copy(update={"reduce_tables": reduction_tables})
 
     # Build the shared annual return stream once. Used by the CB
     # crediting path here and by the funding model's asset roll-forward.

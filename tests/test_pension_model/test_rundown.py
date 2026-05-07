@@ -24,7 +24,6 @@ The test verifies:
 """
 
 import sys
-from dataclasses import replace
 from pathlib import Path
 import pytest
 import numpy as np
@@ -55,7 +54,7 @@ def rundown_results():
     # model_copy so the derived properties (entry_year_range etc.)
     # follow.
     new_ranges = constants.ranges.model_copy(update={"model_period": RUNDOWN_PERIOD})
-    constants = replace(constants, ranges=new_ranges)
+    constants = constants.model_copy(update={"ranges": new_ranges})
 
     liability = run_plan_pipeline(constants, no_new_entrants=True)
 

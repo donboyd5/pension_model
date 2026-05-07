@@ -1,0 +1,1723 @@
+{
+  "$defs": {
+    "AgeGroup": {
+      "additionalProperties": false,
+      "description": "One age band used by YOS-only termination-rate tables.\n\nEither ``min_age`` or ``max_age`` (or both) may be omitted to\nmean open-ended. ``label`` is the column name in the wide-format\nterm_rate_avg table.",
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "max_age": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Age"
+        },
+        "min_age": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Age"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "title": "AgeGroup",
+      "type": "object"
+    },
+    "Benefit": {
+      "additionalProperties": false,
+      "description": "Plan-level benefit assumptions.\n\n``cal_factor`` and ``min_benefit_monthly`` are admitted but are\nnot yet used by every plan \u2014 the loader injects ``cal_factor``\nfrom ``calibration.json`` if the plan has one, and\n``min_benefit_monthly`` is a TXTRS-only feature today.",
+      "properties": {
+        "benefit_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Benefit Types",
+          "type": "array"
+        },
+        "cal_factor": {
+          "default": 1.0,
+          "description": "Plan-wide calibration scalar applied to DB benefits. Injected by the loader from calibration.json when present.",
+          "title": "Cal Factor",
+          "type": "number"
+        },
+        "cash_balance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CashBalance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "cola": {
+          "$ref": "#/$defs/Cola"
+        },
+        "db_ee_cont_rate": {
+          "title": "Db Ee Cont Rate",
+          "type": "number"
+        },
+        "db_ee_interest_rate": {
+          "default": 0.0,
+          "title": "Db Ee Interest Rate",
+          "type": "number"
+        },
+        "dc": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DcSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fas_years_default": {
+          "title": "Fas Years Default",
+          "type": "integer"
+        },
+        "fas_years_grandfathered": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Override fas_years for grandfathered tiers (TXTRS).",
+          "title": "Fas Years Grandfathered"
+        },
+        "min_benefit_monthly": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Floor on monthly benefit at retirement (TXTRS).",
+          "title": "Min Benefit Monthly"
+        },
+        "retire_refund_ratio": {
+          "default": 1.0,
+          "title": "Retire Refund Ratio",
+          "type": "number"
+        }
+      },
+      "required": [
+        "db_ee_cont_rate",
+        "fas_years_default"
+      ],
+      "title": "Benefit",
+      "type": "object"
+    },
+    "BenefitMultipliers": {
+      "additionalProperties": true,
+      "description": "Top-level benefit_multipliers block.\n\nKeys are class names. Values are :class:`ClassMultipliers`\n(admitted as extras and promoted at parse time).",
+      "properties": {},
+      "title": "BenefitMultipliers",
+      "type": "object"
+    },
+    "CashBalance": {
+      "additionalProperties": false,
+      "description": "Cash-balance plan parameters (TXTRS-style).",
+      "properties": {
+        "annuity_conversion_rate": {
+          "title": "Annuity Conversion Rate",
+          "type": "number"
+        },
+        "ee_pay_credit": {
+          "title": "Ee Pay Credit",
+          "type": "number"
+        },
+        "er_pay_credit": {
+          "title": "Er Pay Credit",
+          "type": "number"
+        },
+        "icr_cap": {
+          "title": "Icr Cap",
+          "type": "number"
+        },
+        "icr_floor": {
+          "title": "Icr Floor",
+          "type": "number"
+        },
+        "icr_smooth_period": {
+          "title": "Icr Smooth Period",
+          "type": "integer"
+        },
+        "icr_upside_share": {
+          "title": "Icr Upside Share",
+          "type": "number"
+        },
+        "return_volatility": {
+          "default": 0.12,
+          "title": "Return Volatility",
+          "type": "number"
+        },
+        "vesting_yos": {
+          "title": "Vesting Yos",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ee_pay_credit",
+        "er_pay_credit",
+        "vesting_yos",
+        "icr_smooth_period",
+        "icr_floor",
+        "icr_cap",
+        "icr_upside_share",
+        "annuity_conversion_rate"
+      ],
+      "title": "CashBalance",
+      "type": "object"
+    },
+    "ClassCalibration": {
+      "additionalProperties": false,
+      "description": "Per-class calibration values.",
+      "properties": {
+        "nc_cal": {
+          "default": 1.0,
+          "description": "Normal-cost calibration scalar. Multiplies the model's NC rate to match AV. Values near 1.0 mean the model is accurate for that class.",
+          "title": "Nc Cal",
+          "type": "number"
+        },
+        "pvfb_term_current": {
+          "default": 0.0,
+          "description": "PVFB on term-vested members at start year. Seeds the term-vested AAL where the AV doesn't break out a specific number.",
+          "title": "Pvfb Term Current",
+          "type": "number"
+        }
+      },
+      "title": "ClassCalibration",
+      "type": "object"
+    },
+    "Cola": {
+      "additionalProperties": true,
+      "description": "Cost-of-living adjustment assumptions.\n\nHas two layers of fields:\n\n* **Typed fixed fields** for retiree-side and proration:\n  ``current_retire``, ``current_retire_one_time``, ``one_time_cola``,\n  ``proration_cutoff_year``.\n\n* **Dynamic per-tier active rates** (e.g. ``tier_1_active``,\n  ``tier_2_active_constant``) \u2014 admitted via ``extra=\"allow\"``\n  because the keys depend on the plan's tier names. Read these\n  via ``getattr(cola, key, default)`` from caller code.\n\nA future cleanup PR may move per-tier rates into a typed sub-dict\nso the whole model can be strict; for now the loose form\npreserves the existing JSON shape.",
+      "properties": {
+        "current_retire": {
+          "default": 0.0,
+          "title": "Current Retire",
+          "type": "number"
+        },
+        "current_retire_one_time": {
+          "default": 0.0,
+          "title": "Current Retire One Time",
+          "type": "number"
+        },
+        "one_time_cola": {
+          "default": false,
+          "title": "One Time Cola",
+          "type": "boolean"
+        },
+        "proration_cutoff_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Proration Cutoff Year"
+        }
+      },
+      "title": "Cola",
+      "type": "object"
+    },
+    "Condition": {
+      "additionalProperties": false,
+      "description": "A single predicate over (age, yos, entry_year).\n\nA condition matches a member when **every** declared field is\nsatisfied. Missing fields don't constrain anything. Today's\nsupported fields:\n\n* ``min_age`` \u2014 member's age >= this.\n* ``min_yos`` \u2014 member's years of service >= this.\n* ``rule_of`` \u2014 age + yos >= this (the \"rule of N\" pattern).\n\nPlans express OR-combinations as a list of conditions inside a\nhigher-level container (e.g. ``GradedRule.or_`` or eligibility\nrule lists).\n\nA condition with no fields set is \"always true\" \u2014 used as a\ncatch-all in early-retire-reduction rules. (Today's eligibility\nrules don't use the empty form.)",
+      "properties": {
+        "min_age": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Age"
+        },
+        "min_yos": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Yos"
+        },
+        "rule_of": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule Of"
+        }
+      },
+      "title": "Condition",
+      "type": "object"
+    },
+    "CorridorAvaSmoothing": {
+      "additionalProperties": false,
+      "description": "Corridor smoothing parameters.\n\nEach year, smooths AVA toward MVA by ``recognition_fraction`` of\nthe gap, bounded to ``[corridor_low * mva, corridor_high * mva]``.",
+      "properties": {
+        "corridor_high": {
+          "default": 1.2,
+          "title": "Corridor High",
+          "type": "number"
+        },
+        "corridor_low": {
+          "default": 0.8,
+          "title": "Corridor Low",
+          "type": "number"
+        },
+        "method": {
+          "const": "corridor",
+          "title": "Method",
+          "type": "string"
+        },
+        "recognition_fraction": {
+          "default": 0.2,
+          "title": "Recognition Fraction",
+          "type": "number"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "title": "CorridorAvaSmoothing",
+      "type": "object"
+    },
+    "DataSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "data_dir": {
+          "title": "Data Dir",
+          "type": "string"
+        }
+      },
+      "required": [
+        "data_dir"
+      ],
+      "title": "DataSpec",
+      "type": "object"
+    },
+    "DcSpec": {
+      "additionalProperties": false,
+      "description": "Defined-contribution sub-block (TXTRS-style).",
+      "properties": {
+        "assumed_return": {
+          "title": "Assumed Return",
+          "type": "number"
+        },
+        "ee_cont_rate": {
+          "title": "Ee Cont Rate",
+          "type": "number"
+        },
+        "return_volatility": {
+          "default": 0.12,
+          "title": "Return Volatility",
+          "type": "number"
+        }
+      },
+      "required": [
+        "ee_cont_rate",
+        "assumed_return"
+      ],
+      "title": "DcSpec",
+      "type": "object"
+    },
+    "Decrements": {
+      "additionalProperties": false,
+      "description": "Decrement-method dispatch.\n\nTwo supported methods, mapped to builders by\n``data_loader._DECREMENT_BUILDERS``.",
+      "properties": {
+        "method": {
+          "enum": [
+            "yos_only",
+            "years_from_nr"
+          ],
+          "title": "Method",
+          "type": "string"
+        }
+      },
+      "required": [
+        "method"
+      ],
+      "title": "Decrements",
+      "type": "object"
+    },
+    "EarlyRetireReduction": {
+      "additionalProperties": false,
+      "description": "Tier-level early-retire reduction spec.\n\nEither flat-shape (``rate_per_year`` + ``nra``) **or** rule-list\n(``rules``). The validator enforces exactly one shape \u2014 both\npopulated, or neither, raises.",
+      "properties": {
+        "nra": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nra"
+        },
+        "rate_per_year": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rate Per Year"
+        },
+        "rules": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/EarlyRetireRule"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rules"
+        }
+      },
+      "title": "EarlyRetireReduction",
+      "type": "object"
+    },
+    "EarlyRetireRule": {
+      "additionalProperties": false,
+      "description": "One rule in a rule-list early-retire reduction.\n\nEvery rule has a ``condition`` (possibly empty for a catch-all)\nand a ``formula``. ``formula=\"linear\"`` requires ``rate_per_year``\nand ``nra``; ``formula=\"table\"`` requires ``table_key`` (looked up\nagainst the plan's reduce-tables CSVs at runtime).",
+      "properties": {
+        "condition": {
+          "$ref": "#/$defs/ReduceCondition",
+          "default": {
+            "grandfathered": null,
+            "min_age": null,
+            "min_yos": null,
+            "or": null,
+            "rule_of": null
+          }
+        },
+        "formula": {
+          "default": "linear",
+          "enum": [
+            "linear",
+            "table"
+          ],
+          "title": "Formula",
+          "type": "string"
+        },
+        "nra": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nra"
+        },
+        "rate_per_year": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rate Per Year"
+        },
+        "table_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Table Key"
+        }
+      },
+      "title": "EarlyRetireRule",
+      "type": "object"
+    },
+    "Economic": {
+      "additionalProperties": false,
+      "description": "Plan-level economic assumptions.\n\nSource-of-truth for discount rates, payroll/population growth,\nand the asset-return scenario reference. ``baseline_*`` fields\nare populated by the loader from the pre-scenario raw config so\nthat scenario overrides don't disturb the term-vested cashflow\nscaling \u2014 see ``docs/design/discount_rate_scenarios.md``.",
+      "properties": {
+        "asset_return_path": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asset Return Path"
+        },
+        "baseline_dr_current": {
+          "title": "Baseline Dr Current",
+          "type": "number"
+        },
+        "baseline_model_return": {
+          "title": "Baseline Model Return",
+          "type": "number"
+        },
+        "dr_current": {
+          "description": "Current discount rate.",
+          "title": "Dr Current",
+          "type": "number"
+        },
+        "dr_new": {
+          "description": "Discount rate for new hires.",
+          "title": "Dr New",
+          "type": "number"
+        },
+        "dr_old": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Legacy discount rate (used in some amortization calcs). Defaults to dr_current.",
+          "title": "Dr Old"
+        },
+        "model_return": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Asset return assumption for the funding model. Defaults to dr_current.",
+          "title": "Model Return"
+        },
+        "payroll_growth": {
+          "title": "Payroll Growth",
+          "type": "number"
+        },
+        "pop_growth": {
+          "default": 0.0,
+          "title": "Pop Growth",
+          "type": "number"
+        }
+      },
+      "required": [
+        "dr_current",
+        "dr_new",
+        "payroll_growth",
+        "baseline_dr_current",
+        "baseline_model_return"
+      ],
+      "title": "Economic",
+      "type": "object"
+    },
+    "EligibilitySpec": {
+      "additionalProperties": false,
+      "description": "Eligibility rules for one (tier, group) pair.\n\nThe ``normal`` and ``early`` lists are OR-combinations of\nconditions: the member is eligible if **any** condition in the\nlist matches. ``vesting_yos`` is the years-of-service threshold\nabove which a terminated member is treated as deferred-vested\n(rather than non-vested with refund only).",
+      "properties": {
+        "early": {
+          "items": {
+            "$ref": "#/$defs/Condition"
+          },
+          "title": "Early",
+          "type": "array"
+        },
+        "normal": {
+          "items": {
+            "$ref": "#/$defs/Condition"
+          },
+          "title": "Normal",
+          "type": "array"
+        },
+        "vesting_yos": {
+          "title": "Vesting Yos",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "vesting_yos"
+      ],
+      "title": "EligibilitySpec",
+      "type": "object"
+    },
+    "Funding": {
+      "additionalProperties": false,
+      "description": "Funding-model parameters.",
+      "properties": {
+        "amo_method": {
+          "title": "Amo Method",
+          "type": "string"
+        },
+        "amo_pay_growth": {
+          "title": "Amo Pay Growth",
+          "type": "number"
+        },
+        "amo_period_current": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Amo Period Current"
+        },
+        "amo_period_new": {
+          "title": "Amo Period New",
+          "type": "integer"
+        },
+        "amo_period_term": {
+          "default": 50,
+          "title": "Amo Period Term",
+          "type": "integer"
+        },
+        "amo_term_growth": {
+          "default": 0.03,
+          "title": "Amo Term Growth",
+          "type": "number"
+        },
+        "ava_smoothing": {
+          "discriminator": {
+            "mapping": {
+              "corridor": "#/$defs/CorridorAvaSmoothing",
+              "gain_loss": "#/$defs/GainLossAvaSmoothing"
+            },
+            "propertyName": "method"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CorridorAvaSmoothing"
+            },
+            {
+              "$ref": "#/$defs/GainLossAvaSmoothing"
+            }
+          ],
+          "title": "Ava Smoothing"
+        },
+        "contribution_strategy": {
+          "enum": [
+            "statutory",
+            "actuarial"
+          ],
+          "title": "Contribution Strategy",
+          "type": "string"
+        },
+        "drop_reference_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Drop Reference Class"
+        },
+        "funding_lag": {
+          "default": 1,
+          "title": "Funding Lag",
+          "type": "integer"
+        },
+        "has_drop": {
+          "default": false,
+          "title": "Has Drop",
+          "type": "boolean"
+        },
+        "legs": {
+          "items": {
+            "$ref": "#/$defs/LegDef"
+          },
+          "title": "Legs",
+          "type": "array"
+        },
+        "policy": {
+          "description": "Funding policy. Today: 'statutory' or 'adc'.",
+          "title": "Policy",
+          "type": "string"
+        },
+        "statutory_rates": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StatutoryRates"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "contribution_strategy",
+        "policy",
+        "amo_method",
+        "amo_period_new",
+        "amo_pay_growth",
+        "ava_smoothing"
+      ],
+      "title": "Funding",
+      "type": "object"
+    },
+    "GainLossAvaSmoothing": {
+      "additionalProperties": false,
+      "description": "Gain/loss deferral cascade parameters.\n\nEach year's asset gain/loss is deferred and recognized over\n``recognition_period`` years.",
+      "properties": {
+        "method": {
+          "const": "gain_loss",
+          "title": "Method",
+          "type": "string"
+        },
+        "recognition_period": {
+          "title": "Recognition Period",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "method",
+        "recognition_period"
+      ],
+      "title": "GainLossAvaSmoothing",
+      "type": "object"
+    },
+    "GrandfatheredCondition": {
+      "additionalProperties": false,
+      "description": "One alternative inside a grandfathered-rule predicate.\n\nEach condition stands alone \u2014 the parent :class:`GrandfatheredParams`\nOR-combines its conditions. Today's plans use exactly one of the\nthree fields per condition; the validator enforces that.",
+      "properties": {
+        "min_age_at_cutoff": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Age At Cutoff"
+        },
+        "min_yos_at_cutoff": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Yos At Cutoff"
+        },
+        "rule_of_at_cutoff": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule Of At Cutoff"
+        }
+      },
+      "title": "GrandfatheredCondition",
+      "type": "object"
+    },
+    "GrandfatheredParams": {
+      "additionalProperties": false,
+      "description": "The full grandfathered-rule predicate for a tier.\n\nA member is grandfathered when, evaluated at ``cutoff_year`` using\nthe member's age + yos as of that cutoff, **any** of the\n``conditions`` matches.\n\nMembers hired after ``cutoff_year`` are never grandfathered (their\nyos at cutoff would be negative).",
+      "properties": {
+        "conditions": {
+          "items": {
+            "$ref": "#/$defs/GrandfatheredCondition"
+          },
+          "title": "Conditions",
+          "type": "array"
+        },
+        "cutoff_year": {
+          "title": "Cutoff Year",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cutoff_year",
+        "conditions"
+      ],
+      "title": "GrandfatheredParams",
+      "type": "object"
+    },
+    "LegDef": {
+      "additionalProperties": false,
+      "description": "One funding leg.\n\nEither or both of ``entry_year_min`` and ``entry_year_max`` may be\nomitted to mean open-ended. ``*_param`` strings of ``\"new_year\"``\nresolve to ``Ranges.new_year`` at access time (today the only\nsupported parametric reference).",
+      "properties": {
+        "entry_year_max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Year Max"
+        },
+        "entry_year_max_param": {
+          "anyOf": [
+            {
+              "const": "new_year",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Year Max Param"
+        },
+        "entry_year_min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Year Min"
+        },
+        "entry_year_min_param": {
+          "anyOf": [
+            {
+              "const": "new_year",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Year Min Param"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "LegDef",
+      "type": "object"
+    },
+    "Modeling": {
+      "additionalProperties": false,
+      "description": "Model-implementation knobs and modeling assumptions.\n\nMixes actuarial choices (``use_earliest_retire``, ``age_groups``)\nwith implementation knobs (``entrant_salary_at_start_year``,\n``male_mp_forward_shift``). A future refactor should split these\ninto two namespaces; for now they live together because\nplan_config.json organizes them that way.",
+      "properties": {
+        "age_groups": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/AgeGroup"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Age Groups"
+        },
+        "entrant_salary_at_start_year": {
+          "default": false,
+          "title": "Entrant Salary At Start Year",
+          "type": "boolean"
+        },
+        "male_mp_forward_shift": {
+          "default": 0,
+          "title": "Male Mp Forward Shift",
+          "type": "integer"
+        },
+        "use_earliest_retire": {
+          "default": false,
+          "title": "Use Earliest Retire",
+          "type": "boolean"
+        }
+      },
+      "title": "Modeling",
+      "type": "object"
+    },
+    "MortalitySpec": {
+      "additionalProperties": false,
+      "properties": {
+        "base_table": {
+          "default": "general",
+          "title": "Base Table",
+          "type": "string"
+        },
+        "improvement_scale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Improvement Scale"
+        }
+      },
+      "title": "MortalitySpec",
+      "type": "object"
+    },
+    "PlanDesign": {
+      "additionalProperties": true,
+      "description": "Top-level plan_design block.\n\nHas a fixed ``cutoff_year`` plus a variable-shape map of group\nname \u2192 :class:`PlanDesignRatios`. Group names depend on the\nplan's class_groups configuration (FRS uses ``regular_group`` /\n``special_group``; TXTRS uses ``default``).\n\nGroups arrive in JSON as top-level keys; an ``after``-mode\nvalidator promotes each group's raw dict to a typed\n``PlanDesignRatios`` instance and exposes them via the\n``groups`` property.",
+      "properties": {
+        "cutoff_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cutoff Year"
+        }
+      },
+      "title": "PlanDesign",
+      "type": "object"
+    },
+    "RampSpec": {
+      "additionalProperties": false,
+      "description": "Linear ramp parameters for an employer-rate component.",
+      "properties": {
+        "end_year": {
+          "title": "End Year",
+          "type": "integer"
+        },
+        "rate_per_year": {
+          "title": "Rate Per Year",
+          "type": "number"
+        }
+      },
+      "required": [
+        "rate_per_year",
+        "end_year"
+      ],
+      "title": "RampSpec",
+      "type": "object"
+    },
+    "Ranges": {
+      "additionalProperties": false,
+      "description": "Year/age/YOS bounds for the simulation. Derived ranges\n(``entry_year_range``, ``age_range``, ``yos_range``,\n``max_year``, ``max_entry_year``) are computed properties.",
+      "properties": {
+        "max_age": {
+          "title": "Max Age",
+          "type": "integer"
+        },
+        "max_yos": {
+          "default": 70,
+          "title": "Max Yos",
+          "type": "integer"
+        },
+        "min_age": {
+          "title": "Min Age",
+          "type": "integer"
+        },
+        "min_entry_year": {
+          "default": 1970,
+          "title": "Min Entry Year",
+          "type": "integer"
+        },
+        "model_period": {
+          "title": "Model Period",
+          "type": "integer"
+        },
+        "new_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Year boundary that separates legacy hires from new hires. Defaults to start_year if omitted.",
+          "title": "New Year"
+        },
+        "start_year": {
+          "title": "Start Year",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "min_age",
+        "max_age",
+        "start_year",
+        "model_period"
+      ],
+      "title": "Ranges",
+      "type": "object"
+    },
+    "RateComponentSpec": {
+      "additionalProperties": false,
+      "description": "One term in the statutory employer-rate cascade.\n\nEach component contributes ``rate(year) * payroll_share`` to the\neffective employer rate. Rate is specified as either a step\nschedule or a linear ramp \u2014 exactly one must be present.",
+      "properties": {
+        "initial_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Initial Rate"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "payroll_share": {
+          "default": 1.0,
+          "title": "Payroll Share",
+          "type": "number"
+        },
+        "ramp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RampSpec"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schedule": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/RateScheduleEntry"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Schedule"
+        },
+        "start_year": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start Year"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "RateComponentSpec",
+      "type": "object"
+    },
+    "RateScheduleEntry": {
+      "additionalProperties": false,
+      "description": "One step in a year-keyed step-function rate schedule.",
+      "properties": {
+        "from_year": {
+          "title": "From Year",
+          "type": "integer"
+        },
+        "rate": {
+          "title": "Rate",
+          "type": "number"
+        }
+      },
+      "required": [
+        "from_year",
+        "rate"
+      ],
+      "title": "RateScheduleEntry",
+      "type": "object"
+    },
+    "ReduceCondition": {
+      "additionalProperties": false,
+      "description": "Predicate inside one rule of a rule-list early-retire reduction.\n\nLike :class:`pension_model.schemas.conditions.Condition` it has\n``min_age`` / ``min_yos`` / ``rule_of``, but adds two\nERR-specific fields:\n\n* ``grandfathered`` \u2014 when True, the rule applies only to members\n  whose tier name contains ``\"grandfathered\"``. (A simple way to\n  gate one rule on tier identity without threading the tier in\n  separately.)\n* ``or_`` (JSON: ``or``) \u2014 sub-conditions OR-combined. The parent\n  condition's other fields still must match in addition to one of\n  the ``or`` alternatives.\n\nAn empty condition (no fields set) is \"always true\" \u2014 used as the\ncatch-all final rule in plan configs.",
+      "properties": {
+        "grandfathered": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Grandfathered"
+        },
+        "min_age": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Age"
+        },
+        "min_yos": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Yos"
+        },
+        "or": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ReduceCondition"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Or"
+        },
+        "rule_of": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rule Of"
+        }
+      },
+      "title": "ReduceCondition",
+      "type": "object"
+    },
+    "StatutoryRates": {
+      "additionalProperties": false,
+      "description": "Statutory contribution-rate definitions.\n\nRequired when ``Funding.contribution_strategy == \"statutory\"``.",
+      "properties": {
+        "ee_rate_schedule": {
+          "items": {
+            "$ref": "#/$defs/RateScheduleEntry"
+          },
+          "title": "Ee Rate Schedule",
+          "type": "array"
+        },
+        "er_rate_components": {
+          "items": {
+            "$ref": "#/$defs/RateComponentSpec"
+          },
+          "title": "Er Rate Components",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ee_rate_schedule",
+        "er_rate_components"
+      ],
+      "title": "StatutoryRates",
+      "type": "object"
+    },
+    "TermVested": {
+      "additionalProperties": false,
+      "properties": {
+        "avg_deferral_years": {
+          "title": "Avg Deferral Years",
+          "type": "integer"
+        },
+        "avg_payout_years": {
+          "title": "Avg Payout Years",
+          "type": "integer"
+        },
+        "method": {
+          "const": "deferred_annuity",
+          "title": "Method",
+          "type": "string"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "avg_deferral_years",
+        "avg_payout_years",
+        "method"
+      ],
+      "title": "TermVested",
+      "type": "object"
+    },
+    "Tier": {
+      "additionalProperties": false,
+      "description": "One tier in a plan's tiers list.\n\nSee module docstring for the composition story. Field-level\ninvariants checked here:\n\n* Either ``eligibility`` or ``eligibility_same_as`` is set (not\n  both, and at least one must be present).\n* Either ``early_retire_reduction`` or\n  ``early_retire_reduction_same_as`` is set (same rule).\n* Tiers with ``assignment=\"grandfathered_rule\"`` must declare\n  ``grandfathered_params``; non-grandfathered tiers must not.",
+      "properties": {
+        "assignment": {
+          "anyOf": [
+            {
+              "const": "grandfathered_rule",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Assignment"
+        },
+        "cola_key": {
+          "title": "Cola Key",
+          "type": "string"
+        },
+        "discount_rate_key": {
+          "default": "dr_current",
+          "title": "Discount Rate Key",
+          "type": "string"
+        },
+        "early_retire_reduction": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EarlyRetireReduction"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "early_retire_reduction_same_as": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Early Retire Reduction Same As"
+        },
+        "eligibility": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/EligibilitySpec"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Eligibility"
+        },
+        "eligibility_same_as": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Eligibility Same As"
+        },
+        "entry_year_max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Year Max"
+        },
+        "entry_year_max_param": {
+          "anyOf": [
+            {
+              "const": "new_year",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Year Max Param"
+        },
+        "entry_year_min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Year Min"
+        },
+        "entry_year_min_param": {
+          "anyOf": [
+            {
+              "const": "new_year",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entry Year Min Param"
+        },
+        "fas_years": {
+          "title": "Fas Years",
+          "type": "integer"
+        },
+        "grandfathered_params": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GrandfatheredParams"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "not_grandfathered": {
+          "default": false,
+          "title": "Not Grandfathered",
+          "type": "boolean"
+        },
+        "prorate_cola": {
+          "default": false,
+          "title": "Prorate Cola",
+          "type": "boolean"
+        },
+        "retirement_rate_set": {
+          "title": "Retirement Rate Set",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "cola_key",
+        "fas_years",
+        "retirement_rate_set"
+      ],
+      "title": "Tier",
+      "type": "object"
+    },
+    "ValuationInputs": {
+      "additionalProperties": false,
+      "description": "One class's actuarial-valuation snapshot.\n\nUsed to seed initial AAL / payroll / member counts and\nbenefit-payment streams. Each plan declares one entry per class\nunder ``valuation_inputs`` in plan_config.json.",
+      "properties": {
+        "ben_payment": {
+          "description": "Initial-year pension benefit payments to current retirees. Seeds the retiree liability projection.",
+          "title": "Ben Payment",
+          "type": "number"
+        },
+        "er_dc_cont_rate": {
+          "default": 0.0,
+          "description": "Employer DC contribution rate (used when benefit_types includes 'dc').",
+          "title": "Er Dc Cont Rate",
+          "type": "number"
+        },
+        "headcount_group": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Classes whose headcount totals must agree (FRS uses this to enforce eco/eso/judges share total_active_member).",
+          "title": "Headcount Group"
+        },
+        "retiree_pop": {
+          "title": "Retiree Pop",
+          "type": "integer"
+        },
+        "total_active_member": {
+          "title": "Total Active Member",
+          "type": "integer"
+        },
+        "val_aal": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AV-published actuarial accrued liability (used for component-by-component calibration; optional).",
+          "title": "Val Aal"
+        },
+        "val_norm_cost": {
+          "title": "Val Norm Cost",
+          "type": "number"
+        },
+        "val_payroll": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AV-published payroll for this class (FRS-only today).",
+          "title": "Val Payroll"
+        }
+      },
+      "required": [
+        "ben_payment",
+        "retiree_pop",
+        "total_active_member",
+        "val_norm_cost"
+      ],
+      "title": "ValuationInputs",
+      "type": "object"
+    }
+  },
+  "description": "Top-level plan_config.json model.\n\nSection sub-models (`economic`, `funding`, etc.) are validated\nstrictly. The top level itself ignores unknown keys so that\nembedded documentation (``*_notes``, ``source_notes``,\n``_scenario_name``) doesn't fail load. ``frozen=True`` keeps\nconfigs immutable; the few lookup tables computed at load time\nuse ``object.__setattr__`` in :func:`build_plan_config_from_raw`.",
+  "properties": {
+    "_scenario_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scenario Name"
+    },
+    "base_table_map": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Base Table Map",
+      "type": "object"
+    },
+    "benefit": {
+      "$ref": "#/$defs/Benefit"
+    },
+    "benefit_multipliers": {
+      "$ref": "#/$defs/BenefitMultipliers"
+    },
+    "calibration": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ClassCalibration"
+      },
+      "title": "Calibration",
+      "type": "object"
+    },
+    "class_groups": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Class Groups",
+      "type": "object"
+    },
+    "class_to_group": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Class To Group",
+      "type": "object"
+    },
+    "classes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Classes",
+      "type": "array"
+    },
+    "data": {
+      "$ref": "#/$defs/DataSpec"
+    },
+    "decrements": {
+      "$ref": "#/$defs/Decrements"
+    },
+    "design_ratio_group_map": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Design Ratio Group Map",
+      "type": "object"
+    },
+    "economic": {
+      "$ref": "#/$defs/Economic"
+    },
+    "funding": {
+      "$ref": "#/$defs/Funding"
+    },
+    "modeling": {
+      "$ref": "#/$defs/Modeling"
+    },
+    "mortality": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MortalitySpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "plan_description": {
+      "default": "",
+      "title": "Plan Description",
+      "type": "string"
+    },
+    "plan_design": {
+      "$ref": "#/$defs/PlanDesign"
+    },
+    "plan_name": {
+      "title": "Plan Name",
+      "type": "string"
+    },
+    "ranges": {
+      "$ref": "#/$defs/Ranges"
+    },
+    "reduce_tables": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reduce Tables"
+    },
+    "salary_growth_col_map": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Salary Growth Col Map",
+      "type": "object"
+    },
+    "term_vested": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TermVested"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "tier_id_to_cola_key": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Tier Id To Cola Key",
+      "type": "array"
+    },
+    "tier_id_to_dr_key": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Tier Id To Dr Key",
+      "type": "array"
+    },
+    "tier_id_to_fas_years": {
+      "default": [],
+      "items": {
+        "type": "integer"
+      },
+      "title": "Tier Id To Fas Years",
+      "type": "array"
+    },
+    "tier_id_to_name": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Tier Id To Name",
+      "type": "array"
+    },
+    "tier_id_to_retire_rate_set": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Tier Id To Retire Rate Set",
+      "type": "array"
+    },
+    "tier_name_to_id": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Tier Name To Id",
+      "type": "object"
+    },
+    "tiers": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Tier"
+      },
+      "title": "Tiers",
+      "type": "array"
+    },
+    "valuation_inputs": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ValuationInputs"
+      },
+      "title": "Valuation Inputs",
+      "type": "object"
+    }
+  },
+  "required": [
+    "plan_name",
+    "classes",
+    "economic",
+    "ranges",
+    "decrements",
+    "funding",
+    "benefit",
+    "data"
+  ],
+  "title": "PlanConfig",
+  "type": "object"
+}

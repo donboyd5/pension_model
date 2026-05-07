@@ -23,6 +23,7 @@ from pension_model.schemas import (
     Cola,
     Condition,
     CorridorAvaSmoothing,
+    DataSpec,
     Decrements,
     EarlyRetireReduction,
     EarlyRetireRule,
@@ -33,12 +34,14 @@ from pension_model.schemas import (
     GrandfatheredCondition,
     GrandfatheredParams,
     Modeling,
+    MortalitySpec,
     MultiplierRules,
     PlanDesign,
     PlanDesignRatios,
     Ranges,
     RateComponentSpec,
     ReduceCondition,
+    TermVested,
     Tier,
     ValuationInputs,
     validate_tier_cross_references,
@@ -1125,3 +1128,112 @@ class TestTier:
         })
         with pytest.raises(ValueError, match="circular"):
             validate_tier_cross_references([t1, t2])
+
+
+# ---------------------------------------------------------------------------
+# DataSpec / MortalitySpec / TermVested
+# ---------------------------------------------------------------------------
+
+
+class TestDataSpec:
+    def test_loads(self):
+        d = DataSpec.model_validate({"data_dir": "plans/frs/data"})
+        assert d.data_dir == "plans/frs/data"
+
+    def test_missing_data_dir_raises(self):
+        with pytest.raises(ValidationError, match="data_dir"):
+            DataSpec.model_validate({})
+
+    def test_extra_field_raises(self):
+        with pytest.raises(ValidationError, match="extra"):
+            DataSpec.model_validate({"data_dir": "x", "extra_key": "y"})
+
+
+class TestMortalitySpec:
+    def test_loads_with_improvement_scale(self):
+        m = MortalitySpec.model_validate({
+            "base_table": "pub_2010_teacher_below_median",
+            "improvement_scale": "mp_2021",
+        })
+        assert m.base_table == "pub_2010_teacher_below_median"
+        assert m.improvement_scale == "mp_2021"
+
+    def test_default_base_table(self):
+        m = MortalitySpec.model_validate({})
+        assert m.base_table == "general"
+        assert m.improvement_scale is None
+
+
+class TestTermVested:
+    def test_loads(self):
+        tv = TermVested.model_validate({
+            "avg_deferral_years": 12,
+            "avg_payout_years": 25,
+            "method": "deferred_annuity",
+        })
+        assert tv.avg_deferral_years == 12
+        assert tv.method == "deferred_annuity"
+
+    def test_unknown_method_raises(self):
+        with pytest.raises(ValidationError, match="deferred_annuity"):
+            TermVested.model_validate({
+                "avg_deferral_years": 12,
+                "avg_payout_years": 25,
+                "method": "made_up_method",
+            })
+
+
+# ---------------------------------------------------------------------------
+# Top-level PlanConfig
+# ---------------------------------------------------------------------------
+
+
+class TestPlanConfigTopLevel:
+    """Regression checks for the pydantic top-level PlanConfig.
+
+    Schema-level concerns only — bit-identity vs R lives in the truth-
+    table tests. These cover: typed access works for every section,
+    documentation `*_notes` keys at top level don't break load, missing
+    required sections fail fast, JSON Schema regenerates identically.
+    """
+
+    def test_loads_three_plans(self):
+        from pension_model.config_loading import load_plan_config_by_name
+
+        for plan in ("frs", "txtrs", "txtrs-av"):
+            cfg = load_plan_config_by_name(plan)
+            assert cfg.plan_name == plan
+            assert cfg.dr_current > 0
+            assert len(cfg.tier_defs) >= 1
+            assert isinstance(cfg.data, DataSpec)
+
+    def test_documentation_notes_keys_ignored(self):
+        # FRS has design_ratio_group_map_notes and valuation_inputs_notes
+        # at top level. They must not raise.
+        from pension_model.config_loading import load_plan_config_by_name
+
+        cfg = load_plan_config_by_name("frs")
+        # extra=ignore at top level — keys silently dropped, plan loads.
+        assert cfg.design_ratio_group_map.get("admin") == "regular_group"
+
+    def test_json_schema_matches_committed(self):
+        # If the schema generation drifts from the committed file,
+        # the migration plan's "live document for editors" guarantee
+        # is broken. Regenerate plans/_schema/plan_config.schema.json
+        # to fix.
+        import json
+        from pathlib import Path
+
+        from pension_model.config_schema import PlanConfig
+
+        repo_root = Path(__file__).parents[2]
+        committed = json.loads(
+            (repo_root / "plans" / "_schema" / "plan_config.schema.json").read_text()
+        )
+        live = PlanConfig.model_json_schema(by_alias=True)
+        assert live == committed, (
+            "JSON Schema drift. Regenerate with:\n"
+            "  python -c \"import json; from pension_model.config_schema import PlanConfig; "
+            "open('plans/_schema/plan_config.schema.json','w').write("
+            "json.dumps(PlanConfig.model_json_schema(by_alias=True), indent=2, sort_keys=True)+'\\n')\""
+        )

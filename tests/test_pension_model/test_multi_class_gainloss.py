@@ -12,7 +12,6 @@ coupling) the two class frames should be byte-identical, and the
 aggregate should sum flow columns 2x.
 """
 
-import dataclasses
 import sys
 from pathlib import Path
 
@@ -44,12 +43,11 @@ def two_class_gainloss_outputs():
     one_cal = constants.calibration.get(sole_class) or ClassCalibration()
     init_row = funding_inputs["init_funding"].iloc[0].to_dict()
 
-    new_constants = dataclasses.replace(
-        constants,
-        classes=("a", "b"),
-        valuation_inputs={"a": one_vi, "b": one_vi},
-        calibration={"a": one_cal, "b": one_cal},
-    )
+    new_constants = constants.model_copy(update={
+        "classes": ("a", "b"),
+        "valuation_inputs": {"a": one_vi, "b": one_vi},
+        "calibration": {"a": one_cal, "b": one_cal},
+    })
 
     new_liability = {"a": one_liab.copy(), "b": one_liab.copy()}
 

@@ -1,24 +1,41 @@
-"""Plan config schema and status constants."""
+"""Plan config schema and status constants.
 
-from dataclasses import dataclass, field
+The top-level :class:`PlanConfig` is now a pydantic ``BaseModel``
+that composes every section schema. Strict (``extra="forbid"``) is
+the rule on sub-models; the top-level uses ``extra="ignore"`` so
+plain documentation keys (``*_notes``, ``source_notes``) embedded
+in plan_config.json don't fail validation. Required sections —
+``economic``, ``ranges``, ``decrements``, ``funding``, ``benefit`` —
+are still required, so a typo at the top level surfaces as a
+"missing required field" error, not a silent drop.
+"""
+
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from pension_model.config_validation import validate_config, validate_data_files
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from pension_model.schemas import (
     Benefit,
     BenefitMultipliers,
     ClassCalibration,
     ClassData,
+    DataSpec,
     Decrements,
     Economic,
     Funding,
     Modeling,
+    MortalitySpec,
     MultiplierRules,
     PlanDesign,
+    PlanDesignRatios,
     Ranges,
+    TermVested,
     Tier,
     ValuationInputs,
+    validate_tier_cross_references,
 )
 
 
@@ -28,38 +45,81 @@ EARLY = 2
 NORM = 3
 
 
-@dataclass(frozen=True)
-class PlanConfig:
+class PlanConfig(BaseModel):
+    """Top-level plan_config.json model.
+
+    Section sub-models (`economic`, `funding`, etc.) are validated
+    strictly. The top level itself ignores unknown keys so that
+    embedded documentation (``*_notes``, ``source_notes``,
+    ``_scenario_name``) doesn't fail load. ``frozen=True`` keeps
+    configs immutable; the few lookup tables computed at load time
+    use ``object.__setattr__`` in :func:`build_plan_config_from_raw`.
+    """
+
+    model_config = ConfigDict(
+        extra="ignore",
+        frozen=True,
+        populate_by_name=True,
+        arbitrary_types_allowed=True,
+    )
+
     plan_name: str
-    plan_description: str
-    raw: dict
+    plan_description: str = ""
+
     classes: Tuple[str, ...]
-    class_groups: Dict[str, List[str]]
-    tier_defs: Tuple[Tier, ...]
-    benefit_mult_defs: BenefitMultipliers
-    plan_design: PlanDesign
-    valuation_inputs: Dict[str, ValuationInputs]
+    class_groups: Dict[str, List[str]] = Field(default_factory=dict)
+
     economic: Economic
     ranges: Ranges
     decrements: Decrements
-    modeling: Modeling
+    modeling: Modeling = Field(default_factory=Modeling)
     funding: Funding
     benefit: Benefit
-    calibration: Dict[str, ClassCalibration] = field(default_factory=dict)
-    reduce_tables: Optional[Dict[str, object]] = None
-    _class_to_group: Dict[str, str] = field(default_factory=dict)
-    _tier_name_to_id: Dict[str, int] = field(default_factory=dict)
-    _tier_id_to_name: Tuple[str, ...] = ()
-    _tier_id_to_cola_key: Tuple[str, ...] = ()
-    _tier_id_to_fas_years: Tuple[int, ...] = ()
-    _tier_id_to_dr_key: Tuple[str, ...] = ()
-    _tier_id_to_retire_rate_set: Tuple[str, ...] = ()
+
+    valuation_inputs: Dict[str, ValuationInputs] = Field(default_factory=dict)
+    plan_design: PlanDesign = Field(default_factory=PlanDesign)
+    benefit_mult_defs: BenefitMultipliers = Field(
+        default_factory=BenefitMultipliers, alias="benefit_multipliers"
+    )
+    tier_defs: Tuple[Tier, ...] = Field(default=(), alias="tiers")
+
+    data: DataSpec
+    mortality: Optional[MortalitySpec] = None
+    term_vested: Optional[TermVested] = None
+
+    salary_growth_col_map: Dict[str, str] = Field(default_factory=dict)
+    base_table_map: Dict[str, str] = Field(default_factory=dict)
+    design_ratio_group_map: Dict[str, str] = Field(default_factory=dict)
+
+    scenario_name: Optional[str] = Field(default=None, alias="_scenario_name")
+
+    # Populated post-load (calibration is read from a sibling file;
+    # reduce_tables and the lookup caches are built during loading).
+    calibration: Dict[str, ClassCalibration] = Field(default_factory=dict)
+    reduce_tables: Optional[Dict[str, Any]] = None
+    class_to_group: Dict[str, str] = Field(default_factory=dict)
+    tier_name_to_id: Dict[str, int] = Field(default_factory=dict)
+    tier_id_to_name: Tuple[str, ...] = ()
+    tier_id_to_cola_key: Tuple[str, ...] = ()
+    tier_id_to_fas_years: Tuple[int, ...] = ()
+    tier_id_to_dr_key: Tuple[str, ...] = ()
+    tier_id_to_retire_rate_set: Tuple[str, ...] = ()
 
     # ------------------------------------------------------------------
-    # Delegating accessors to the typed-model fields. The typed model
-    # is the source of truth; these accessors preserve the legacy
-    # ``config.dr_current`` / ``config.start_year`` access pattern so
-    # consumers don't change as sections migrate.
+    # Cross-reference validation. tier_defs ``*_same_as`` references
+    # must resolve to existing tier names; cycles raise.
+    # ------------------------------------------------------------------
+
+    @model_validator(mode="after")
+    def _validate_tier_cross_refs(self):
+        if self.tier_defs:
+            validate_tier_cross_references(self.tier_defs)
+        return self
+
+    # ------------------------------------------------------------------
+    # Delegating accessors to typed-model fields. The typed model is
+    # the source of truth; these accessors preserve the legacy
+    # ``config.dr_current`` / ``config.start_year`` access pattern.
     # ------------------------------------------------------------------
 
     @property
@@ -162,13 +222,8 @@ class PlanConfig:
         """Typed CashBalance model, or None if not declared."""
         return self.benefit.cash_balance
 
-    @property
-    def scenario_name(self) -> Optional[str]:
-        return self.raw.get("_scenario_name")
-
     def resolve_data_dir(self) -> Path:
-        data_cfg = self.raw.get("data", {})
-        data_dir_str = data_cfg.get("data_dir", f"plans/{self.plan_name}/data")
+        data_dir_str = self.data.data_dir
         data_dir = Path(data_dir_str)
         if not data_dir.is_absolute():
             project_root = Path(__file__).parents[2]
@@ -196,16 +251,10 @@ class PlanConfig:
         return self.plan_design.cutoff_year
 
     @property
-    def salary_growth_col_map(self) -> Dict[str, str]:
-        return self.raw.get("salary_growth_col_map", {})
-
-    @property
     def mortality_base_table(self) -> str:
-        return self.raw.get("mortality", {}).get("base_table", "general")
-
-    @property
-    def base_table_map(self) -> Dict[str, str]:
-        return self.raw.get("base_table_map", {})
+        if self.mortality is not None:
+            return self.mortality.base_table
+        return "general"
 
     def get_base_table_type(self, class_name: str) -> str:
         return self.base_table_map.get(class_name, "general")
@@ -296,10 +345,6 @@ class PlanConfig:
         return self.decrements.method
 
     @property
-    def design_ratio_group_map(self) -> Dict[str, str]:
-        return self.raw.get("design_ratio_group_map", {})
-
-    @property
     def max_entry_year(self) -> int:
         return self.ranges.max_entry_year
 
@@ -355,8 +400,6 @@ class PlanConfig:
         }
 
     def get_design_ratios(self, class_name: str) -> Dict[str, Tuple[float, float, float]]:
-        from pension_model.schemas import PlanDesignRatios
-
         group_name = self.design_ratio_group_map.get(class_name, self.class_group(class_name))
         ratios = (
             self.plan_design.group(group_name)
@@ -380,7 +423,7 @@ class PlanConfig:
         return result
 
     def class_group(self, class_name: str) -> str:
-        return self._class_to_group.get(class_name, "default")
+        return self.class_to_group.get(class_name, "default")
 
     def resolve_ben_mult(
         self, class_name: str, tier_name: str
@@ -404,7 +447,43 @@ class PlanConfig:
         return base
 
     def validate(self) -> list:
+        from pension_model.config_validation import validate_config
         return validate_config(self)
 
     def validate_data_files(self) -> list:
+        from pension_model.config_validation import validate_data_files
         return validate_data_files(self)
+
+    # ------------------------------------------------------------------
+    # Underscore-name aliases for legacy resolver code that still reads
+    # ``config._class_to_group`` etc. Defined as @property so they
+    # don't conflict with pydantic's field-name expectations.
+    # ------------------------------------------------------------------
+
+    @property
+    def _class_to_group(self) -> Dict[str, str]:
+        return self.class_to_group
+
+    @property
+    def _tier_name_to_id(self) -> Dict[str, int]:
+        return self.tier_name_to_id
+
+    @property
+    def _tier_id_to_name(self) -> Tuple[str, ...]:
+        return self.tier_id_to_name
+
+    @property
+    def _tier_id_to_cola_key(self) -> Tuple[str, ...]:
+        return self.tier_id_to_cola_key
+
+    @property
+    def _tier_id_to_fas_years(self) -> Tuple[int, ...]:
+        return self.tier_id_to_fas_years
+
+    @property
+    def _tier_id_to_dr_key(self) -> Tuple[str, ...]:
+        return self.tier_id_to_dr_key
+
+    @property
+    def _tier_id_to_retire_rate_set(self) -> Tuple[str, ...]:
+        return self.tier_id_to_retire_rate_set
