@@ -169,11 +169,21 @@ def load_plan_config(
     )
 
     scenario_name = None
+    scenario_requires: list[str] = []
     if scenario_path is not None:
+        from pension_model.schemas.scenario import Scenario
+
         with open(scenario_path) as f:
-            scenario = json.load(f)
-        scenario_name = scenario.get("name", scenario_path.stem)
-        raw = _deep_merge(raw, scenario.get("overrides", {}))
+            scenario_raw = json.load(f)
+        scenario_raw.setdefault("name", scenario_path.stem)
+        # Validate scenario shape and override keys. Any unknown field
+        # at any depth inside ``overrides`` fails here with a clear
+        # path — replaces the silent-key-creation behavior the loader
+        # had before scenarios were typed.
+        scenario = Scenario.model_validate(scenario_raw)
+        scenario_name = scenario.name
+        scenario_requires = scenario.requires
+        raw = _deep_merge(raw, scenario_raw.get("overrides", {}))
 
     if scenario_name:
         raw["_scenario_name"] = scenario_name
@@ -274,6 +284,14 @@ def load_plan_config(
     # entry-year range. Raises ValueError on misconfiguration.
     from pension_model.config_validation import validate_funding_legs
     validate_funding_legs(config)
+
+    # Fatal: scenario's declared 'requires' list must resolve to
+    # truthy fields on the loaded plan. Catches scenarios that target
+    # a feature the plan doesn't have (e.g., DROP suspension on a
+    # plan with no DROP).
+    if scenario_requires:
+        from pension_model.schemas.scenario import check_scenario_requires
+        check_scenario_requires(config, scenario_requires)
 
     for warning in config.validate():
         log.info("[%s config] %s", config.plan_name, warning)
