@@ -34,6 +34,11 @@ from pension_model.schemas.benefit_multipliers import (
 from pension_model.schemas.calibration import Calibration, ClassCalibration
 from pension_model.schemas.conditions import Condition
 from pension_model.schemas.decrements import Decrements
+from pension_model.schemas.early_retire_reduction import (
+    EarlyRetireReduction,
+    EarlyRetireRule,
+    ReduceCondition,
+)
 from pension_model.schemas.eligibility import EligibilitySpec
 from pension_model.schemas.economic import Economic
 from pension_model.schemas.funding import (
@@ -47,9 +52,14 @@ from pension_model.schemas.funding import (
     RateScheduleEntry,
     StatutoryRates,
 )
+from pension_model.schemas.grandfathered import (
+    GrandfatheredCondition,
+    GrandfatheredParams,
+)
 from pension_model.schemas.modeling import AgeGroup, Modeling
 from pension_model.schemas.plan_design import PlanDesign, PlanDesignRatios
 from pension_model.schemas.ranges import Ranges
+from pension_model.schemas.tier import Tier, validate_tier_cross_references
 from pension_model.schemas.valuation_inputs import ClassData, ValuationInputs
 
 
@@ -68,12 +78,16 @@ __all__ = [
     "CorridorAvaSmoothing",
     "DcSpec",
     "Decrements",
+    "EarlyRetireReduction",
+    "EarlyRetireRule",
     "Economic",
     "EligibilitySpec",
     "FlatBeforeYear",
     "Funding",
     "GainLossAvaSmoothing",
     "GradedRule",
+    "GrandfatheredCondition",
+    "GrandfatheredParams",
     "LegDef",
     "Modeling",
     "MultiplierRules",
@@ -83,7 +97,10 @@ __all__ = [
     "Ranges",
     "RateComponentSpec",
     "RateScheduleEntry",
+    "ReduceCondition",
     "StatutoryRates",
     "StrictModel",
+    "Tier",
     "ValuationInputs",
+    "validate_tier_cross_references",
 ]
