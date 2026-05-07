@@ -374,10 +374,12 @@ def test_missing_per_class_nra_raises(frs_config):
     # tier_1's 'default' entry stripped — only 'special' is left.
     new_tier_defs = []
     for td in frs_config.tier_defs:
-        if td["name"] == "tier_1":
-            td2 = {**td, "early_retire_reduction": {**td["early_retire_reduction"]}}
-            td2["early_retire_reduction"]["nra"] = {"special": 55}  # no 'default'
-            new_tier_defs.append(td2)
+        if td.name == "tier_1":
+            assert td.early_retire_reduction is not None
+            new_err = td.early_retire_reduction.model_copy(
+                update={"nra": {"special": 55}}  # no 'default'
+            )
+            new_tier_defs.append(td.model_copy(update={"early_retire_reduction": new_err}))
         else:
             new_tier_defs.append(td)
     bogus = replace(frs_config, tier_defs=tuple(new_tier_defs))
@@ -426,13 +428,15 @@ def test_statutory_strategy_requires_rates_block(frs_config):
 
 def test_missing_rule_nra_raises(frs_config):
     """A linear early-retire reduction rule without an 'nra' field
-    raises a clear ValueError. Catches forgetting the NRA on a rule.
+    raises a clear validation error at parse time. Catches forgetting
+    the NRA on a rule when the plan_config.json loads.
     """
-    from dataclasses import replace
-    from pension_model.config_resolvers import get_reduce_factor
+    from pydantic import ValidationError
+    from pension_model.schemas import Tier
 
-    # Inject a tier with a linear rule that omits 'nra'.
-    bogus_tier = {
+    # Build a tier raw dict whose ERR rule-list has a linear rule
+    # missing 'nra'. Schema validation should fail eagerly.
+    bogus_tier_raw = {
         "name": "tier_bogus",
         "entry_year_min": 0,
         "entry_year_max": 9999,
@@ -452,9 +456,6 @@ def test_missing_rule_nra_raises(frs_config):
             ]
         },
     }
-    bogus = replace(frs_config, tier_defs=(bogus_tier,))
 
-    with pytest.raises(ValueError, match="without an 'nra' field"):
-        get_reduce_factor(
-            bogus, "regular", "tier_bogus", "early", dist_age=58, yos=10, entry_year=1990
-        )
+    with pytest.raises(ValidationError, match="rate_per_year and nra"):
+        Tier.model_validate(bogus_tier_raw)

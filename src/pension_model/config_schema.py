@@ -17,6 +17,7 @@ from pension_model.schemas import (
     MultiplierRules,
     PlanDesign,
     Ranges,
+    Tier,
     ValuationInputs,
 )
 
@@ -34,7 +35,7 @@ class PlanConfig:
     raw: dict
     classes: Tuple[str, ...]
     class_groups: Dict[str, List[str]]
-    tier_defs: Tuple[dict, ...]
+    tier_defs: Tuple[Tier, ...]
     benefit_mult_defs: BenefitMultipliers
     plan_design: PlanDesign
     valuation_inputs: Dict[str, ValuationInputs]

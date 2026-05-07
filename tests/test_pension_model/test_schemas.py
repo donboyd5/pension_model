@@ -15,35 +15,33 @@ import numpy as np
 
 from pension_model.schemas import (
     AgeGroup,
-    AvaSmoothing,
     Benefit,
     BenefitMultipliers,
     Calibration,
     CashBalance,
     ClassCalibration,
-    ClassMultipliers,
     Cola,
     Condition,
     CorridorAvaSmoothing,
-    DcSpec,
     Decrements,
+    EarlyRetireReduction,
+    EarlyRetireRule,
     Economic,
     EligibilitySpec,
-    FlatBeforeYear,
     Funding,
     GainLossAvaSmoothing,
-    GradedRule,
-    LegDef,
+    GrandfatheredCondition,
+    GrandfatheredParams,
     Modeling,
     MultiplierRules,
     PlanDesign,
     PlanDesignRatios,
-    RampSpec,
     Ranges,
     RateComponentSpec,
-    RateScheduleEntry,
-    StatutoryRates,
+    ReduceCondition,
+    Tier,
     ValuationInputs,
+    validate_tier_cross_references,
 )
 
 
@@ -801,3 +799,329 @@ class TestEligibilitySpec:
             EligibilitySpec.model_validate({
                 "normal": [{"min_yos": 30}],
             })
+
+
+# ---------------------------------------------------------------------------
+# GrandfatheredParams
+# ---------------------------------------------------------------------------
+
+
+class TestGrandfatheredParams:
+    def _txtrs_params(self):
+        return GrandfatheredParams.model_validate({
+            "cutoff_year": 2005,
+            "conditions": [
+                {"min_age_at_cutoff": 50},
+                {"rule_of_at_cutoff": 70},
+                {"min_yos_at_cutoff": 25},
+            ],
+        })
+
+    def test_loads(self):
+        gf = self._txtrs_params()
+        assert gf.cutoff_year == 2005
+        assert len(gf.conditions) == 3
+        assert all(isinstance(c, GrandfatheredCondition) for c in gf.conditions)
+
+    def test_matches_age_at_cutoff(self):
+        gf = self._txtrs_params()
+        # Hired 1990 at age 35: at cutoff 2005, age 50 → matches min_age_at_cutoff=50.
+        assert gf.matches(entry_year=1990, entry_age=35) is True
+
+    def test_matches_rule_of_at_cutoff(self):
+        gf = self._txtrs_params()
+        # Hired 1985 at age 40: at cutoff 2005, age 60 + yos 20 = 80 → matches rule_of_at_cutoff=70.
+        assert gf.matches(entry_year=1985, entry_age=40) is True
+
+    def test_no_match_after_cutoff(self):
+        gf = self._txtrs_params()
+        # Hired after cutoff → never grandfathered.
+        assert gf.matches(entry_year=2010, entry_age=30) is False
+
+    def test_matches_vec_matches_scalar(self):
+        gf = self._txtrs_params()
+        years = np.array([1985, 1990, 2010])
+        ages = np.array([40, 35, 30])
+        result = gf.matches_vec(years, ages)
+        assert list(result) == [True, True, False]
+
+    def test_condition_must_have_exactly_one_field(self):
+        with pytest.raises(ValidationError, match="exactly one"):
+            GrandfatheredCondition.model_validate({})  # no fields → not exactly one
+        with pytest.raises(ValidationError, match="exactly one"):
+            GrandfatheredCondition.model_validate({
+                "min_age_at_cutoff": 50,
+                "min_yos_at_cutoff": 25,
+            })
+
+
+# ---------------------------------------------------------------------------
+# ReduceCondition / EarlyRetireRule / EarlyRetireReduction
+# ---------------------------------------------------------------------------
+
+
+class TestReduceCondition:
+    def test_or_field_uses_alias(self):
+        # JSON ``or`` keyword maps to ``or_`` Python attribute.
+        c = ReduceCondition.model_validate({
+            "or": [{"rule_of": 80}, {"min_yos": 30}],
+        })
+        assert c.or_ is not None
+        assert len(c.or_) == 2
+        assert c.or_[0].rule_of == 80
+
+    def test_matches_or_combinator(self):
+        c = ReduceCondition.model_validate({
+            "or": [{"rule_of": 80}, {"min_yos": 30}],
+        })
+        # Either rule of 80 or min_yos 30 satisfies.
+        assert c.matches(dist_age=50, yos=30, tier_name="x") is True
+        assert c.matches(dist_age=55, yos=25, tier_name="x") is True  # 55+25 = 80
+        assert c.matches(dist_age=50, yos=20, tier_name="x") is False
+
+    def test_grandfathered_gates_on_tier_name(self):
+        c = ReduceCondition.model_validate({"min_yos": 20, "grandfathered": True})
+        assert c.matches(dist_age=60, yos=20, tier_name="grandfathered") is True
+        assert c.matches(dist_age=60, yos=20, tier_name="current") is False
+
+    def test_empty_condition_always_true(self):
+        c = ReduceCondition()
+        assert c.matches(dist_age=20, yos=0, tier_name="any") is True
+
+    def test_matches_vec(self):
+        c = ReduceCondition.model_validate({"min_age": 55, "min_yos": 10})
+        ages = np.array([50, 55, 60])
+        yos = np.array([10, 10, 5])
+        assert list(c.matches_vec(ages, yos, tier_name="x")) == [False, True, False]
+
+
+class TestEarlyRetireRule:
+    def test_linear_rule_requires_nra(self):
+        with pytest.raises(ValidationError, match="rate_per_year and nra"):
+            EarlyRetireRule.model_validate({
+                "formula": "linear",
+                "rate_per_year": 0.05,
+            })
+
+    def test_linear_rule_requires_rate(self):
+        with pytest.raises(ValidationError, match="rate_per_year and nra"):
+            EarlyRetireRule.model_validate({
+                "formula": "linear",
+                "nra": 60,
+            })
+
+    def test_table_rule_requires_table_key(self):
+        with pytest.raises(ValidationError, match="table_key"):
+            EarlyRetireRule.model_validate({"formula": "table"})
+
+    def test_linear_rule_loads(self):
+        r = EarlyRetireRule.model_validate({
+            "formula": "linear", "rate_per_year": 0.05, "nra": 60,
+        })
+        assert r.formula == "linear"
+        assert r.condition.matches(50, 5, "x") is True  # default empty cond
+
+    def test_table_rule_loads(self):
+        r = EarlyRetireRule.model_validate({"formula": "table", "table_key": "reduced_others"})
+        assert r.table_key == "reduced_others"
+
+
+class TestEarlyRetireReduction:
+    def test_flat_shape(self):
+        err = EarlyRetireReduction.model_validate({
+            "rate_per_year": 0.05,
+            "nra": {"special": 55, "default": 62},
+        })
+        assert err.is_flat is True
+        assert err.lookup_nra("special", "frs", "tier_1") == 55
+        assert err.lookup_nra("regular", "frs", "tier_1") == 62  # default fallback
+
+    def test_flat_lookup_missing_class_no_default_raises(self):
+        err = EarlyRetireReduction.model_validate({
+            "rate_per_year": 0.05,
+            "nra": {"special": 55},
+        })
+        with pytest.raises(ValueError, match="no 'default'"):
+            err.lookup_nra("regular", "frs", "tier_1")
+
+    def test_rule_list_shape(self):
+        err = EarlyRetireReduction.model_validate({
+            "rules": [
+                {"condition": {"min_yos": 30}, "formula": "linear",
+                 "rate_per_year": 0.02, "nra": 50},
+                {"condition": {}, "formula": "table", "table_key": "reduced_others"},
+            ]
+        })
+        assert err.is_flat is False
+        assert err.rules is not None and len(err.rules) == 2
+
+    def test_mixing_shapes_raises(self):
+        with pytest.raises(ValidationError, match="cannot mix"):
+            EarlyRetireReduction.model_validate({
+                "rate_per_year": 0.05, "nra": {"default": 60}, "rules": [],
+            })
+
+    def test_neither_shape_raises(self):
+        with pytest.raises(ValidationError, match="must declare either"):
+            EarlyRetireReduction.model_validate({})
+
+    def test_flat_partial_raises(self):
+        with pytest.raises(ValidationError, match="rate_per_year and nra"):
+            EarlyRetireReduction.model_validate({"rate_per_year": 0.05})
+
+
+# ---------------------------------------------------------------------------
+# Tier
+# ---------------------------------------------------------------------------
+
+
+class TestTier:
+    def _frs_tier_1(self):
+        return Tier.model_validate({
+            "name": "tier_1",
+            "cola_key": "tier_1_active",
+            "fas_years": 5,
+            "retirement_rate_set": "before_2011",
+            "entry_year_max": 2011,
+            "prorate_cola": True,
+            "eligibility": {
+                "regular_group": {
+                    "normal": [{"min_yos": 30}],
+                    "early": [{"min_age": 55}],
+                    "vesting_yos": 6,
+                },
+            },
+            "early_retire_reduction": {
+                "rate_per_year": 0.05,
+                "nra": {"special": 55, "default": 62},
+            },
+        })
+
+    def test_loads(self):
+        t = self._frs_tier_1()
+        assert t.name == "tier_1"
+        assert t.fas_years == 5
+        assert t.prorate_cola is True
+        assert t.discount_rate_key == "dr_current"  # default
+
+    def test_entry_year_window(self):
+        t = self._frs_tier_1()
+        assert t.entry_year_in_window(entry_year=2000, new_year=2024) is True
+        assert t.entry_year_in_window(entry_year=2011, new_year=2024) is False  # exclusive hi
+        assert t.entry_year_in_window(entry_year=2010, new_year=2024) is True
+
+    def test_entry_year_min_param_resolves_to_new_year(self):
+        t = Tier.model_validate({
+            "name": "x", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+            "entry_year_min_param": "new_year",
+            "eligibility": {"default": {"normal": [], "early": [], "vesting_yos": 5}},
+            "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 60}},
+        })
+        assert t.entry_year_lo(new_year=2030) == 2030
+
+    def test_grandfathered_tier_skips_window(self):
+        t = Tier.model_validate({
+            "name": "gf", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+            "assignment": "grandfathered_rule",
+            "grandfathered_params": {
+                "cutoff_year": 2005,
+                "conditions": [{"min_age_at_cutoff": 50}],
+            },
+            "eligibility": {"default": {"normal": [], "early": [], "vesting_yos": 5}},
+            "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 60}},
+        })
+        # grandfathered tiers always return False from entry_year_in_window —
+        # they're matched by GrandfatheredParams.matches instead.
+        assert t.entry_year_in_window(entry_year=1990, new_year=2024) is False
+
+    def test_eligibility_xor_required(self):
+        with pytest.raises(ValidationError, match="must declare either"):
+            Tier.model_validate({
+                "name": "x", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+                "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 60}},
+            })
+
+    def test_eligibility_xor_not_both(self):
+        with pytest.raises(ValidationError, match="cannot declare both"):
+            Tier.model_validate({
+                "name": "x", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+                "eligibility": {"default": {"normal": [], "early": [], "vesting_yos": 5}},
+                "eligibility_same_as": "other",
+                "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 60}},
+            })
+
+    def test_grandfathered_params_requires_assignment(self):
+        with pytest.raises(ValidationError, match="only valid when"):
+            Tier.model_validate({
+                "name": "x", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+                "grandfathered_params": {
+                    "cutoff_year": 2005,
+                    "conditions": [{"min_age_at_cutoff": 50}],
+                },
+                "eligibility": {"default": {"normal": [], "early": [], "vesting_yos": 5}},
+                "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 60}},
+            })
+
+    def test_grandfathered_assignment_requires_params(self):
+        with pytest.raises(ValidationError, match="requires grandfathered_params"):
+            Tier.model_validate({
+                "name": "x", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+                "assignment": "grandfathered_rule",
+                "eligibility": {"default": {"normal": [], "early": [], "vesting_yos": 5}},
+                "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 60}},
+            })
+
+    def test_resolve_eligibility_walks_same_as(self):
+        t1 = Tier.model_validate({
+            "name": "tier_1", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+            "eligibility": {"default": {"normal": [{"min_age": 65}], "early": [], "vesting_yos": 5}},
+            "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 60}},
+        })
+        t2 = Tier.model_validate({
+            "name": "tier_2", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+            "eligibility_same_as": "tier_1",
+            "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 60}},
+        })
+        elig = t2.resolve_eligibility("default", [t1, t2])
+        assert elig is not None
+        assert elig.vesting_yos == 5
+        assert elig.normal[0].min_age == 65
+
+    def test_resolve_err_walks_same_as(self):
+        t1 = Tier.model_validate({
+            "name": "tier_1", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+            "eligibility": {"default": {"normal": [], "early": [], "vesting_yos": 5}},
+            "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 62}},
+        })
+        t2 = Tier.model_validate({
+            "name": "tier_2", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+            "eligibility": {"default": {"normal": [], "early": [], "vesting_yos": 5}},
+            "early_retire_reduction_same_as": "tier_1",
+        })
+        err = t2.resolve_early_retire_reduction([t1, t2])
+        assert err is not None
+        assert err.rate_per_year == 0.05
+        assert err.nra == {"default": 62}
+
+    def test_validate_cross_refs_catches_missing_target(self):
+        t = Tier.model_validate({
+            "name": "tier_1", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+            "eligibility_same_as": "ghost",
+            "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 60}},
+        })
+        with pytest.raises(ValueError, match="ghost"):
+            validate_tier_cross_references([t])
+
+    def test_validate_cross_refs_catches_cycle(self):
+        t1 = Tier.model_validate({
+            "name": "tier_1", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+            "eligibility_same_as": "tier_2",
+            "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 60}},
+        })
+        t2 = Tier.model_validate({
+            "name": "tier_2", "cola_key": "k", "fas_years": 5, "retirement_rate_set": "r",
+            "eligibility_same_as": "tier_1",
+            "early_retire_reduction": {"rate_per_year": 0.05, "nra": {"default": 60}},
+        })
+        with pytest.raises(ValueError, match="circular"):
+            validate_tier_cross_references([t1, t2])

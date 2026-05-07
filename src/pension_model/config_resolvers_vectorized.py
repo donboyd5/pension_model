@@ -6,18 +6,8 @@ from typing import Optional, TYPE_CHECKING, Tuple
 
 import numpy as np
 
-from pension_model.config_resolver_common import (
-    EARLY,
-    NON_VESTED,
-    NORM,
-    VESTED,
-    _entry_year_in_tier_vec,
-    _get_eligibility,
-    _is_grandfathered_vec,
-    _lookup_reduce_table,
-    _reduce_condition_vec,
-    _resolve_tier_def,
-)
+from pension_model.config_resolver_common import _lookup_reduce_table
+from pension_model.config_schema import EARLY, NON_VESTED, NORM, VESTED
 
 if TYPE_CHECKING:
     from pension_model.config_schema import PlanConfig
@@ -125,37 +115,37 @@ def resolve_tiers_vec(
 
     group_codes, group_labels = _encode_class_group_values(config, class_name)
     eligibility_by_tier_group = tuple(
-        tuple(_get_eligibility(tier_def, group_label, config.tier_defs) for group_label in group_labels)
-        for tier_def in config.tier_defs
+        tuple(tier.resolve_eligibility(group_label, config.tier_defs) for group_label in group_labels)
+        for tier in config.tier_defs
     )
 
-    gf_tier_def = next(
-        (td for td in config.tier_defs if td.get("assignment") == "grandfathered_rule"),
+    gf_tier = next(
+        (t for t in config.tier_defs if t.assignment == "grandfathered_rule"),
         None,
     )
     gf_mask_global = (
-        _is_grandfathered_vec(entry_year, effective_entry_age, gf_tier_def["grandfathered_params"])
-        if gf_tier_def is not None
+        gf_tier.grandfathered_params.matches_vec(entry_year, effective_entry_age)
+        if gf_tier is not None and gf_tier.grandfathered_params is not None
         else np.zeros(len(entry_year), dtype=bool)
     )
 
     tier_id = np.full(len(entry_year), -1, dtype=np.int32)
-    for i, tier_def in enumerate(config.tier_defs):
+    for i, tier in enumerate(config.tier_defs):
         unassigned = tier_id == -1
         if not unassigned.any():
             break
-        if tier_def.get("assignment") == "grandfathered_rule":
+        if tier.assignment == "grandfathered_rule":
             mask = gf_mask_global & unassigned
         else:
-            mask = _entry_year_in_tier_vec(entry_year, tier_def, config.new_year) & unassigned
-            if tier_def.get("not_grandfathered"):
+            mask = tier.entry_year_in_window_vec(entry_year, config.new_year) & unassigned
+            if tier.not_grandfathered:
                 mask &= ~gf_mask_global
         tier_id[mask] = i
 
     tier_id[tier_id == -1] = len(config.tier_defs) - 1
 
     ret_status = np.full(len(entry_year), NON_VESTED, dtype=np.int8)
-    for tier_index, tier_def in enumerate(config.tier_defs):
+    for tier_index, tier in enumerate(config.tier_defs):
         tier_mask = tier_id == tier_index
         if not tier_mask.any():
             continue
@@ -193,14 +183,14 @@ def resolve_cola_vec(
     cola_cutoff = config.cola_proration_cutoff_year
 
     result = np.zeros(len(tier_id), dtype=np.float64)
-    for i, tier_def in enumerate(config.tier_defs):
+    for i, tier in enumerate(config.tier_defs):
         mask = tier_id == i
         if not mask.any():
             continue
-        cola_key = tier_def["cola_key"]
+        cola_key = tier.cola_key
         raw_cola = getattr(config.cola, cola_key, 0.0)
         should_prorate = (
-            tier_def.get("prorate_cola", False)
+            tier.prorate_cola
             and not getattr(config.cola, cola_key + "_constant", False)
             and cola_cutoff is not None
             and raw_cola > 0
@@ -300,87 +290,51 @@ def resolve_reduce_factor_vec(
     for class_name_value, tier_index, idx_arr in _iter_class_tier_groups(
         class_name, tier_id, n_tiers, mask=needs_reduction
     ):
-        tier_def = config.tier_defs[tier_index]
-        if tier_def is None:
+        tier = config.tier_defs[tier_index]
+        reduction = tier.resolve_early_retire_reduction(config.tier_defs)
+        if reduction is None:
             continue
 
-        reduction_def = tier_def
-        seen = set()
-        while "early_retire_reduction_same_as" in reduction_def:
-            ref = reduction_def["early_retire_reduction_same_as"]
-            if ref in seen:
-                break
-            seen.add(ref)
-            reduction_def = _resolve_tier_def(ref, config.tier_defs)
-
-        reduction = reduction_def.get("early_retire_reduction", {})
         sub_age = dist_age[idx_arr]
         sub_yos = yos[idx_arr]
-        sub_entry_year = entry_year[idx_arr]
+        tier_name = config._tier_id_to_name[tier_index]
 
-        if "nra" in reduction:
-            nra_map = reduction["nra"]
-            rate = reduction["rate_per_year"]
-            if class_name_value in nra_map:
-                nra = nra_map[class_name_value]
-            elif "default" in nra_map:
-                nra = nra_map["default"]
-            else:
-                tier_name = config._tier_id_to_name[tier_index]
-                raise ValueError(
-                    f"Plan {config.plan_name!r}: NRA map for tier "
-                    f"{tier_name!r} has no entry for class "
-                    f"{class_name_value!r} and no 'default' fallback. "
-                    f"Add either an explicit per-class NRA or a "
-                    f"'default' key to early_retire_reduction.nra."
-                )
-            result[idx_arr] = 1.0 - rate * (nra - sub_age)
+        if reduction.is_flat:
+            nra = reduction.lookup_nra(class_name_value, config.plan_name, tier_name)
+            assert reduction.rate_per_year is not None
+            result[idx_arr] = 1.0 - reduction.rate_per_year * (nra - sub_age)
             continue
 
-        if "rules" in reduction:
-            sub_vals = np.full(len(idx_arr), np.nan, dtype=np.float64)
-            assigned = np.zeros(len(idx_arr), dtype=bool)
-            tier_name = config._tier_id_to_name[tier_index]
-            for rule in reduction["rules"]:
-                cond_mask = _reduce_condition_vec(
-                    rule.get("condition", {}),
-                    sub_age,
-                    sub_yos,
-                    sub_entry_year,
-                    tier_name,
+        assert reduction.rules is not None
+        sub_vals = np.full(len(idx_arr), np.nan, dtype=np.float64)
+        assigned = np.zeros(len(idx_arr), dtype=bool)
+        for rule in reduction.rules:
+            cond_mask = rule.condition.matches_vec(sub_age, sub_yos, tier_name)
+            cond_mask &= ~assigned
+            if not cond_mask.any():
+                continue
+            if rule.formula == "linear":
+                assert rule.rate_per_year is not None and rule.nra is not None
+                sub_vals[cond_mask] = np.maximum(
+                    0.0, 1.0 - rule.rate_per_year * (rule.nra - sub_age[cond_mask])
                 )
-                cond_mask &= ~assigned
-                if not cond_mask.any():
-                    continue
-                formula = rule.get("formula", "linear")
-                if formula == "linear":
-                    rate = rule["rate_per_year"]
-                    if "nra" not in rule:
-                        raise ValueError(
-                            f"Plan {config.plan_name!r}: tier "
-                            f"{tier_name!r} has a linear early-retire "
-                            f"reduction rule without an 'nra' field. "
-                            f"Every linear rule must declare its NRA."
-                        )
-                    nra = rule["nra"]
-                    sub_vals[cond_mask] = np.maximum(0.0, 1.0 - rate * (nra - sub_age[cond_mask]))
-                    assigned |= cond_mask
-                elif formula == "table":
-                    table_key = rule.get("table_key", "")
-                    if not (config.reduce_tables and table_key in config.reduce_tables):
-                        raise ValueError(
-                            f"early-retire reduction rule references table_key={table_key!r} "
-                            f"but no matching reduction table is loaded for plan {config.plan_name!r}. "
-                            f"Provide the table CSV under the plan's data directory."
-                        )
-                    for local_index in np.where(cond_mask)[0]:
-                        sub_vals[local_index] = _lookup_reduce_table(
-                            config.reduce_tables[table_key],
-                            table_key,
-                            int(sub_age[local_index]),
-                            int(sub_yos[local_index]),
-                        )
-                    assigned |= cond_mask
-            result[idx_arr] = sub_vals
+                assigned |= cond_mask
+            elif rule.formula == "table":
+                assert rule.table_key is not None
+                if not (config.reduce_tables and rule.table_key in config.reduce_tables):
+                    raise ValueError(
+                        f"early-retire reduction rule references table_key={rule.table_key!r} "
+                        f"but no matching reduction table is loaded for plan {config.plan_name!r}. "
+                        f"Provide the table CSV under the plan's data directory."
+                    )
+                for local_index in np.where(cond_mask)[0]:
+                    sub_vals[local_index] = _lookup_reduce_table(
+                        config.reduce_tables[rule.table_key],
+                        rule.table_key,
+                        int(sub_age[local_index]),
+                        int(sub_yos[local_index]),
+                    )
+                assigned |= cond_mask
+        result[idx_arr] = sub_vals
 
     return result

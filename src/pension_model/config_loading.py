@@ -21,7 +21,9 @@ from pension_model.schemas import (
     Modeling,
     PlanDesign,
     Ranges,
+    Tier,
     ValuationInputs,
+    validate_tier_cross_references,
 )
 
 
@@ -72,9 +74,7 @@ def _load_calibration_data(
 
 
 def _build_tier_metadata(
-    tier_defs_raw: list[dict],
-    *,
-    fas_default: int,
+    tiers: tuple[Tier, ...],
 ) -> tuple[
     dict[str, int],
     tuple[str, ...],
@@ -84,21 +84,15 @@ def _build_tier_metadata(
     tuple[str, ...],
 ]:
     """Build tier lookup tables cached on ``PlanConfig``."""
-    tier_name_to_id = {td["name"]: i for i, td in enumerate(tier_defs_raw)}
-    tier_id_to_name = tuple(td["name"] for td in tier_defs_raw)
-    tier_id_to_cola_key = tuple(td["cola_key"] for td in tier_defs_raw)
-    tier_id_to_fas_years = tuple(td.get("fas_years", fas_default) for td in tier_defs_raw)
-    tier_id_to_dr_key = tuple(
-        td.get("discount_rate_key", "dr_current") for td in tier_defs_raw
-    )
-    # Default: each tier maps to a rate set with its own name. Plans
-    # whose tier names don't match any rate set in the CSV must declare
-    # this explicitly (e.g., FRS tier_2 → "2011_or_later"). The set
-    # name is era-descriptive, not tier-named, so renaming a tier
-    # never breaks another tier's reference.
-    tier_id_to_retire_rate_set = tuple(
-        td.get("retirement_rate_set", td["name"]) for td in tier_defs_raw
-    )
+    tier_name_to_id = {t.name: i for i, t in enumerate(tiers)}
+    tier_id_to_name = tuple(t.name for t in tiers)
+    tier_id_to_cola_key = tuple(t.cola_key for t in tiers)
+    tier_id_to_fas_years = tuple(t.fas_years for t in tiers)
+    tier_id_to_dr_key = tuple(t.discount_rate_key for t in tiers)
+    # Each tier maps to a rate set with the name declared on the tier.
+    # The set name is era-descriptive, not tier-named, so renaming a
+    # tier never breaks another tier's reference.
+    tier_id_to_retire_rate_set = tuple(t.retirement_rate_set for t in tiers)
     return (
         tier_name_to_id,
         tier_id_to_name,
@@ -189,7 +183,6 @@ def load_plan_config(
     fun = raw["funding"]
     rng = raw["ranges"]
 
-    tier_defs_raw = raw.get("tiers", [])
     class_to_group = _build_class_to_group(raw)
     calibration, cal_factor_override = _load_calibration_data(
         calibration_path,
@@ -199,6 +192,9 @@ def load_plan_config(
         ben = dict(ben)
         ben["cal_factor"] = cal_factor_override
 
+    tiers = tuple(Tier.model_validate(td) for td in raw.get("tiers", []))
+    validate_tier_cross_references(tiers)
+
     (
         tier_name_to_id,
         tier_id_to_name,
@@ -206,10 +202,7 @@ def load_plan_config(
         tier_id_to_fas_years,
         tier_id_to_dr_key,
         tier_id_to_retire_rate_set,
-    ) = _build_tier_metadata(
-        tier_defs_raw,
-        fas_default=ben["fas_years_default"],
-    )
+    ) = _build_tier_metadata(tiers)
 
     # Parse typed schemas. ``baseline_*`` fields on Economic are
     # populated from the pre-scenario raw config so scenarios don't
@@ -235,7 +228,7 @@ def load_plan_config(
         raw=raw,
         classes=tuple(raw["classes"]),
         class_groups=raw.get("class_groups", {}),
-        tier_defs=tuple(raw.get("tiers", [])),
+        tier_defs=tiers,
         benefit_mult_defs=benefit_mult_model,
         plan_design=plan_design_model,
         valuation_inputs=valuation_models,

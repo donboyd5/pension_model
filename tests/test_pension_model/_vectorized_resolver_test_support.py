@@ -84,8 +84,8 @@ def scalar_cola(config, tier_name, entry_year, yos):
     """Reproduce the scalar COLA logic used by the annuity builder."""
     cola_cutoff = config.cola_proration_cutoff_year
     for td in config.tier_defs:
-        if td["name"] == tier_name:
-            cola_key = td.get("cola_key", "tier_1_active")
+        if td.name == tier_name:
+            cola_key = td.cola_key
             raw_cola = getattr(config.cola, cola_key, 0.0)
             if (cola_key == "tier_1_active"
                     and not getattr(config.cola, "tier_1_active_constant", False)

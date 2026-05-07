@@ -4,14 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pension_model.config_resolver_common import (
-    _check_reduce_condition,
-    _entry_year_in_tier,
-    _get_eligibility,
-    _is_grandfathered,
-    _lookup_reduce_table,
-    _resolve_tier_def,
-)
+from pension_model.config_resolver_common import _lookup_reduce_table
 
 if TYPE_CHECKING:
     from pension_model.config_schema import PlanConfig
@@ -32,42 +25,38 @@ def get_tier(
     group = config.class_group(class_name)
 
     matched_tier = None
-    for tier_def in config.tier_defs:
-        if tier_def.get("assignment") == "grandfathered_rule":
+    for tier in config.tier_defs:
+        if tier.assignment == "grandfathered_rule":
             effective_entry_age = entry_age if entry_age > 0 else (age - yos)
-            if _is_grandfathered(
-                entry_year,
-                effective_entry_age,
-                tier_def["grandfathered_params"],
-            ):
-                matched_tier = tier_def
+            assert tier.grandfathered_params is not None
+            if tier.grandfathered_params.matches(entry_year, effective_entry_age):
+                matched_tier = tier
                 break
-        elif _entry_year_in_tier(entry_year, tier_def, config.new_year):
-            if tier_def.get("not_grandfathered"):
+        elif tier.entry_year_in_window(entry_year, config.new_year):
+            if tier.not_grandfathered:
                 gf_tier = next(
                     (
-                        tier
-                        for tier in config.tier_defs
-                        if tier.get("assignment") == "grandfathered_rule"
+                        t
+                        for t in config.tier_defs
+                        if t.assignment == "grandfathered_rule"
                     ),
                     None,
                 )
-                if gf_tier:
+                if gf_tier is not None:
                     effective_entry_age = entry_age if entry_age > 0 else (age - yos)
-                    if _is_grandfathered(
-                        entry_year,
-                        effective_entry_age,
-                        gf_tier["grandfathered_params"],
+                    assert gf_tier.grandfathered_params is not None
+                    if gf_tier.grandfathered_params.matches(
+                        entry_year, effective_entry_age
                     ):
                         continue
-            matched_tier = tier_def
+            matched_tier = tier
             break
 
     if matched_tier is None:
         matched_tier = config.tier_defs[-1]
 
-    tier_name = matched_tier["name"]
-    eligibility = _get_eligibility(matched_tier, group, config.tier_defs)
+    tier_name = matched_tier.name
+    eligibility = matched_tier.resolve_eligibility(group, config.tier_defs)
 
     if eligibility is None:
         return tier_name, "non_vested"
@@ -128,64 +117,38 @@ def get_reduce_factor(
     if status != "early":
         return float("nan")
 
-    tier_def = next((td for td in config.tier_defs if td["name"] == tier_name), None)
-    if tier_def is None:
+    tier = next((t for t in config.tier_defs if t.name == tier_name), None)
+    if tier is None:
         return float("nan")
 
-    reduction_def = tier_def
-    seen = set()
-    while "early_retire_reduction_same_as" in reduction_def:
-        ref = reduction_def["early_retire_reduction_same_as"]
-        if ref in seen:
-            break
-        seen.add(ref)
-        reduction_def = _resolve_tier_def(ref, config.tier_defs)
+    reduction = tier.resolve_early_retire_reduction(config.tier_defs)
+    if reduction is None:
+        return float("nan")
 
-    reduction = reduction_def.get("early_retire_reduction", {})
+    if reduction.is_flat:
+        nra = reduction.lookup_nra(class_name, config.plan_name, tier_name)
+        assert reduction.rate_per_year is not None
+        return 1.0 - reduction.rate_per_year * (nra - dist_age)
 
-    if "nra" in reduction:
-        nra_map = reduction["nra"]
-        rate = reduction["rate_per_year"]
-        if class_name in nra_map:
-            nra = nra_map[class_name]
-        elif "default" in nra_map:
-            nra = nra_map["default"]
-        else:
-            raise ValueError(
-                f"Plan {config.plan_name!r}: NRA map for tier "
-                f"{tier_name!r} has no entry for class {class_name!r} "
-                f"and no 'default' fallback. Add either an explicit "
-                f"per-class NRA or a 'default' key to "
-                f"early_retire_reduction.nra."
-            )
-        return 1.0 - rate * (nra - dist_age)
-
-    if "rules" in reduction:
-        for rule in reduction["rules"]:
-            condition = rule.get("condition", {})
-            if not _check_reduce_condition(condition, dist_age, yos, entry_year, tier_name):
-                continue
-            formula = rule.get("formula", "linear")
-            if formula == "linear":
-                rate = rule["rate_per_year"]
-                if "nra" not in rule:
-                    raise ValueError(
-                        f"Plan {config.plan_name!r}: tier {tier_name!r} "
-                        f"has a linear early-retire reduction rule "
-                        f"without an 'nra' field. Every linear rule "
-                        f"must declare its NRA."
-                    )
-                nra = rule["nra"]
-                return max(0.0, 1.0 - rate * (nra - dist_age))
-            if formula == "table":
-                table_key = rule.get("table_key", "")
-                if config.reduce_tables and table_key in config.reduce_tables:
-                    return _lookup_reduce_table(config.reduce_tables[table_key], table_key, dist_age, yos)
-                raise ValueError(
-                    f"early-retire reduction rule references table_key={table_key!r} "
-                    f"but no matching reduction table is loaded for plan {config.plan_name!r}. "
-                    f"Provide the table CSV under the plan's data directory."
+    assert reduction.rules is not None
+    for rule in reduction.rules:
+        if not rule.condition.matches(dist_age, yos, tier_name):
+            continue
+        if rule.formula == "linear":
+            assert rule.rate_per_year is not None and rule.nra is not None
+            return max(0.0, 1.0 - rule.rate_per_year * (rule.nra - dist_age))
+        if rule.formula == "table":
+            assert rule.table_key is not None
+            if config.reduce_tables and rule.table_key in config.reduce_tables:
+                return _lookup_reduce_table(
+                    config.reduce_tables[rule.table_key],
+                    rule.table_key,
+                    dist_age,
+                    yos,
                 )
-        return float("nan")
-
+            raise ValueError(
+                f"early-retire reduction rule references table_key={rule.table_key!r} "
+                f"but no matching reduction table is loaded for plan {config.plan_name!r}. "
+                f"Provide the table CSV under the plan's data directory."
+            )
     return float("nan")
