@@ -11,6 +11,8 @@ pytestmark = [pytest.mark.unit]
 
 from pydantic import ValidationError
 
+import numpy as np
+
 from pension_model.schemas import (
     AgeGroup,
     AvaSmoothing,
@@ -26,6 +28,7 @@ from pension_model.schemas import (
     DcSpec,
     Decrements,
     Economic,
+    EligibilitySpec,
     FlatBeforeYear,
     Funding,
     GainLossAvaSmoothing,
@@ -707,3 +710,94 @@ class TestBenefitMultipliers:
             "regular": {"tier_1": {"flat": 0.02}},
         })
         assert bm.resolve("regular", "tier_2") is None
+
+
+# ---------------------------------------------------------------------------
+# Condition.matches helpers
+# ---------------------------------------------------------------------------
+
+
+class TestConditionMatches:
+    def test_min_age_only(self):
+        c = Condition(min_age=65)
+        assert c.matches(65, 0) is True
+        assert c.matches(64, 100) is False
+
+    def test_min_yos_only(self):
+        c = Condition(min_yos=30)
+        assert c.matches(20, 30) is True
+        assert c.matches(99, 29) is False
+
+    def test_rule_of(self):
+        c = Condition(rule_of=80)
+        assert c.matches(60, 20) is True  # 60+20=80
+        assert c.matches(60, 19) is False  # 79<80
+
+    def test_combined(self):
+        c = Condition(min_age=55, min_yos=5, rule_of=80)
+        assert c.matches(60, 25) is True
+        assert c.matches(54, 30) is False  # fails min_age
+
+    def test_empty_matches_anything(self):
+        c = Condition()
+        assert c.matches(0, 0) is True
+
+    def test_matches_vec(self):
+        c = Condition(min_age=55, min_yos=5)
+        ages = np.array([54, 55, 60, 65])
+        yos = np.array([10, 5, 4, 5])
+        # 54/10: fails age. 55/5: passes. 60/4: fails yos. 65/5: passes.
+        assert list(c.matches_vec(ages, yos)) == [False, True, False, True]
+
+
+# ---------------------------------------------------------------------------
+# EligibilitySpec
+# ---------------------------------------------------------------------------
+
+
+class TestEligibilitySpec:
+    def _frs_tier_1_regular(self):
+        return EligibilitySpec.model_validate({
+            "normal": [{"min_yos": 30}, {"min_age": 62, "min_yos": 6}],
+            "early": [{"min_age": 58, "min_yos": 6}],
+            "vesting_yos": 6,
+        })
+
+    def test_loads_with_typed_conditions(self):
+        e = self._frs_tier_1_regular()
+        assert e.vesting_yos == 6
+        assert all(isinstance(c, Condition) for c in e.normal)
+        assert e.normal[0].min_yos == 30
+
+    def test_matches_normal_30_yos(self):
+        e = self._frs_tier_1_regular()
+        # 30 YOS, any age → normal eligible.
+        assert e.matches_normal(50, 30) is True
+
+    def test_matches_normal_age62_6yos(self):
+        e = self._frs_tier_1_regular()
+        assert e.matches_normal(62, 6) is True
+
+    def test_matches_normal_too_young(self):
+        e = self._frs_tier_1_regular()
+        assert e.matches_normal(55, 6) is False  # neither rule fires
+
+    def test_matches_early(self):
+        e = self._frs_tier_1_regular()
+        assert e.matches_early(58, 6) is True
+        assert e.matches_early(57, 6) is False
+
+    def test_matches_vec(self):
+        e = self._frs_tier_1_regular()
+        ages = np.array([50, 58, 62])
+        yos = np.array([30, 6, 6])
+        # 50/30: normal (min_yos=30). 58/6: not normal but yes early.
+        # 62/6: normal (min_age+min_yos) AND early (min_age 58, min_yos 6).
+        assert list(e.matches_normal_vec(ages, yos)) == [True, False, True]
+        assert list(e.matches_early_vec(ages, yos)) == [False, True, True]
+
+    def test_missing_vesting_yos_raises(self):
+        with pytest.raises(ValidationError, match="vesting_yos"):
+            EligibilitySpec.model_validate({
+                "normal": [{"min_yos": 30}],
+            })

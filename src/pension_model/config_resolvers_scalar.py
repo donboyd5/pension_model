@@ -10,8 +10,6 @@ from pension_model.config_resolver_common import (
     _get_eligibility,
     _is_grandfathered,
     _lookup_reduce_table,
-    _matches_any,
-    _matches_condition,
     _resolve_tier_def,
 )
 
@@ -71,17 +69,16 @@ def get_tier(
     tier_name = matched_tier["name"]
     eligibility = _get_eligibility(matched_tier, group, config.tier_defs)
 
-    if not eligibility:
+    if eligibility is None:
         return tier_name, "non_vested"
 
-    if _matches_any(eligibility.get("normal", []), age, yos, entry_year, entry_age):
+    if eligibility.matches_normal(age, yos):
         return tier_name, "norm"
 
-    if _matches_any(eligibility.get("early", []), age, yos, entry_year, entry_age):
+    if eligibility.matches_early(age, yos):
         return tier_name, "early"
 
-    vesting_yos = eligibility["vesting_yos"]
-    if yos >= vesting_yos:
+    if yos >= eligibility.vesting_yos:
         return tier_name, "vested"
 
     return tier_name, "non_vested"
@@ -108,7 +105,7 @@ def get_ben_mult(
     if rules.graded is not None:
         for entry in rules.graded:
             for cond in entry.or_:
-                if _matches_condition(cond.model_dump(exclude_none=True), dist_age, yos):
+                if cond.matches(dist_age, yos):
                     return entry.mult
         if status == "early" and rules.early_fallback is not None:
             return rules.early_fallback
