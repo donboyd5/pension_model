@@ -148,7 +148,7 @@ Early retirement reductions are a common policy lever. A legislature might consi
 - Making reductions actuarially fair (much steeper than current subsidized rates)
 
 Because formula-based reductions are in config and table-based reductions are in stage 3 CSV files, policy alternatives can modify either:
-- Config diff: `{"tiers[0].early_retire_reduction.rate_per_year": 0.07}` 
+- Config diff: `{"tiers[0].early_retire_reduction.rate_per_year": 0.07}`
 - Data diff: swap `reduction_others.csv` with a steeper table
 
 This supports the pipeline's policy alternatives phase without changing model code.

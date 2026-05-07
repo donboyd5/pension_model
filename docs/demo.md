@@ -111,7 +111,7 @@ pension-model calibrate frs # show potential calibration factors
 
 This runs the pipeline uncalibrated, compares aggregate AAL and NC against targets pulled from `valuation_inputs` in `plan_config.json`, and derives the two factors per class. With the –write option, it writes `plans/frs/config/calibration.json`. Subsequent `run` commands pick that file up automatically.
 
-### 
+###
 
 ## 6. Policy simulation
 

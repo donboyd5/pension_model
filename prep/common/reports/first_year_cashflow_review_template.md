@@ -136,9 +136,9 @@ Decision notes:
 
 ## 8. Open Questions
 
-- 
-- 
-- 
+-
+-
+-
 
 ## 9. Related Artifacts
 

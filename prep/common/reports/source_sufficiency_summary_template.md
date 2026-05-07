@@ -71,11 +71,11 @@ For new plans:
 
 ## Main Observations
 
-- 
+-
 
 ## Main Risks For Source-To-Canonical Prep
 
-- 
+-
 
 ## Next Step
 

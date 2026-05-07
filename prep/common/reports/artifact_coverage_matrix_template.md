@@ -64,7 +64,7 @@ how directly is it available, and what kind of prep work will be needed?
 
 ## Main Coverage Conclusions
 
-- 
+-
 
 ## Next Field-Level Follow-Up
 
