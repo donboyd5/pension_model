@@ -33,6 +33,7 @@ from pension_model.schemas.benefit_multipliers import (
 )
 from pension_model.schemas.calibration import Calibration, ClassCalibration
 from pension_model.schemas.conditions import Condition
+from pension_model.schemas.data_spec import DataSpec
 from pension_model.schemas.decrements import Decrements
 from pension_model.schemas.early_retire_reduction import (
     EarlyRetireReduction,
@@ -57,8 +58,10 @@ from pension_model.schemas.grandfathered import (
     GrandfatheredParams,
 )
 from pension_model.schemas.modeling import AgeGroup, Modeling
+from pension_model.schemas.mortality import MortalitySpec
 from pension_model.schemas.plan_design import PlanDesign, PlanDesignRatios
 from pension_model.schemas.ranges import Ranges
+from pension_model.schemas.term_vested import TermVested
 from pension_model.schemas.tier import Tier, validate_tier_cross_references
 from pension_model.schemas.valuation_inputs import ClassData, ValuationInputs
 
@@ -76,6 +79,7 @@ __all__ = [
     "Cola",
     "Condition",
     "CorridorAvaSmoothing",
+    "DataSpec",
     "DcSpec",
     "Decrements",
     "EarlyRetireReduction",
@@ -90,6 +94,7 @@ __all__ = [
     "GrandfatheredParams",
     "LegDef",
     "Modeling",
+    "MortalitySpec",
     "MultiplierRules",
     "PlanDesign",
     "PlanDesignRatios",
@@ -100,6 +105,7 @@ __all__ = [
     "ReduceCondition",
     "StatutoryRates",
     "StrictModel",
+    "TermVested",
     "Tier",
     "ValuationInputs",
     "validate_tier_cross_references",

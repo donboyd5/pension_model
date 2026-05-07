@@ -265,16 +265,14 @@ def test_unknown_retirement_rate_set_raises(frs_config, tmp_path):
     a clear ValueError. Catches typos and broken refactors that today's
     silent-fallback code would absorb without warning.
     """
-    from dataclasses import replace
     import pandas as pd
     from pension_model.core.data_loader import _build_yos_only_decrements
 
-    # Force one tier to declare an unknown rate set. _tier_id_to_retire_rate_set
+    # Force one tier to declare an unknown rate set. tier_id_to_retire_rate_set
     # is a tuple[str, ...] cached on PlanConfig.
-    bogus = replace(
-        frs_config,
-        _tier_id_to_retire_rate_set=("before_2011", "bogus_set", "2011_or_later"),
-    )
+    bogus = frs_config.model_copy(update={
+        "tier_id_to_retire_rate_set": ("before_2011", "bogus_set", "2011_or_later"),
+    })
 
     # A valid term_df shape with the lookup_type column the loader keys on
     term_df = pd.DataFrame({
@@ -314,7 +312,6 @@ def test_overlapping_funding_legs_raises(frs_config):
     """Funding legs whose entry-year ranges overlap raise a clear
     ValueError listing the overlapping leg names.
     """
-    from dataclasses import replace
     from pension_model.config_validation import validate_funding_legs
     from pension_model.schemas import LegDef
 
@@ -324,7 +321,7 @@ def test_overlapping_funding_legs_raises(frs_config):
             LegDef(name="new", entry_year_min=2020),  # overlap 2020-2029
         ],
     })
-    bogus = replace(frs_config, funding=new_funding)
+    bogus = frs_config.model_copy(update={"funding": new_funding})
 
     with pytest.raises(ValueError, match="overlap"):
         validate_funding_legs(bogus)
@@ -334,7 +331,6 @@ def test_gappy_funding_legs_raises(frs_config):
     """Funding legs that don't cover the full entry-year range raise a
     clear ValueError naming the uncovered year.
     """
-    from dataclasses import replace
     from pension_model.config_validation import validate_funding_legs
     from pension_model.schemas import LegDef
 
@@ -344,7 +340,7 @@ def test_gappy_funding_legs_raises(frs_config):
             LegDef(name="new", entry_year_min=2020),  # gap 2010-2019
         ],
     })
-    bogus = replace(frs_config, funding=new_funding)
+    bogus = frs_config.model_copy(update={"funding": new_funding})
 
     with pytest.raises(ValueError, match="not covered"):
         validate_funding_legs(bogus)
@@ -367,7 +363,6 @@ def test_missing_per_class_nra_raises(frs_config):
     'default' fallback raises a clear ValueError. Catches forgetting
     to declare an NRA for one of the plan's classes.
     """
-    from dataclasses import replace
     from pension_model.config_resolvers import get_reduce_factor
 
     # FRS tier_1 uses a per-class NRA map. Build a tier_defs tuple with
@@ -382,7 +377,7 @@ def test_missing_per_class_nra_raises(frs_config):
             new_tier_defs.append(td.model_copy(update={"early_retire_reduction": new_err}))
         else:
             new_tier_defs.append(td)
-    bogus = replace(frs_config, tier_defs=tuple(new_tier_defs))
+    bogus = frs_config.model_copy(update={"tier_defs": tuple(new_tier_defs)})
 
     # 'regular' isn't in the map and no default — should raise.
     with pytest.raises(ValueError, match="no 'default'"):

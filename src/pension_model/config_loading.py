@@ -222,10 +222,26 @@ def load_plan_config(
         raw.get("benefit_multipliers", {})
     )
 
+    from pension_model.schemas import DataSpec, MortalitySpec, TermVested
+
+    data_model = DataSpec.model_validate(
+        raw.get("data", {"data_dir": f"plans/{raw['plan_name']}/data"})
+    )
+    mortality_model = (
+        MortalitySpec.model_validate(raw["mortality"])
+        if raw.get("mortality") is not None
+        else None
+    )
+    term_vested_model = (
+        TermVested.model_validate(raw["term_vested"])
+        if raw.get("term_vested") is not None
+        else None
+    )
+
     config = PlanConfig(
         plan_name=raw["plan_name"],
         plan_description=raw.get("plan_description", ""),
-        raw=raw,
+        scenario_name=scenario_name,
         classes=tuple(raw["classes"]),
         class_groups=raw.get("class_groups", {}),
         tier_defs=tiers,
@@ -238,14 +254,20 @@ def load_plan_config(
         modeling=modeling_model,
         funding=funding_model,
         benefit=benefit_model,
+        data=data_model,
+        mortality=mortality_model,
+        term_vested=term_vested_model,
+        salary_growth_col_map=raw.get("salary_growth_col_map", {}),
+        base_table_map=raw.get("base_table_map", {}),
+        design_ratio_group_map=raw.get("design_ratio_group_map", {}),
         calibration=calibration,
-        _class_to_group=class_to_group,
-        _tier_name_to_id=tier_name_to_id,
-        _tier_id_to_name=tier_id_to_name,
-        _tier_id_to_cola_key=tier_id_to_cola_key,
-        _tier_id_to_fas_years=tier_id_to_fas_years,
-        _tier_id_to_dr_key=tier_id_to_dr_key,
-        _tier_id_to_retire_rate_set=tier_id_to_retire_rate_set,
+        class_to_group=class_to_group,
+        tier_name_to_id=tier_name_to_id,
+        tier_id_to_name=tier_id_to_name,
+        tier_id_to_cola_key=tier_id_to_cola_key,
+        tier_id_to_fas_years=tier_id_to_fas_years,
+        tier_id_to_dr_key=tier_id_to_dr_key,
+        tier_id_to_retire_rate_set=tier_id_to_retire_rate_set,
     )
 
     # Fatal: legs must be non-overlapping and cover the full
