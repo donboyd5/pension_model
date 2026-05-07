@@ -11,7 +11,7 @@ PVFB = Σ expected_future_benefits * discount_factors * survival_probabilities
 ### 1. Market Liability
 Market value using risk-adjusted discount rates matching traded securities with similar cash flow patterns.
 
-### 2. Solvency Liability  
+### 2. Solvency Liability
 Present value using risk-free rates (e.g., Treasury bonds):
 ```
 Solvency_Liability = Σ benefit_payments * treasury_discount_factors
@@ -102,33 +102,33 @@ calculate_life_annuity_simple <- function(
     }
     return(max(annuity_factor, 1))
   }
-  
-  # If mortality table provided but doesn't have required ages, 
+
+  # If mortality table provided but doesn't have required ages,
   # use simplified calculation
-  if (!start_age %in% mortality_table$age || 
+  if (!start_age %in% mortality_table$age ||
       !payment_age %in% mortality_table$age) {
     years_deferred <- max(0, payment_age - start_age)
     annuity_factor <- 12 / (1 + discount_rate)^years_deferred
     return(max(annuity_factor, 1))
   }
-  
+
   # Basic implementation with mortality table
   annuity_value <- 0
   for (t in 0:30) {  # Limit to 30 years
     current_age <- payment_age + t
     if (current_age > 100) break
-    
+
     # Simplified survival probability
     survival_prob <- 0.95^t  # Approximation
-    
+
     # Discount factor
     discount_factor <- (1 + discount_rate)^(-(payment_age - start_age + t))
-    
+
     # Add to annuity value
-    annuity_value <- annuity_value + 
+    annuity_value <- annuity_value +
       annual_payment * survival_prob * discount_factor
   }
-  
+
   return(max(annuity_value, 1))
 }
 
@@ -136,7 +136,7 @@ calculate_life_annuity_simple <- function(
 create_simple_mortality <- function() {
   ages <- 20:100
   q_x <- pmin(0.001 * 1.08^(ages - 20), 0.95)
-  
+
   data.frame(
     age = ages,
     q_x = q_x,
@@ -158,29 +158,29 @@ calculate_cb_whipsaw <- function(
   discount_rate_417e,  # IRS 417(e) rate for lump sums
   mortality_table_417e  # IRS prescribed mortality
 ) {
-  
+
   # Calculate annuity equivalent of account balance
   # using plan's interest crediting rate
-  annuity_from_balance <- account_balance / 
+  annuity_from_balance <- account_balance /
     calculate_life_annuity_simple(
       mortality_table_417e,
       participant_age,
       participant_age,
       interest_credit_rate
     )
-  
+
   # Calculate lump sum value of annuity using 417(e) rates
-  lumpsum_value <- annuity_from_balance * 
+  lumpsum_value <- annuity_from_balance *
     calculate_life_annuity_simple(
       mortality_table_417e,
       participant_age,
       participant_age,
       discount_rate_417e
     )
-  
+
   # Whipsaw occurs when lump sum exceeds account balance
   whipsaw_amount <- max(0, lumpsum_value - account_balance)
-  
+
   return(list(
     account_balance = account_balance,
     annuity_equivalent = annuity_from_balance,
@@ -203,11 +203,11 @@ whipsaw_example <- calculate_cb_whipsaw(
 cat("Cash Balance Whipsaw Analysis\n")
 cat("==============================\n")
 cat("Account Balance: $", whipsaw_example$account_balance, "\n")
-cat("Annuity Equivalent: $", 
+cat("Annuity Equivalent: $",
     round(whipsaw_example$annuity_equivalent, 2), "/year\n")
-cat("417(e) Lump Sum Value: $", 
+cat("417(e) Lump Sum Value: $",
     round(whipsaw_example$lumpsum_value_417e, 2), "\n")
-cat("Whipsaw Amount: $", 
+cat("Whipsaw Amount: $",
     round(whipsaw_example$whipsaw_amount, 2), "\n")
 ```
 
@@ -222,16 +222,16 @@ calculate_cb_market_value <- function(
   market_rate,
   years_to_payment
 ) {
-  
+
   # Future value at guaranteed rate
   fv_guaranteed <- current_balance * (1 + guaranteed_rate)^years_to_payment
-  
+
   # Present value at market rate
   pv_market <- fv_guaranteed / (1 + market_rate)^years_to_payment
-  
+
   # The market value reflects the cost of providing the guarantee
   market_premium <- pv_market - current_balance
-  
+
   return(list(
     current_balance = current_balance,
     guaranteed_future_value = fv_guaranteed,
@@ -259,12 +259,12 @@ for (i in 1:nrow(scenarios)) {
     market_rate = scenarios$market_rate[i],
     years_to_payment = 10
   )
-  
+
   cat("\n", scenarios$scenario[i], ":\n")
   cat("  Guaranteed Rate:", scenarios$guaranteed_rate[i] * 100, "%\n")
   cat("  Market Rate:", scenarios$market_rate[i] * 100, "%\n")
   cat("  Market Value: $", round(result$market_present_value, 2), "\n")
-  cat("  Guarantee Cost: $", round(result$guarantee_cost, 2), 
+  cat("  Guarantee Cost: $", round(result$guarantee_cost, 2),
       " (", round(result$guarantee_cost_pct, 1), "%)\n")
 }
 ```

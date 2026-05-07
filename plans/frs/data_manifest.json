@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "description": "Data files required by the FRS plan. Per-class entries are expanded across `classes` from plan_config.json (regular, special, eco, eso, judges, senior_management, admin). Path templates use {class_name}; entries may declare a `fallback` path that, if present, satisfies the requirement.",
+  "files": [
+    {
+      "path": "demographics/{class_name}_salary.csv",
+      "scope": "per_class",
+      "required": true,
+      "purpose": "Salary distribution by entry_age x yos x age_group, per membership class"
+    },
+    {
+      "path": "demographics/{class_name}_headcount.csv",
+      "scope": "per_class",
+      "required": true,
+      "purpose": "Active member headcount by entry_age x yos x age_group, per class"
+    },
+    {
+      "path": "demographics/{class_name}_salary_growth.csv",
+      "scope": "per_class",
+      "required": false,
+      "fallback": "demographics/salary_growth.csv",
+      "purpose": "Per-class salary growth schedule; falls back to plan-wide salary_growth.csv"
+    },
+    {
+      "path": "demographics/retiree_distribution.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Current retiree distribution by entry age, used for current-retiree liability"
+    },
+    {
+      "path": "demographics/entrant_profile.csv",
+      "scope": "plan",
+      "required": false,
+      "purpose": "Optional new-entrant profile (entry age x start salary)"
+    },
+    {
+      "path": "decrements/{class_name}_termination_rates.csv",
+      "scope": "per_class",
+      "required": true,
+      "fallback": "decrements/termination_rates.csv",
+      "purpose": "Per-class withdrawal rates by yos x age group"
+    },
+    {
+      "path": "decrements/{class_name}_retirement_rates.csv",
+      "scope": "per_class",
+      "required": true,
+      "fallback": "decrements/retirement_rates.csv",
+      "purpose": "Per-class retirement rates by age x rate set"
+    },
+    {
+      "path": "mortality/base_rates.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Base mortality rates by age x gender x table"
+    },
+    {
+      "path": "mortality/improvement_scale.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Mortality improvement scale (year x age x gender)"
+    },
+    {
+      "path": "funding/init_funding.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Initial funding state: payroll ratios, NC rates, AVA/MVA, AAL by class"
+    },
+    {
+      "path": "funding/amort_layers.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Initial amortization layers (period x balance, by class)"
+    },
+    {
+      "path": "funding/current_term_vested_cashflow.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Synthetic cashflow stream sizing the current term-vested AAL"
+    }
+  ]
+}

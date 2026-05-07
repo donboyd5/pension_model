@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "description": "Data files required by the TXTRS plan. Single class (`all`) so per-class entries expand to one path each. TXTRS uses unprefixed CSV names for decrements (e.g. `retirement_rates.csv`); the per-class fallback covers that.",
+  "files": [
+    {
+      "path": "demographics/{class_name}_salary.csv",
+      "scope": "per_class",
+      "required": true,
+      "purpose": "Salary distribution by entry_age x yos x age_group"
+    },
+    {
+      "path": "demographics/{class_name}_headcount.csv",
+      "scope": "per_class",
+      "required": true,
+      "purpose": "Active member headcount by entry_age x yos x age_group"
+    },
+    {
+      "path": "demographics/salary_growth.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Plan-wide salary growth schedule (yos x growth rate)"
+    },
+    {
+      "path": "demographics/retiree_distribution.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Current retiree distribution by entry age"
+    },
+    {
+      "path": "demographics/entrant_profile.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "New-entrant profile (entry age x start salary)"
+    },
+    {
+      "path": "decrements/{class_name}_termination_rates.csv",
+      "scope": "per_class",
+      "required": true,
+      "fallback": "decrements/termination_rates.csv",
+      "purpose": "Withdrawal rates by yos x age group"
+    },
+    {
+      "path": "decrements/{class_name}_retirement_rates.csv",
+      "scope": "per_class",
+      "required": true,
+      "fallback": "decrements/retirement_rates.csv",
+      "purpose": "Retirement rates by age x rate set"
+    },
+    {
+      "path": "decrements/reduction_gft.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Early-retirement reduction table for grandfathered tier"
+    },
+    {
+      "path": "decrements/reduction_others.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Early-retirement reduction table for non-grandfathered tiers"
+    },
+    {
+      "path": "mortality/base_rates.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Base mortality rates by age x gender x table"
+    },
+    {
+      "path": "mortality/improvement_scale.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Mortality improvement scale (year x age x gender)"
+    },
+    {
+      "path": "funding/init_funding.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Initial funding state: payroll, NC rates, AVA/MVA, AAL"
+    },
+    {
+      "path": "funding/current_term_vested_cashflow.csv",
+      "scope": "plan",
+      "required": true,
+      "purpose": "Synthetic cashflow stream sizing the current term-vested AAL"
+    }
+  ]
+}
