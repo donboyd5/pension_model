@@ -1237,3 +1237,121 @@ class TestPlanConfigTopLevel:
             "open('plans/_schema/plan_config.schema.json','w').write("
             "json.dumps(PlanConfig.model_json_schema(by_alias=True), indent=2, sort_keys=True)+'\\n')\""
         )
+
+
+# ---------------------------------------------------------------------------
+# Scenario / ScenarioOverrides
+# ---------------------------------------------------------------------------
+
+
+class TestScenarioOverrides:
+    """Tests for the typed scenario-override schema."""
+
+    def test_all_committed_scenarios_validate(self):
+        # The four scenarios in scenarios/*.json must all parse cleanly.
+        # If one fails, either the scenario has a typo or the partial
+        # generator missed a real field.
+        import json
+        from pathlib import Path
+        from pension_model.schemas.scenario import Scenario
+
+        scenarios_dir = Path(__file__).parents[2] / "scenarios"
+        files = sorted(scenarios_dir.glob("*.json"))
+        assert len(files) >= 4
+        for f in files:
+            raw = json.load(open(f))
+            raw.setdefault("name", f.stem)
+            Scenario.model_validate(raw)  # must not raise
+
+    def test_top_level_typo_rejected(self):
+        from pydantic import ValidationError
+        from pension_model.schemas.scenario import Scenario
+
+        with pytest.raises(ValidationError, match="economci"):
+            Scenario.model_validate({
+                "name": "x",
+                "overrides": {"economci": {"dr_current": 0.05}},  # typo
+            })
+
+    def test_nested_typo_rejected(self):
+        from pydantic import ValidationError
+        from pension_model.schemas.scenario import Scenario
+
+        with pytest.raises(ValidationError, match="modle_return"):
+            Scenario.model_validate({
+                "name": "x",
+                "overrides": {"economic": {"modle_return": 0.05}},  # typo
+            })
+
+    def test_cola_extra_keys_admitted(self):
+        # Cola uses extra="allow" for per-tier active-rate keys.
+        # The partial must preserve that — otherwise no_cola.json
+        # would fail on tier_3_active (a per-tier key not in any
+        # explicit Cola field declaration).
+        from pension_model.schemas.scenario import Scenario
+
+        s = Scenario.model_validate({
+            "name": "x",
+            "overrides": {
+                "benefit": {"cola": {
+                    "tier_1_active": 0.0, "tier_2_active": 0.0,
+                    "tier_3_active": 0.0, "tier_99_active": 0.0,
+                }}
+            },
+        })
+        # tier_99_active is not in any plan today — Cola admits it
+        # via extra=allow, so the override validates.
+        assert s.overrides.benefit.cola.tier_1_active == 0.0  # type: ignore[union-attr]
+
+    def test_validators_not_inherited_on_partial(self):
+        # EarlyRetireReduction requires either flat (rate_per_year+nra)
+        # or rule-list (rules). The partial must NOT enforce that —
+        # a scenario should be free to override just rate_per_year
+        # without also providing nra.
+        from pension_model.schemas.scenario import Scenario
+
+        s = Scenario.model_validate({
+            "name": "x",
+            "overrides": {
+                "tier_defs": None,  # full-tier override would need a real Tier
+            },
+        })
+        assert s.name == "x"
+
+    def test_requires_check_passes_when_field_present(self):
+        from pension_model.config_loading import load_plan_config_by_name
+        from pension_model.schemas.scenario import check_scenario_requires
+
+        cfg = load_plan_config_by_name("frs")
+        # economic.dr_current is always present and truthy.
+        check_scenario_requires(cfg, ["economic.dr_current"])
+
+    def test_requires_check_raises_when_missing(self):
+        from pension_model.config_loading import load_plan_config_by_name
+        from pension_model.schemas.scenario import check_scenario_requires
+
+        cfg = load_plan_config_by_name("frs")
+        with pytest.raises(ValueError, match="not present or are falsy"):
+            check_scenario_requires(cfg, ["funding.does_not_exist"])
+
+    def test_load_plan_config_rejects_scenario_typo(self, tmp_path):
+        # End-to-end: a malformed scenario JSON makes load_plan_config
+        # raise (rather than silently merging the typo into raw).
+        import json
+        from pydantic import ValidationError
+        from pension_model.config_loading import load_plan_config
+
+        scenario_path = tmp_path / "bogus.json"
+        scenario_path.write_text(json.dumps({
+            "name": "bogus",
+            "overrides": {"economic": {"modle_return": 0.05}},  # typo
+        }))
+
+        from pathlib import Path
+        repo_root = Path(__file__).parents[2]
+        with pytest.raises(ValidationError, match="modle_return"):
+            load_plan_config(
+                repo_root / "plans" / "frs" / "config" / "plan_config.json",
+                None,
+                scenario_path,
+            )

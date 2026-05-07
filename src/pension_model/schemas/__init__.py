@@ -60,8 +60,15 @@ from pension_model.schemas.grandfathered import (
 from pension_model.schemas.modeling import AgeGroup, Modeling
 from pension_model.schemas.mortality import MortalitySpec
 from pension_model.schemas.plan_design import PlanDesign, PlanDesignRatios
+from pension_model.schemas.partial import partial_model
 from pension_model.schemas.ranges import Ranges
 from pension_model.schemas.term_vested import TermVested
+
+# Note: ``Scenario`` / ``ScenarioOverrides`` live in
+# ``pension_model.schemas.scenario`` and import ``PlanConfig`` from
+# ``config_schema``. Re-exporting them here would create a circular
+# import (``config_schema`` imports from this package). Import them
+# directly from ``pension_model.schemas.scenario`` instead.
 from pension_model.schemas.tier import Tier, validate_tier_cross_references
 from pension_model.schemas.valuation_inputs import ClassData, ValuationInputs
 
@@ -108,5 +115,6 @@ __all__ = [
     "TermVested",
     "Tier",
     "ValuationInputs",
+    "partial_model",
     "validate_tier_cross_references",
 ]
