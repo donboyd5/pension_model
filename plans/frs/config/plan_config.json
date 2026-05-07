@@ -1,11 +1,9 @@
 {
   "plan_name": "frs",
   "plan_description": "Florida Retirement System",
-
   "data": {
     "data_dir": "plans/frs/data"
   },
-
   "economic": {
     "dr_current": 0.067,
     "dr_new": 0.067,
@@ -14,13 +12,15 @@
     "pop_growth": 0.0,
     "model_return": 0.067
   },
-
   "benefit": {
     "db_ee_cont_rate": 0.03,
     "db_ee_interest_rate": 0.0,
     "retire_refund_ratio": 1.0,
     "fas_years_default": 5,
-    "benefit_types": ["db", "dc"],
+    "benefit_types": [
+      "db",
+      "dc"
+    ],
     "cola": {
       "tier_1_active": 0.03,
       "tier_1_active_constant": false,
@@ -32,7 +32,6 @@
       "proration_cutoff_year": 2011
     }
   },
-
   "funding": {
     "has_drop": true,
     "drop_reference_class": "regular",
@@ -46,20 +45,24 @@
     "amo_term_growth": 0.03,
     "ava_smoothing": {
       "method": "corridor",
-      "corridor_low": 0.80,
-      "corridor_high": 1.20,
-      "recognition_fraction": 0.20
+      "corridor_low": 0.8,
+      "corridor_high": 1.2,
+      "recognition_fraction": 0.2
     },
     "legs": [
-      {"name": "legacy", "entry_year_max_param": "new_year"},
-      {"name": "new", "entry_year_min_param": "new_year"}
+      {
+        "name": "legacy",
+        "entry_year_max_param": "new_year"
+      },
+      {
+        "name": "new",
+        "entry_year_min_param": "new_year"
+      }
     ]
   },
-
   "decrements": {
     "method": "yos_only"
   },
-
   "ranges": {
     "min_age": 18,
     "max_age": 120,
@@ -69,19 +72,31 @@
     "model_period": 30,
     "max_yos": 70
   },
-
-  "classes": ["regular", "special", "admin", "eco", "eso", "judges", "senior_management"],
-
+  "classes": [
+    "regular",
+    "special",
+    "admin",
+    "eco",
+    "eso",
+    "judges",
+    "senior_management"
+  ],
   "class_groups": {
-    "regular_group": ["regular", "eco", "eso", "judges", "senior_management"],
-    "special_group": ["special", "admin"]
+    "regular_group": [
+      "regular",
+      "eco",
+      "eso",
+      "judges",
+      "senior_management"
+    ],
+    "special_group": [
+      "special",
+      "admin"
+    ]
   },
-
-  "design_ratio_group_map_notes": "Override for DB/DC design ratios only. R's liability model uses 'if (class_name == \"special\")' so only the literal 'special' class gets special-group design ratios; admin (in special_group for tier eligibility) gets regular-group design ratios.",
   "design_ratio_group_map": {
     "admin": "regular_group"
   },
-
   "tiers": [
     {
       "name": "tier_1",
@@ -91,22 +106,41 @@
       "eligibility": {
         "regular_group": {
           "normal": [
-            {"min_yos": 30},
-            {"min_age": 62, "min_yos": 6}
+            {
+              "min_yos": 30
+            },
+            {
+              "min_age": 62,
+              "min_yos": 6
+            }
           ],
           "early": [
-            {"min_age": 58, "min_yos": 6}
+            {
+              "min_age": 58,
+              "min_yos": 6
+            }
           ],
           "vesting_yos": 6
         },
         "special_group": {
           "normal": [
-            {"min_yos": 25},
-            {"min_age": 55, "min_yos": 6},
-            {"min_age": 52, "min_yos": 25}
+            {
+              "min_yos": 25
+            },
+            {
+              "min_age": 55,
+              "min_yos": 6
+            },
+            {
+              "min_age": 52,
+              "min_yos": 25
+            }
           ],
           "early": [
-            {"min_age": 53, "min_yos": 6}
+            {
+              "min_age": 53,
+              "min_yos": 6
+            }
           ],
           "vesting_yos": 6
         }
@@ -130,21 +164,37 @@
       "eligibility": {
         "regular_group": {
           "normal": [
-            {"min_yos": 33},
-            {"min_age": 65, "min_yos": 8}
+            {
+              "min_yos": 33
+            },
+            {
+              "min_age": 65,
+              "min_yos": 8
+            }
           ],
           "early": [
-            {"min_age": 61, "min_yos": 8}
+            {
+              "min_age": 61,
+              "min_yos": 8
+            }
           ],
           "vesting_yos": 8
         },
         "special_group": {
           "normal": [
-            {"min_yos": 30},
-            {"min_age": 60, "min_yos": 8}
+            {
+              "min_yos": 30
+            },
+            {
+              "min_age": 60,
+              "min_yos": 8
+            }
           ],
           "early": [
-            {"min_age": 56, "min_yos": 8}
+            {
+              "min_age": 56,
+              "min_yos": 8
+            }
           ],
           "vesting_yos": 8
         }
@@ -171,75 +221,295 @@
       "retirement_rate_set": "2011_or_later"
     }
   ],
-
   "benefit_multipliers": {
     "regular": {
       "tier_1": {
         "graded": [
-          {"or": [{"min_age": 65, "min_yos": 6}, {"min_yos": 33}], "mult": 0.0168},
-          {"or": [{"min_age": 64, "min_yos": 6}, {"min_yos": 32}], "mult": 0.0165},
-          {"or": [{"min_age": 63, "min_yos": 6}, {"min_yos": 31}], "mult": 0.0163},
-          {"or": [{"min_age": 62, "min_yos": 6}, {"min_yos": 30}], "mult": 0.0160}
+          {
+            "or": [
+              {
+                "min_age": 65,
+                "min_yos": 6
+              },
+              {
+                "min_yos": 33
+              }
+            ],
+            "mult": 0.0168
+          },
+          {
+            "or": [
+              {
+                "min_age": 64,
+                "min_yos": 6
+              },
+              {
+                "min_yos": 32
+              }
+            ],
+            "mult": 0.0165
+          },
+          {
+            "or": [
+              {
+                "min_age": 63,
+                "min_yos": 6
+              },
+              {
+                "min_yos": 31
+              }
+            ],
+            "mult": 0.0163
+          },
+          {
+            "or": [
+              {
+                "min_age": 62,
+                "min_yos": 6
+              },
+              {
+                "min_yos": 30
+              }
+            ],
+            "mult": 0.016
+          }
         ],
-        "early_fallback": 0.0160
+        "early_fallback": 0.016
       },
       "tier_2": {
         "graded": [
-          {"or": [{"min_age": 68, "min_yos": 8}, {"min_yos": 36}], "mult": 0.0168},
-          {"or": [{"min_age": 67, "min_yos": 8}, {"min_yos": 35}], "mult": 0.0165},
-          {"or": [{"min_age": 66, "min_yos": 8}, {"min_yos": 34}], "mult": 0.0163},
-          {"or": [{"min_age": 65, "min_yos": 8}, {"min_yos": 33}], "mult": 0.0160}
+          {
+            "or": [
+              {
+                "min_age": 68,
+                "min_yos": 8
+              },
+              {
+                "min_yos": 36
+              }
+            ],
+            "mult": 0.0168
+          },
+          {
+            "or": [
+              {
+                "min_age": 67,
+                "min_yos": 8
+              },
+              {
+                "min_yos": 35
+              }
+            ],
+            "mult": 0.0165
+          },
+          {
+            "or": [
+              {
+                "min_age": 66,
+                "min_yos": 8
+              },
+              {
+                "min_yos": 34
+              }
+            ],
+            "mult": 0.0163
+          },
+          {
+            "or": [
+              {
+                "min_age": 65,
+                "min_yos": 8
+              },
+              {
+                "min_yos": 33
+              }
+            ],
+            "mult": 0.016
+          }
         ],
-        "early_fallback": 0.0160
+        "early_fallback": 0.016
       },
       "tier_3_same_as": "tier_2"
     },
     "admin": {
       "tier_1": {
         "graded": [
-          {"or": [{"min_age": 58, "min_yos": 6}, {"min_yos": 28}], "mult": 0.0168},
-          {"or": [{"min_age": 57, "min_yos": 6}, {"min_yos": 27}], "mult": 0.0165},
-          {"or": [{"min_age": 56, "min_yos": 6}, {"min_yos": 26}], "mult": 0.0163},
-          {"or": [{"min_age": 55, "min_yos": 6}, {"min_yos": 25}], "mult": 0.0160}
+          {
+            "or": [
+              {
+                "min_age": 58,
+                "min_yos": 6
+              },
+              {
+                "min_yos": 28
+              }
+            ],
+            "mult": 0.0168
+          },
+          {
+            "or": [
+              {
+                "min_age": 57,
+                "min_yos": 6
+              },
+              {
+                "min_yos": 27
+              }
+            ],
+            "mult": 0.0165
+          },
+          {
+            "or": [
+              {
+                "min_age": 56,
+                "min_yos": 6
+              },
+              {
+                "min_yos": 26
+              }
+            ],
+            "mult": 0.0163
+          },
+          {
+            "or": [
+              {
+                "min_age": 55,
+                "min_yos": 6
+              },
+              {
+                "min_yos": 25
+              }
+            ],
+            "mult": 0.016
+          }
         ],
-        "early_fallback": 0.0160
+        "early_fallback": 0.016
       },
       "tier_2": {
         "graded": [
-          {"or": [{"min_age": 63, "min_yos": 8}, {"min_yos": 33}], "mult": 0.0168},
-          {"or": [{"min_age": 62, "min_yos": 8}, {"min_yos": 32}], "mult": 0.0165},
-          {"or": [{"min_age": 61, "min_yos": 8}, {"min_yos": 31}], "mult": 0.0163},
-          {"or": [{"min_age": 60, "min_yos": 8}, {"min_yos": 30}], "mult": 0.0160}
+          {
+            "or": [
+              {
+                "min_age": 63,
+                "min_yos": 8
+              },
+              {
+                "min_yos": 33
+              }
+            ],
+            "mult": 0.0168
+          },
+          {
+            "or": [
+              {
+                "min_age": 62,
+                "min_yos": 8
+              },
+              {
+                "min_yos": 32
+              }
+            ],
+            "mult": 0.0165
+          },
+          {
+            "or": [
+              {
+                "min_age": 61,
+                "min_yos": 8
+              },
+              {
+                "min_yos": 31
+              }
+            ],
+            "mult": 0.0163
+          },
+          {
+            "or": [
+              {
+                "min_age": 60,
+                "min_yos": 8
+              },
+              {
+                "min_yos": 30
+              }
+            ],
+            "mult": 0.016
+          }
         ],
-        "early_fallback": 0.0160
+        "early_fallback": 0.016
       },
       "tier_3": {
         "graded": [
-          {"or": [{"min_age": 63, "min_yos": 8}], "mult": 0.0168},
-          {"or": [{"min_age": 62, "min_yos": 8}], "mult": 0.0165},
-          {"or": [{"min_age": 61, "min_yos": 8}], "mult": 0.0163},
-          {"or": [{"min_age": 60, "min_yos": 8}], "mult": 0.0160}
+          {
+            "or": [
+              {
+                "min_age": 63,
+                "min_yos": 8
+              }
+            ],
+            "mult": 0.0168
+          },
+          {
+            "or": [
+              {
+                "min_age": 62,
+                "min_yos": 8
+              }
+            ],
+            "mult": 0.0165
+          },
+          {
+            "or": [
+              {
+                "min_age": 61,
+                "min_yos": 8
+              }
+            ],
+            "mult": 0.0163
+          },
+          {
+            "or": [
+              {
+                "min_age": 60,
+                "min_yos": 8
+              }
+            ],
+            "mult": 0.016
+          }
         ],
-        "early_fallback": 0.0160
+        "early_fallback": 0.016
       }
     },
     "special": {
-      "all_tiers": {"flat": 0.03, "flat_before_year": {"year": 1974, "mult": 0.02}}
+      "all_tiers": {
+        "flat": 0.03,
+        "flat_before_year": {
+          "year": 1974,
+          "mult": 0.02
+        }
+      }
     },
     "eco": {
-      "all_tiers": {"flat": 0.03}
+      "all_tiers": {
+        "flat": 0.03
+      }
     },
     "eso": {
-      "all_tiers": {"flat": 0.03}
+      "all_tiers": {
+        "flat": 0.03
+      }
     },
     "judges": {
-      "all_tiers": {"flat": 0.0333}
+      "all_tiers": {
+        "flat": 0.0333
+      }
     },
     "senior_management": {
-      "all_tiers": {"flat": 0.02}
+      "all_tiers": {
+        "flat": 0.02
+      }
     }
   },
-
   "plan_design": {
     "cutoff_year": 2018,
     "special_group": {
@@ -253,11 +523,6 @@
       "new": 0.25
     }
   },
-
-  "valuation_inputs_notes": {
-    "ben_payment": "Initial-year pension benefit payments to current retirees. Derived as: per-class ACFR outflow * plan-wide ben_payment_ratio (0.935839). The ratio comes from ACFR totals: pension_payment / (pension_payment + contribution_refunds + disbursement_to_ip + admin_expense) = 11,944,986,866 / 12,763,932,044. See GH issue for investigation of whether this derivation is correct."
-  },
-
   "valuation_inputs": {
     "regular": {
       "ben_payment": 8391759183.371059,
@@ -290,7 +555,11 @@
       "ben_payment": 8836192.922367,
       "retiree_pop": 227,
       "total_active_member": 2075,
-      "headcount_group": ["eco", "eso", "judges"],
+      "headcount_group": [
+        "eco",
+        "eso",
+        "judges"
+      ],
       "er_dc_cont_rate": 0.0994,
       "val_norm_cost": 0.1254,
       "val_aal": 138008000,
@@ -300,7 +569,11 @@
       "ben_payment": 50091724.461199,
       "retiree_pop": 1446,
       "total_active_member": 2075,
-      "headcount_group": ["eco", "eso", "judges"],
+      "headcount_group": [
+        "eco",
+        "eso",
+        "judges"
+      ],
       "er_dc_cont_rate": 0.1195,
       "val_norm_cost": 0.1463,
       "val_aal": 751363000,
@@ -310,7 +583,11 @@
       "ben_payment": 99052955.271665,
       "retiree_pop": 989,
       "total_active_member": 2075,
-      "headcount_group": ["eco", "eso", "judges"],
+      "headcount_group": [
+        "eco",
+        "eso",
+        "judges"
+      ],
       "er_dc_cont_rate": 0.1405,
       "val_norm_cost": 0.1777,
       "val_aal": 1545348000,
@@ -326,20 +603,40 @@
       "val_payroll": 824335420
     }
   },
-
   "modeling": {
     "use_earliest_retire": false,
     "male_mp_forward_shift": 0,
     "age_groups": [
-      {"max_age": 24, "label": "under_25"},
-      {"min_age": 25, "max_age": 29, "label": "25_to_29"},
-      {"min_age": 30, "max_age": 34, "label": "30_to_34"},
-      {"min_age": 35, "max_age": 44, "label": "35_to_44"},
-      {"min_age": 45, "max_age": 54, "label": "45_to_54"},
-      {"min_age": 55, "label": "over_55"}
+      {
+        "max_age": 24,
+        "label": "under_25"
+      },
+      {
+        "min_age": 25,
+        "max_age": 29,
+        "label": "25_to_29"
+      },
+      {
+        "min_age": 30,
+        "max_age": 34,
+        "label": "30_to_34"
+      },
+      {
+        "min_age": 35,
+        "max_age": 44,
+        "label": "35_to_44"
+      },
+      {
+        "min_age": 45,
+        "max_age": 54,
+        "label": "45_to_54"
+      },
+      {
+        "min_age": 55,
+        "label": "over_55"
+      }
     ]
   },
-
   "salary_growth_col_map": {
     "regular": "salary_increase_regular",
     "special": "salary_increase_special_risk",
@@ -349,7 +646,6 @@
     "judges": "salary_increase_judges",
     "senior_management": "salary_increase_senior_management"
   },
-
   "base_table_map": {
     "regular": "regular",
     "special": "safety",
@@ -358,5 +654,11 @@
     "eso": "general",
     "judges": "general",
     "senior_management": "general"
+  },
+  "notes": {
+    "design_ratio_group_map": "Override for DB/DC design ratios only. R's liability model uses 'if (class_name == \"special\")' so only the literal 'special' class gets special-group design ratios; admin (in special_group for tier eligibility) gets regular-group design ratios.",
+    "valuation_inputs": {
+      "ben_payment": "Initial-year pension benefit payments to current retirees. Derived as: per-class ACFR outflow * plan-wide ben_payment_ratio (0.935839). The ratio comes from ACFR totals: pension_payment / (pension_payment + contribution_refunds + disbursement_to_ip + admin_expense) = 11,944,986,866 / 12,763,932,044. See GH issue for investigation of whether this derivation is correct."
+    }
   }
 }

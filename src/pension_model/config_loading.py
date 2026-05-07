@@ -30,6 +30,57 @@ from pension_model.schemas import (
 log = logging.getLogger(__name__)
 
 
+# Post-load fields populated by the loader, not present in
+# plan_config.json source. Excluded from the unknown-key check.
+_LOADER_POPULATED_FIELDS = frozenset({
+    "calibration",
+    "reduce_tables",
+    "class_to_group",
+    "tier_name_to_id",
+    "tier_id_to_name",
+    "tier_id_to_cola_key",
+    "tier_id_to_fas_years",
+    "tier_id_to_dr_key",
+    "tier_id_to_retire_rate_set",
+    "scenario_name",
+})
+
+
+def _expected_top_level_keys() -> set[str]:
+    """Top-level keys accepted in plan_config.json.
+
+    Reads ``PlanConfig.model_fields``; uses each field's JSON alias
+    where defined (e.g. ``benefit_multipliers``, ``tiers``).
+    """
+    keys: set[str] = set()
+    for name, field in PlanConfig.model_fields.items():
+        if name in _LOADER_POPULATED_FIELDS:
+            continue
+        keys.add(field.alias or name)
+    return keys
+
+
+def check_unknown_top_level_keys(raw: dict) -> None:
+    """Reject top-level plan_config.json keys not in :class:`PlanConfig`.
+
+    Pydantic's ``extra="forbid"`` cannot catch these on its own because
+    :func:`load_plan_config` cherry-picks named keys from ``raw`` rather
+    than passing the whole dict through ``PlanConfig.model_validate``.
+    Without this check, a typo at the top level (or a stale ``*_notes``
+    key) would load silently. Free-text documentation belongs in the
+    typed ``notes`` block.
+    """
+    unknown = set(raw.keys()) - _expected_top_level_keys()
+    if unknown:
+        expected = sorted(_expected_top_level_keys())
+        raise ValueError(
+            f"Unknown top-level key(s) in plan_config.json: "
+            f"{sorted(unknown)}. "
+            f"Expected one of: {expected}. "
+            f"Free-text documentation goes in the `notes` block."
+        )
+
+
 def _deep_merge(base: dict, overrides: dict) -> dict:
     """Recursively merge overrides into base dict (returns a new dict)."""
     result = dict(base)
@@ -163,6 +214,8 @@ def load_plan_config(
     with open(config_path) as f:
         raw = json.load(f)
 
+    check_unknown_top_level_keys(raw)
+
     baseline_dr_current = raw["economic"]["dr_current"]
     baseline_model_return = raw["economic"].get(
         "model_return", baseline_dr_current
@@ -270,6 +323,13 @@ def load_plan_config(
         salary_growth_col_map=raw.get("salary_growth_col_map", {}),
         base_table_map=raw.get("base_table_map", {}),
         design_ratio_group_map=raw.get("design_ratio_group_map", {}),
+        inapplicable_summary_columns=tuple(
+            raw.get("inapplicable_summary_columns", ())
+        ),
+        inapplicable_truth_table_columns=tuple(
+            raw.get("inapplicable_truth_table_columns", ())
+        ),
+        notes=raw.get("notes", {}),
         calibration=calibration,
         class_to_group=class_to_group,
         tier_name_to_id=tier_name_to_id,

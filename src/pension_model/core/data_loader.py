@@ -345,7 +345,7 @@ def _build_yos_only_decrements(
     # retirement_rate_set in plan_config.json (defaults to the tier's
     # own name).
     csv_rate_sets = list(ret_df["rate_set"].unique())
-    declared_sets = set(constants._tier_id_to_retire_rate_set)
+    declared_sets = set(constants.tier_id_to_retire_rate_set)
     missing = declared_sets - set(csv_rate_sets)
     if missing:
         raise ValueError(

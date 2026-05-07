@@ -1,11 +1,9 @@
 {
   "plan_name": "txtrs-av",
   "plan_description": "Teacher Retirement System of Texas (AV-first)",
-
   "data": {
     "data_dir": "plans/txtrs-av/data"
   },
-
   "economic": {
     "dr_current": 0.07,
     "dr_new": 0.07,
@@ -13,14 +11,15 @@
     "payroll_growth": 0.029,
     "model_return": 0.07
   },
-
   "benefit": {
     "db_ee_cont_rate": 0.0825,
     "db_ee_interest_rate": 0.02,
     "fas_years_default": 5,
     "fas_years_grandfathered": 3,
     "min_benefit_monthly": 150,
-    "benefit_types": ["db"],
+    "benefit_types": [
+      "db"
+    ],
     "cola": {
       "tier_1_active": 0.0,
       "tier_2_active": 0.0,
@@ -32,7 +31,6 @@
       "proration_cutoff_year": null
     }
   },
-
   "funding": {
     "contribution_strategy": "statutory",
     "policy": "statutory",
@@ -47,43 +45,62 @@
     },
     "statutory_rates": {
       "ee_rate_schedule": [
-        {"from_year": 2024, "rate": 0.0825}
+        {
+          "from_year": 2024,
+          "rate": 0.0825
+        }
       ],
       "er_rate_components": [
         {
           "name": "er_stat_base_rate",
           "payroll_share": 1.0,
           "schedule": [
-            {"from_year": 2024, "rate": 0.0825}
+            {
+              "from_year": 2024,
+              "rate": 0.0825
+            }
           ]
         },
         {
           "name": "public_edu_surcharge_rate",
           "payroll_share": 0.588,
           "schedule": [
-            {"from_year": 2024, "rate": 0.019},
-            {"from_year": 2025, "rate": 0.02}
+            {
+              "from_year": 2024,
+              "rate": 0.019
+            },
+            {
+              "from_year": 2025,
+              "rate": 0.02
+            }
           ]
         },
         {
           "name": "er_stat_extra_rate",
           "payroll_share": 1.0,
           "schedule": [
-            {"from_year": 2024, "rate": 0.0}
+            {
+              "from_year": 2024,
+              "rate": 0.0
+            }
           ]
         }
       ]
     },
     "legs": [
-      {"name": "legacy", "entry_year_max_param": "new_year"},
-      {"name": "new", "entry_year_min_param": "new_year"}
+      {
+        "name": "legacy",
+        "entry_year_max_param": "new_year"
+      },
+      {
+        "name": "new",
+        "entry_year_min_param": "new_year"
+      }
     ]
   },
-
   "decrements": {
     "method": "years_from_nr"
   },
-
   "ranges": {
     "min_age": 20,
     "max_age": 120,
@@ -93,20 +110,20 @@
     "model_period": 30,
     "max_yos": 70
   },
-
   "term_vested": {
     "avg_deferral_years": 12,
     "avg_payout_years": 25,
     "method": "deferred_annuity",
     "notes": "Parameters for the shared deferred-annuity term-vested cashflow method. avg_deferral_years approximates the gap between average current age of term-vested members and the assumed distribution age; avg_payout_years approximates remaining life expectancy at the distribution age. Initial values are reasonable defaults; refine from valuation demographics when available. Used only by data prep (scripts/build/build_av_term_vested_cashflow.py) to produce data/funding/current_term_vested_cashflow.csv; the runtime reads the CSV and does not consult this section."
   },
-
-  "classes": ["all"],
-
+  "classes": [
+    "all"
+  ],
   "class_groups": {
-    "default": ["all"]
+    "default": [
+      "all"
+    ]
   },
-
   "tiers": [
     {
       "name": "grandfathered",
@@ -114,30 +131,65 @@
       "grandfathered_params": {
         "cutoff_year": 2005,
         "conditions": [
-          {"min_age_at_cutoff": 50},
-          {"rule_of_at_cutoff": 70},
-          {"min_yos_at_cutoff": 25}
+          {
+            "min_age_at_cutoff": 50
+          },
+          {
+            "rule_of_at_cutoff": 70
+          },
+          {
+            "min_yos_at_cutoff": 25
+          }
         ]
       },
       "fas_years": 3,
       "eligibility": {
         "default": {
           "normal": [
-            {"min_age": 65, "min_yos": 5},
-            {"rule_of": 80, "min_yos": 5}
+            {
+              "min_age": 65,
+              "min_yos": 5
+            },
+            {
+              "rule_of": 80,
+              "min_yos": 5
+            }
           ],
           "early": [
-            {"min_age": 55, "min_yos": 5},
-            {"min_yos": 30}
+            {
+              "min_age": 55,
+              "min_yos": 5
+            },
+            {
+              "min_yos": 30
+            }
           ],
           "vesting_yos": 5
         }
       },
       "early_retire_reduction": {
         "rules": [
-          {"condition": {"min_yos": 30}, "formula": "linear", "rate_per_year": 0.02, "nra": 50},
-          {"condition": {"min_yos": 20, "grandfathered": true}, "formula": "table", "table_key": "reduced_gft"},
-          {"condition": {}, "formula": "table", "table_key": "reduced_others"}
+          {
+            "condition": {
+              "min_yos": 30
+            },
+            "formula": "linear",
+            "rate_per_year": 0.02,
+            "nra": 50
+          },
+          {
+            "condition": {
+              "min_yos": 20,
+              "grandfathered": true
+            },
+            "formula": "table",
+            "table_key": "reduced_gft"
+          },
+          {
+            "condition": {},
+            "formula": "table",
+            "table_key": "reduced_others"
+          }
         ]
       },
       "cola_key": "tier_1_active",
@@ -151,20 +203,42 @@
       "eligibility": {
         "default": {
           "normal": [
-            {"min_age": 65, "min_yos": 5},
-            {"rule_of": 80, "min_yos": 5}
+            {
+              "min_age": 65,
+              "min_yos": 5
+            },
+            {
+              "rule_of": 80,
+              "min_yos": 5
+            }
           ],
           "early": [
-            {"min_age": 55, "min_yos": 5},
-            {"min_yos": 30}
+            {
+              "min_age": 55,
+              "min_yos": 5
+            },
+            {
+              "min_yos": 30
+            }
           ],
           "vesting_yos": 5
         }
       },
       "early_retire_reduction": {
         "rules": [
-          {"condition": {"min_yos": 30}, "formula": "linear", "rate_per_year": 0.02, "nra": 50},
-          {"condition": {}, "formula": "table", "table_key": "reduced_others"}
+          {
+            "condition": {
+              "min_yos": 30
+            },
+            "formula": "linear",
+            "rate_per_year": 0.02,
+            "nra": 50
+          },
+          {
+            "condition": {},
+            "formula": "table",
+            "table_key": "reduced_others"
+          }
         ]
       },
       "cola_key": "tier_2_active",
@@ -179,21 +253,54 @@
       "eligibility": {
         "default": {
           "normal": [
-            {"min_age": 65, "min_yos": 5},
-            {"rule_of": 80, "min_age": 60, "min_yos": 5}
+            {
+              "min_age": 65,
+              "min_yos": 5
+            },
+            {
+              "rule_of": 80,
+              "min_age": 60,
+              "min_yos": 5
+            }
           ],
           "early": [
-            {"min_age": 55, "min_yos": 5},
-            {"min_yos": 30},
-            {"rule_of": 80, "min_yos": 5}
+            {
+              "min_age": 55,
+              "min_yos": 5
+            },
+            {
+              "min_yos": 30
+            },
+            {
+              "rule_of": 80,
+              "min_yos": 5
+            }
           ],
           "vesting_yos": 5
         }
       },
       "early_retire_reduction": {
         "rules": [
-          {"condition": {"or": [{"rule_of": 80}, {"min_yos": 30}]}, "formula": "linear", "rate_per_year": 0.05, "nra": 60},
-          {"condition": {}, "formula": "table", "table_key": "reduced_others"}
+          {
+            "condition": {
+              "or": [
+                {
+                  "rule_of": 80
+                },
+                {
+                  "min_yos": 30
+                }
+              ]
+            },
+            "formula": "linear",
+            "rate_per_year": 0.05,
+            "nra": 60
+          },
+          {
+            "condition": {},
+            "formula": "table",
+            "table_key": "reduced_others"
+          }
         ]
       },
       "cola_key": "tier_3_active",
@@ -207,39 +314,71 @@
       "eligibility": {
         "default": {
           "normal": [
-            {"min_age": 65, "min_yos": 5},
-            {"rule_of": 80, "min_age": 62, "min_yos": 5}
+            {
+              "min_age": 65,
+              "min_yos": 5
+            },
+            {
+              "rule_of": 80,
+              "min_age": 62,
+              "min_yos": 5
+            }
           ],
           "early": [
-            {"min_age": 55, "min_yos": 5},
-            {"min_yos": 30},
-            {"rule_of": 80, "min_yos": 5}
+            {
+              "min_age": 55,
+              "min_yos": 5
+            },
+            {
+              "min_yos": 30
+            },
+            {
+              "rule_of": 80,
+              "min_yos": 5
+            }
           ],
           "vesting_yos": 5
         }
       },
       "early_retire_reduction": {
         "rules": [
-          {"condition": {"or": [{"rule_of": 80}, {"min_yos": 30}]}, "formula": "linear", "rate_per_year": 0.05, "nra": 62},
-          {"condition": {}, "formula": "table", "table_key": "reduced_others"}
+          {
+            "condition": {
+              "or": [
+                {
+                  "rule_of": 80
+                },
+                {
+                  "min_yos": 30
+                }
+              ]
+            },
+            "formula": "linear",
+            "rate_per_year": 0.05,
+            "nra": 62
+          },
+          {
+            "condition": {},
+            "formula": "table",
+            "table_key": "reduced_others"
+          }
         ]
       },
       "cola_key": "tier_4_active",
       "retirement_rate_set": "all"
     }
   ],
-
   "benefit_multipliers": {
     "all": {
-      "all_tiers": {"flat": 0.023}
+      "all_tiers": {
+        "flat": 0.023
+      }
     }
   },
-
   "modeling": {
     "male_mp_forward_shift": 2,
     "entrant_salary_at_start_year": true
   },
-
   "plan_design": {
     "cutoff_year": null,
     "default": {
@@ -247,7 +386,6 @@
       "new_db": 1.0
     }
   },
-
   "valuation_inputs": {
     "all": {
       "ben_payment": 15258219146,
@@ -259,24 +397,24 @@
       "val_payroll": 61388248000
     }
   },
-
   "mortality": {
     "base_table": "txtrs_av_av_first",
     "improvement_scale": "ump_2021_immediate"
   },
-
-  "source_notes": {
-    "purpose": "First-cut AV-first txtrs-av runtime config.",
-    "scope_rule": "This file is built from valuation-supported plan shape and valuation-linked runtime needs, not by copying txtrs runtime semantics wholesale.",
-    "omitted_runtime_legacy_fields": [
-      "retire_refund_ratio",
-      "use_earliest_retire",
-      "cash_balance",
-      "dc",
-      "calibration"
-    ],
-    "tier_encoding_note": "The valuation distinguishes members vested by August 31, 2014 from those not vested by that date. The current runtime cannot encode that status test directly, so this first cut approximates it with entry_year 2008-2009 versus 2010+.",
-    "mortality_note": "Active and retiree mortality files are still pending. The labels here name the intended txtrs-av AV-first mortality path rather than the older txtrs compatibility path.",
-    "funding_note": "Current-year valuation anchors are source-backed. The gain/loss smoothing method and 4-year recognition period remain runtime settings that should be revisited if the valuation's exact operational smoothing language is later captured more precisely."
+  "notes": {
+    "source_notes": {
+      "purpose": "First-cut AV-first txtrs-av runtime config.",
+      "scope_rule": "This file is built from valuation-supported plan shape and valuation-linked runtime needs, not by copying txtrs runtime semantics wholesale.",
+      "omitted_runtime_legacy_fields": [
+        "retire_refund_ratio",
+        "use_earliest_retire",
+        "cash_balance",
+        "dc",
+        "calibration"
+      ],
+      "tier_encoding_note": "The valuation distinguishes members vested by August 31, 2014 from those not vested by that date. The current runtime cannot encode that status test directly, so this first cut approximates it with entry_year 2008-2009 versus 2010+.",
+      "mortality_note": "Active and retiree mortality files are still pending. The labels here name the intended txtrs-av AV-first mortality path rather than the older txtrs compatibility path.",
+      "funding_note": "Current-year valuation anchors are source-backed. The gain/loss smoothing method and 4-year recognition period remain runtime settings that should be revisited if the valuation's exact operational smoothing language is later captured more precisely."
+    }
   }
 }

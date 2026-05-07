@@ -48,11 +48,11 @@ def _encode_class_group_values(
     """
     class_codes, class_labels = _encode_class_name_values(class_name)
     group_labels = tuple(
-        dict.fromkeys(config._class_to_group.get(class_value, "default") for class_value in class_labels)
+        dict.fromkeys(config.class_to_group.get(class_value, "default") for class_value in class_labels)
     )
     group_to_code = {group_label: i for i, group_label in enumerate(group_labels)}
     class_group_codes = np.array(
-        [group_to_code[config._class_to_group.get(class_value, "default")] for class_value in class_labels],
+        [group_to_code[config.class_to_group.get(class_value, "default")] for class_value in class_labels],
         dtype=np.int16,
     )
     return class_group_codes[class_codes], group_labels
@@ -229,7 +229,7 @@ def resolve_ben_mult_vec(
         class_name, tier_id, n_tiers
     ):
         rules = config.resolve_ben_mult(
-            class_name_value, config._tier_id_to_name[tier_index]
+            class_name_value, config.tier_id_to_name[tier_index]
         )
         if rules is None:
             continue
@@ -297,7 +297,7 @@ def resolve_reduce_factor_vec(
 
         sub_age = dist_age[idx_arr]
         sub_yos = yos[idx_arr]
-        tier_name = config._tier_id_to_name[tier_index]
+        tier_name = config.tier_id_to_name[tier_index]
 
         if reduction.is_flat:
             nra = reduction.lookup_nra(class_name_value, config.plan_name, tier_name)
