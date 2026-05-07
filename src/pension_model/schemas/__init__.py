@@ -24,7 +24,15 @@ from pension_model.schemas.benefit import (
     Cola,
     DcSpec,
 )
+from pension_model.schemas.benefit_multipliers import (
+    BenefitMultipliers,
+    ClassMultipliers,
+    FlatBeforeYear,
+    GradedRule,
+    MultiplierRules,
+)
 from pension_model.schemas.calibration import Calibration, ClassCalibration
+from pension_model.schemas.conditions import Condition
 from pension_model.schemas.decrements import Decrements
 from pension_model.schemas.economic import Economic
 from pension_model.schemas.funding import (
@@ -48,19 +56,25 @@ __all__ = [
     "AgeGroup",
     "AvaSmoothing",
     "Benefit",
+    "BenefitMultipliers",
     "Calibration",
     "CashBalance",
     "ClassCalibration",
     "ClassData",
+    "ClassMultipliers",
     "Cola",
+    "Condition",
     "CorridorAvaSmoothing",
     "DcSpec",
     "Decrements",
     "Economic",
+    "FlatBeforeYear",
     "Funding",
     "GainLossAvaSmoothing",
+    "GradedRule",
     "LegDef",
     "Modeling",
+    "MultiplierRules",
     "PlanDesign",
     "PlanDesignRatios",
     "RampSpec",

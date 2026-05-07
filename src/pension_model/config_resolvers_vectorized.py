@@ -18,7 +18,6 @@ from pension_model.config_resolver_common import (
     _matches_any_vec,
     _matches_condition_vec,
     _reduce_condition_vec,
-    _resolve_ben_mult_rules,
     _resolve_tier_def,
 )
 
@@ -241,10 +240,9 @@ def resolve_ben_mult_vec(
     for class_name_value, tier_index, idx_arr in _iter_class_tier_groups(
         class_name, tier_id, n_tiers
     ):
-        class_rules = config.benefit_mult_defs.get(class_name_value)
-        if class_rules is None:
-            continue
-        rules = _resolve_ben_mult_rules(class_rules, config._tier_id_to_name[tier_index])
+        rules = config.resolve_ben_mult(
+            class_name_value, config._tier_id_to_name[tier_index]
+        )
         if rules is None:
             continue
 
@@ -252,28 +250,30 @@ def resolve_ben_mult_vec(
         sub_yos = yos[idx_arr]
         sub_year = dist_year[idx_arr]
 
-        if "flat" in rules:
-            vals = np.full(len(idx_arr), rules["flat"], dtype=np.float64)
-            if "flat_before_year" in rules:
-                before = rules["flat_before_year"]
-                vals = np.where(sub_year <= before["year"], before["mult"], vals)
+        if rules.flat is not None:
+            vals = np.full(len(idx_arr), rules.flat, dtype=np.float64)
+            if rules.flat_before_year is not None:
+                before = rules.flat_before_year
+                vals = np.where(sub_year <= before.year, before.mult, vals)
             result[idx_arr] = vals
             continue
 
-        if "graded" in rules:
+        if rules.graded is not None:
             sub_vals = np.full(len(idx_arr), np.nan, dtype=np.float64)
             assigned = np.zeros(len(idx_arr), dtype=bool)
-            for entry in rules["graded"]:
+            for entry in rules.graded:
                 entry_mask = np.zeros(len(idx_arr), dtype=bool)
-                for cond in entry["or"]:
-                    entry_mask |= _matches_condition_vec(cond, sub_age, sub_yos)
+                for cond in entry.or_:
+                    entry_mask |= _matches_condition_vec(
+                        cond.model_dump(exclude_none=True), sub_age, sub_yos
+                    )
                 new_assign = entry_mask & ~assigned
                 if new_assign.any():
-                    sub_vals[new_assign] = entry["mult"]
+                    sub_vals[new_assign] = entry.mult
                     assigned |= new_assign
-            if "early_fallback" in rules:
+            if rules.early_fallback is not None:
                 fallback_mask = ~assigned & (ret_status[idx_arr] == EARLY)
-                sub_vals[fallback_mask] = rules["early_fallback"]
+                sub_vals[fallback_mask] = rules.early_fallback
             result[idx_arr] = sub_vals
 
     return result

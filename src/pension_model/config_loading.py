@@ -12,6 +12,7 @@ from typing import Dict, Optional
 from pension_model.config_schema import PlanConfig
 from pension_model.schemas import (
     Benefit,
+    BenefitMultipliers,
     Calibration,
     ClassCalibration,
     Decrements,
@@ -224,6 +225,9 @@ def load_plan_config(
         cn: ValuationInputs.model_validate(v)
         for cn, v in raw.get("valuation_inputs", {}).items()
     }
+    benefit_mult_model = BenefitMultipliers.model_validate(
+        raw.get("benefit_multipliers", {})
+    )
 
     config = PlanConfig(
         plan_name=raw["plan_name"],
@@ -232,7 +236,7 @@ def load_plan_config(
         classes=tuple(raw["classes"]),
         class_groups=raw.get("class_groups", {}),
         tier_defs=tuple(raw.get("tiers", [])),
-        benefit_mult_defs=raw.get("benefit_multipliers", {}),
+        benefit_mult_defs=benefit_mult_model,
         plan_design=plan_design_model,
         valuation_inputs=valuation_models,
         economic=economic_model,

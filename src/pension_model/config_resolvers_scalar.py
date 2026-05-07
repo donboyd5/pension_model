@@ -96,34 +96,22 @@ def get_ben_mult(
     yos: int,
     dist_year: int = 0,
 ) -> float:
-    class_rules = config.benefit_mult_defs.get(class_name)
-    if class_rules is None:
+    rules = config.resolve_ben_mult(class_name, tier_name)
+    if rules is None:
         return float("nan")
 
-    if "all_tiers" in class_rules:
-        rules = class_rules["all_tiers"]
-    else:
-        rules = class_rules.get(tier_name)
-        if rules is None:
-            for key in class_rules:
-                if key.endswith("_same_as") and key.replace("_same_as", "") == tier_name:
-                    rules = class_rules.get(class_rules[key])
-                    break
-        if rules is None:
-            return float("nan")
+    if rules.flat is not None:
+        if rules.flat_before_year is not None and dist_year <= rules.flat_before_year.year:
+            return rules.flat_before_year.mult
+        return rules.flat
 
-    if "flat" in rules:
-        if "flat_before_year" in rules and dist_year <= rules["flat_before_year"]["year"]:
-            return rules["flat_before_year"]["mult"]
-        return rules["flat"]
-
-    if "graded" in rules:
-        for entry in rules["graded"]:
-            for cond in entry["or"]:
-                if _matches_condition(cond, dist_age, yos):
-                    return entry["mult"]
-        if status == "early" and "early_fallback" in rules:
-            return rules["early_fallback"]
+    if rules.graded is not None:
+        for entry in rules.graded:
+            for cond in entry.or_:
+                if _matches_condition(cond.model_dump(exclude_none=True), dist_age, yos):
+                    return entry.mult
+        if status == "early" and rules.early_fallback is not None:
+            return rules.early_fallback
         return float("nan")
 
     return float("nan")
