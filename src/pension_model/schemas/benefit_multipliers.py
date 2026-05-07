@@ -18,8 +18,6 @@ promotes the raw extras to typed sub-models at parse time.
 
 from __future__ import annotations
 
-from typing import Optional, Union
-
 from pydantic import ConfigDict, Field, model_validator
 
 from pension_model.schemas.base import StrictModel
@@ -60,13 +58,13 @@ class MultiplierRules(StrictModel):
     ``status == "early"`` and no graded entry matched.
     """
 
-    flat: Optional[float] = None
-    flat_before_year: Optional[FlatBeforeYear] = None
-    graded: Optional[list[GradedRule]] = None
-    early_fallback: Optional[float] = None
+    flat: float | None = None
+    flat_before_year: FlatBeforeYear | None = None
+    graded: list[GradedRule] | None = None
+    early_fallback: float | None = None
 
     @model_validator(mode="after")
-    def _check_primary_rule(self) -> "MultiplierRules":
+    def _check_primary_rule(self) -> MultiplierRules:
         if self.flat is None and self.graded is None:
             raise ValueError(
                 "MultiplierRules: must declare either 'flat' or 'graded' "
@@ -79,14 +77,13 @@ class MultiplierRules(StrictModel):
             )
         if self.flat_before_year is not None and self.flat is None:
             raise ValueError(
-                "MultiplierRules: 'flat_before_year' requires 'flat' to "
-                "be the primary rule."
+                "MultiplierRules: 'flat_before_year' requires 'flat' to " "be the primary rule."
             )
         return self
 
 
 # Per-class entry: either typed rules or a string alias (``_same_as``).
-_PerClassEntry = Union[MultiplierRules, str]
+_PerClassEntry = MultiplierRules | str
 
 
 class ClassMultipliers(StrictModel):
@@ -102,7 +99,7 @@ class ClassMultipliers(StrictModel):
     model_config = ConfigDict(extra="allow", frozen=True)
 
     @model_validator(mode="after")
-    def _promote_entries(self) -> "ClassMultipliers":
+    def _promote_entries(self) -> ClassMultipliers:
         if not self.model_extra:
             return self
         promoted = {}
@@ -117,7 +114,7 @@ class ClassMultipliers(StrictModel):
         object.__setattr__(self, "__pydantic_extra__", promoted)
         return self
 
-    def resolve(self, tier_name: str) -> Optional[MultiplierRules]:
+    def resolve(self, tier_name: str) -> MultiplierRules | None:
         """Look up the multiplier rules for a tier.
 
         Resolution order:
@@ -148,7 +145,7 @@ class BenefitMultipliers(StrictModel):
     model_config = ConfigDict(extra="allow", frozen=True)
 
     @model_validator(mode="after")
-    def _promote_classes(self) -> "BenefitMultipliers":
+    def _promote_classes(self) -> BenefitMultipliers:
         if not self.model_extra:
             return self
         promoted = {}
@@ -160,7 +157,7 @@ class BenefitMultipliers(StrictModel):
         object.__setattr__(self, "__pydantic_extra__", promoted)
         return self
 
-    def resolve(self, class_name: str, tier_name: str) -> Optional[MultiplierRules]:
+    def resolve(self, class_name: str, tier_name: str) -> MultiplierRules | None:
         """Look up multiplier rules for a (class, tier) pair.
 
         Returns None if the class isn't declared or has no matching
@@ -171,7 +168,7 @@ class BenefitMultipliers(StrictModel):
             return None
         return class_rules.resolve(tier_name)
 
-    def class_multipliers(self, class_name: str) -> Optional[ClassMultipliers]:
+    def class_multipliers(self, class_name: str) -> ClassMultipliers | None:
         """Return the typed ClassMultipliers for ``class_name``,
         or None if absent."""
         return (self.model_extra or {}).get(class_name)

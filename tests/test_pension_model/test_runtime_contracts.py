@@ -1,22 +1,20 @@
 """Prepared-run runtime-contract and profiling regression tests."""
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import pytest
 from pandas.testing import assert_frame_equal
 
-pytestmark = [pytest.mark.regression]
-
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from pension_model.core.pipeline import (
+from pension_model.core.pipeline import (  # noqa: E402
     prepare_plan_run,
     run_plan_pipeline,
     run_prepared_plan_pipeline,
     summarize_prepared_plan_run,
 )
-from pension_model.core.profiling import (
+from pension_model.core.profiling import (  # noqa: E402
     build_runtime_baseline,
     compare_runtime_baselines,
     load_runtime_baseline,
@@ -24,8 +22,10 @@ from pension_model.core.profiling import (
     summarize_runtime_samples,
     write_runtime_baseline,
 )
-from pension_model.core.runtime_contracts import ClassRuntimeTables
-from pension_model.plan_config import load_plan_config_by_name
+from pension_model.core.runtime_contracts import ClassRuntimeTables  # noqa: E402
+from pension_model.plan_config import load_plan_config_by_name  # noqa: E402
+
+pytestmark = [pytest.mark.regression]
 
 
 @pytest.fixture(scope="module")
@@ -83,21 +83,34 @@ def test_summarize_prepared_plan_run_reports_runtime_table_rows(prepared_txtrs):
 
 def test_prepared_lookup_tables_keep_unique_merge_keys(prepared_txtrs):
     runtime_tables = prepared_txtrs.runtime_tables_by_class["all"]
-    assert runtime_tables.active_benefit_lookup.duplicated(
-        ["entry_year", "entry_age", "yos"]
-    ).sum() == 0
-    assert runtime_tables.term_liability_lookup.duplicated(
-        ["entry_age", "entry_year", "age", "year", "term_year"]
-    ).sum() == 0
-    assert runtime_tables.refund_lookup.duplicated(
-        ["entry_age", "entry_year", "age", "year", "term_year"]
-    ).sum() == 0
-    assert runtime_tables.retire_benefit_lookup.duplicated(
-        ["entry_age", "entry_year", "retire_year", "term_year"]
-    ).sum() == 0
-    assert runtime_tables.retire_annuity_lookup.duplicated(
-        ["entry_age", "entry_year", "year", "term_year"]
-    ).sum() == 0
+    assert (
+        runtime_tables.active_benefit_lookup.duplicated(["entry_year", "entry_age", "yos"]).sum()
+        == 0
+    )
+    assert (
+        runtime_tables.term_liability_lookup.duplicated(
+            ["entry_age", "entry_year", "age", "year", "term_year"]
+        ).sum()
+        == 0
+    )
+    assert (
+        runtime_tables.refund_lookup.duplicated(
+            ["entry_age", "entry_year", "age", "year", "term_year"]
+        ).sum()
+        == 0
+    )
+    assert (
+        runtime_tables.retire_benefit_lookup.duplicated(
+            ["entry_age", "entry_year", "retire_year", "term_year"]
+        ).sum()
+        == 0
+    )
+    assert (
+        runtime_tables.retire_annuity_lookup.duplicated(
+            ["entry_age", "entry_year", "year", "term_year"]
+        ).sum()
+        == 0
+    )
 
 
 def test_prepared_pipeline_matches_direct_pipeline(txtrs_constants, prepared_txtrs):

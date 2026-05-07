@@ -9,7 +9,7 @@ Today this is TXTRS-AV only; other plans omit it.
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pension_model.schemas.base import StrictModel
 
@@ -18,4 +18,4 @@ class TermVested(StrictModel):
     avg_deferral_years: int
     avg_payout_years: int
     method: Literal["deferred_annuity"]
-    notes: Optional[str] = None
+    notes: str | None = None

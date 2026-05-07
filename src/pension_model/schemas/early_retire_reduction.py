@@ -20,7 +20,7 @@ attributes always exist.
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 import numpy as np
 from pydantic import Field, model_validator
@@ -49,11 +49,11 @@ class ReduceCondition(StrictModel):
 
     model_config = StrictModel.model_config | {"populate_by_name": True}
 
-    min_age: Optional[int] = None
-    min_yos: Optional[int] = None
-    rule_of: Optional[int] = None
-    grandfathered: Optional[bool] = None
-    or_: Optional[list["ReduceCondition"]] = Field(default=None, alias="or")
+    min_age: int | None = None
+    min_yos: int | None = None
+    rule_of: int | None = None
+    grandfathered: bool | None = None
+    or_: list[ReduceCondition] | None = Field(default=None, alias="or")
 
     def matches(self, dist_age: int, yos: int, tier_name: str) -> bool:
         """Scalar predicate evaluation."""
@@ -69,9 +69,7 @@ class ReduceCondition(StrictModel):
             return any(sub.matches(dist_age, yos, tier_name) for sub in self.or_)
         return True
 
-    def matches_vec(
-        self, dist_age: np.ndarray, yos: np.ndarray, tier_name: str
-    ) -> np.ndarray:
+    def matches_vec(self, dist_age: np.ndarray, yos: np.ndarray, tier_name: str) -> np.ndarray:
         """Vectorized predicate evaluation."""
         mask = np.ones(len(dist_age), dtype=bool)
         if self.min_age is not None:
@@ -101,24 +99,20 @@ class EarlyRetireRule(StrictModel):
 
     condition: ReduceCondition = ReduceCondition()
     formula: Literal["linear", "table"] = "linear"
-    rate_per_year: Optional[float] = None
-    nra: Optional[int] = None
-    table_key: Optional[str] = None
+    rate_per_year: float | None = None
+    nra: int | None = None
+    table_key: str | None = None
 
     @model_validator(mode="after")
     def _check_formula_fields(self):
         if self.formula == "linear":
             if self.rate_per_year is None or self.nra is None:
                 raise ValueError(
-                    "EarlyRetireRule with formula='linear' requires "
-                    "both rate_per_year and nra"
+                    "EarlyRetireRule with formula='linear' requires " "both rate_per_year and nra"
                 )
         elif self.formula == "table":
             if not self.table_key:
-                raise ValueError(
-                    "EarlyRetireRule with formula='table' requires "
-                    "table_key"
-                )
+                raise ValueError("EarlyRetireRule with formula='table' requires " "table_key")
         return self
 
 
@@ -130,9 +124,9 @@ class EarlyRetireReduction(StrictModel):
     populated, or neither, raises.
     """
 
-    rate_per_year: Optional[float] = None
-    nra: Optional[dict[str, int]] = None
-    rules: Optional[list[EarlyRetireRule]] = None
+    rate_per_year: float | None = None
+    nra: dict[str, int] | None = None
+    rules: list[EarlyRetireRule] | None = None
 
     @model_validator(mode="after")
     def _check_exactly_one_shape(self):
@@ -150,8 +144,7 @@ class EarlyRetireReduction(StrictModel):
             )
         if flat_present and (self.rate_per_year is None or self.nra is None):
             raise ValueError(
-                "EarlyRetireReduction flat shape requires both "
-                "rate_per_year and nra"
+                "EarlyRetireReduction flat shape requires both " "rate_per_year and nra"
             )
         return self
 

@@ -7,9 +7,10 @@ key funding columns against R's extracted funding CSVs.
 
 import sys
 from pathlib import Path
-import pytest
+
 import numpy as np
 import pandas as pd
+import pytest
 
 pytestmark = [
     pytest.mark.regression,
@@ -23,16 +24,22 @@ FRS_BASELINES = Path(__file__).parent.parent.parent / "plans" / "frs" / "baselin
 CLASSES = ["regular", "special", "admin", "eco", "eso", "judges", "senior_management"]
 
 FUNDING_COLS = [
-    "total_aal", "total_ava", "total_mva", "total_er_cont", "fr_ava",
-    "total_payroll", "nc_rate_db_legacy", "er_amo_cont_legacy",
+    "total_aal",
+    "total_ava",
+    "total_mva",
+    "total_er_cont",
+    "fr_ava",
+    "total_payroll",
+    "nc_rate_db_legacy",
+    "er_amo_cont_legacy",
 ]
 
 
 @pytest.fixture(scope="module")
 def funding_results():
     """Run the full pipeline once and cache results for all tests."""
-    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import load_funding_inputs, run_funding_model
+    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.plan_config import load_plan_config_by_name
 
     constants = load_plan_config_by_name("frs")
@@ -55,7 +62,7 @@ def test_funding_matches_r_baseline(class_name, funding_results):
             mask = np.abs(rv) > 1e-6
             n = min(mask.sum(), len(pv))
             if n > 0:
-                pct = np.abs(pv[mask[:len(pv)]][:n] - rv[mask][:n]) / np.abs(rv[mask][:n]) * 100
+                pct = np.abs(pv[mask[: len(pv)]][:n] - rv[mask][:n]) / np.abs(rv[mask][:n]) * 100
                 max_diff = max(max_diff, pct.max())
 
     assert max_diff < 0.01, f"{class_name}: funding max diff {max_diff:.4f}%"

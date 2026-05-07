@@ -61,10 +61,9 @@ both CSV and Excel.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
 
+import numpy as np
 import pandas as pd
-
 
 # Canonical column order for every truth table (R and Python, FRS and TRS).
 TRUTH_TABLE_COLUMNS = [
@@ -93,8 +92,6 @@ TRUTH_TABLE_COLUMNS = [
     "er_cont_total",
 ]
 
-import numpy as np
-
 
 def _actual_invest_income(mva, net_cf):
     """Compute actual investment income so the MVA balance identity holds.
@@ -118,6 +115,7 @@ def _actual_invest_income(mva, net_cf):
 # ---------------------------------------------------------------------------
 # R-side builder — read from R output CSVs, produce a truth table
 # ---------------------------------------------------------------------------
+
 
 def _read_metric(funding_df: pd.DataFrame, spec) -> np.ndarray:
     """Resolve a metric spec from the manifest into a numeric array.
@@ -183,25 +181,27 @@ def build_r_truth_table(plan_name: str, baseline_dir: Path) -> pd.DataFrame:
     invest_income = _actual_invest_income(mva, net_cf)
     n_active = _read_n_active(manifest["n_active"], baseline_dir)
 
-    df = pd.DataFrame({
-        "plan": plan_name,
-        "year": f[manifest["year_column"]].astype(int).values,
-        "mva_boy": mva,
-        "er_db_cont": _read_metric(f, metrics["er_db_cont"]),
-        "ee_cont": _read_metric(f, metrics["ee_cont"]),
-        "invest_income": invest_income,
-        "benefits": _read_metric(f, metrics["benefits"]),
-        "refunds": _read_metric(f, metrics["refunds"]),
-        "admin_exp": _read_metric(f, metrics["admin_exp"]),
-        "mva_eoy": mva + net_cf + invest_income,
-        "aal_boy": _read_metric(f, metrics["aal"]),
-        "ava_boy": _read_metric(f, metrics["ava"]),
-        "fr_mva_boy": _read_metric(f, metrics["fr_mva"]),
-        "fr_ava_boy": _read_metric(f, metrics["fr_ava"]),
-        "n_active_boy": n_active,
-        "payroll": _read_metric(f, metrics["payroll"]),
-        "er_cont_total": _read_metric(f, metrics["er_cont_total"]),
-    })
+    df = pd.DataFrame(
+        {
+            "plan": plan_name,
+            "year": f[manifest["year_column"]].astype(int).values,
+            "mva_boy": mva,
+            "er_db_cont": _read_metric(f, metrics["er_db_cont"]),
+            "ee_cont": _read_metric(f, metrics["ee_cont"]),
+            "invest_income": invest_income,
+            "benefits": _read_metric(f, metrics["benefits"]),
+            "refunds": _read_metric(f, metrics["refunds"]),
+            "admin_exp": _read_metric(f, metrics["admin_exp"]),
+            "mva_eoy": mva + net_cf + invest_income,
+            "aal_boy": _read_metric(f, metrics["aal"]),
+            "ava_boy": _read_metric(f, metrics["ava"]),
+            "fr_mva_boy": _read_metric(f, metrics["fr_mva"]),
+            "fr_ava_boy": _read_metric(f, metrics["fr_ava"]),
+            "n_active_boy": n_active,
+            "payroll": _read_metric(f, metrics["payroll"]),
+            "er_cont_total": _read_metric(f, metrics["er_cont_total"]),
+        }
+    )
     return df[TRUTH_TABLE_COLUMNS]
 
 
@@ -209,9 +209,10 @@ def build_r_truth_table(plan_name: str, baseline_dir: Path) -> pd.DataFrame:
 # Python-side builder — take live pipeline output, produce a truth table
 # ---------------------------------------------------------------------------
 
+
 def build_python_truth_table(
     plan_name: str,
-    liability: Dict[str, pd.DataFrame],
+    liability: dict[str, pd.DataFrame],
     funding,
     constants,
 ) -> pd.DataFrame:
@@ -272,35 +273,37 @@ def build_python_truth_table(
     admin = _sum(col(f, "admin_exp_legacy"), col(f, "admin_exp_new"))
     net_cf = _sum(col(f, "net_cf_legacy"), col(f, "net_cf_new"))
     invest_income = (
-        _actual_invest_income(mva, net_cf)
-        if mva is not None and net_cf is not None else None
+        _actual_invest_income(mva, net_cf) if mva is not None and net_cf is not None else None
     )
 
-    df = pd.DataFrame({
-        "plan": plan_name,
-        "year": pd.Series(year).astype(int).values,
-        "mva_boy": mva,
-        "er_db_cont": _or_z(er_db),
-        "ee_cont": _or_z(ee),
-        "invest_income": _or_z(invest_income),
-        "benefits": _or_z(benefits),
-        "refunds": _or_z(refunds),
-        "admin_exp": _or_z(admin),
-        "mva_eoy": _or_z(mva) + _or_z(net_cf) + _or_z(invest_income),
-        "aal_boy": col(f, "total_aal"),
-        "ava_boy": col(f, "total_ava"),
-        "fr_mva_boy": col(f, "fr_mva"),
-        "fr_ava_boy": col(f, "fr_ava"),
-        "n_active_boy": n_active,
-        "payroll": col(f, "total_payroll"),
-        "er_cont_total": col(f, "total_er_cont"),
-    })
+    df = pd.DataFrame(
+        {
+            "plan": plan_name,
+            "year": pd.Series(year).astype(int).values,
+            "mva_boy": mva,
+            "er_db_cont": _or_z(er_db),
+            "ee_cont": _or_z(ee),
+            "invest_income": _or_z(invest_income),
+            "benefits": _or_z(benefits),
+            "refunds": _or_z(refunds),
+            "admin_exp": _or_z(admin),
+            "mva_eoy": _or_z(mva) + _or_z(net_cf) + _or_z(invest_income),
+            "aal_boy": col(f, "total_aal"),
+            "ava_boy": col(f, "total_ava"),
+            "fr_mva_boy": col(f, "fr_mva"),
+            "fr_ava_boy": col(f, "fr_ava"),
+            "n_active_boy": n_active,
+            "payroll": col(f, "total_payroll"),
+            "er_cont_total": col(f, "total_er_cont"),
+        }
+    )
     return df[TRUTH_TABLE_COLUMNS]
 
 
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
+
 
 def format_truth_table_for_log(df: pd.DataFrame, max_rows: int = 31) -> str:
     """Render a truth table as a human-readable text block for stdout/logs.
@@ -378,8 +381,10 @@ def upsert_sheet_to_excel(df: pd.DataFrame, xlsx_path: Path, sheet_name: str) ->
 
     if xlsx_path.exists():
         with pd.ExcelWriter(
-            xlsx_path, engine="openpyxl",
-            mode="a", if_sheet_exists="replace",
+            xlsx_path,
+            engine="openpyxl",
+            mode="a",
+            if_sheet_exists="replace",
         ) as w:
             df.to_excel(w, sheet_name=sheet_name, index=False)
             _freeze_panes(w.sheets[sheet_name], df)
@@ -434,9 +439,9 @@ def write_diff_sheet_with_formulas(
     Diff is an ABSOLUTE difference (Py - R), not a percentage.
     """
     from openpyxl import load_workbook
-    from openpyxl.utils import get_column_letter
-    from openpyxl.styles import Font, PatternFill, Alignment, NamedStyle
     from openpyxl.formatting.rule import CellIsRule
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
 
     wb = load_workbook(xlsx_path)
 
@@ -454,15 +459,13 @@ def write_diff_sheet_with_formulas(
     ws.cell(row=2, column=2, value="year").font = Font(bold=True)
 
     for i, (_src_col, label) in enumerate(_DIFF_METRICS):
-        c_r = 3 + i * 3        # R column
-        c_py = c_r + 1         # Py column
-        c_diff = c_r + 2       # diff column
+        c_r = 3 + i * 3  # R column
+        c_py = c_r + 1  # Py column
+        c_diff = c_r + 2  # diff column
         # Merge three cells in header row 1 for the metric label
         ws.cell(row=1, column=c_r, value=label).font = Font(bold=True)
         ws.cell(row=1, column=c_r).alignment = Alignment(horizontal="center")
-        ws.merge_cells(
-            start_row=1, start_column=c_r, end_row=1, end_column=c_diff
-        )
+        ws.merge_cells(start_row=1, start_column=c_r, end_row=1, end_column=c_diff)
         # Row 2 sub-labels
         ws.cell(row=2, column=c_r, value="R").font = Font(bold=True, italic=True)
         ws.cell(row=2, column=c_py, value="Py").font = Font(bold=True, italic=True)
@@ -477,30 +480,27 @@ def write_diff_sheet_with_formulas(
     #
     # Source col C is metric index 0, D is metric index 1, etc.
     for row_idx in range(n_rows):
-        src_row = row_idx + 2       # source data starts at row 2
-        dst_row = row_idx + 3       # diff data starts at row 3 (after 2 header rows)
+        src_row = row_idx + 2  # source data starts at row 2
+        dst_row = row_idx + 3  # diff data starts at row 3 (after 2 header rows)
 
         # plan and year — pull from R sheet by formula
-        ws.cell(row=dst_row, column=1,
-                value=f"='{r_sheet_name}'!A{src_row}")
-        ws.cell(row=dst_row, column=2,
-                value=f"='{r_sheet_name}'!B{src_row}")
+        ws.cell(row=dst_row, column=1, value=f"='{r_sheet_name}'!A{src_row}")
+        ws.cell(row=dst_row, column=2, value=f"='{r_sheet_name}'!B{src_row}")
 
         for i, _ in enumerate(_DIFF_METRICS):
-            src_col_letter = get_column_letter(3 + i)   # C, D, E, ...
+            src_col_letter = get_column_letter(3 + i)  # C, D, E, ...
             c_r = 3 + i * 3
             c_py = c_r + 1
             c_diff = c_r + 2
 
-            ws.cell(row=dst_row, column=c_r,
-                    value=f"='{r_sheet_name}'!{src_col_letter}{src_row}")
-            ws.cell(row=dst_row, column=c_py,
-                    value=f"='{py_sheet_name}'!{src_col_letter}{src_row}")
+            ws.cell(row=dst_row, column=c_r, value=f"='{r_sheet_name}'!{src_col_letter}{src_row}")
+            ws.cell(row=dst_row, column=c_py, value=f"='{py_sheet_name}'!{src_col_letter}{src_row}")
             # IFERROR wraps NA handling (blank cell in either side -> blank diff)
             ws.cell(
-                row=dst_row, column=c_diff,
+                row=dst_row,
+                column=c_diff,
                 value=(
-                    f'=IFERROR('
+                    f"=IFERROR("
                     f"'{py_sheet_name}'!{src_col_letter}{src_row}"
                     f"-'{r_sheet_name}'!{src_col_letter}{src_row}"
                     f',"")'

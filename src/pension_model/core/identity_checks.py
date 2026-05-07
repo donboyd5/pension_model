@@ -27,10 +27,9 @@ tolerance. Off by default (zero cost on normal runs); enabled via the
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Optional
 
-import numpy as np
 import pandas as pd
 
 from pension_model.core._funding_helpers import (
@@ -42,10 +41,11 @@ from pension_model.core._funding_helpers import (
 @dataclass
 class IdentityViolation:
     """One residual that exceeded tolerance."""
+
     year_index: int
     class_name: str
-    leg: str            # "legacy" or "new"
-    identity: str       # "mva_rollforward", "aal_rollforward", "nc_dollar"
+    leg: str  # "legacy" or "new"
+    identity: str  # "mva_rollforward", "aal_rollforward", "nc_dollar"
     expected: float
     actual: float
     residual: float
@@ -67,22 +67,21 @@ class IdentityCheckError(AssertionError):
             f"  residual={first.residual!r}",
         ]
         if n > 1:
-            msg_lines.append(
-                f"  (and {n - 1} more — see ``IdentityCheckError.violations``)"
-            )
+            msg_lines.append(f"  (and {n - 1} more — see ``IdentityCheckError.violations``)")
         super().__init__("\n".join(msg_lines))
 
 
 def _within_tol(residual: float, reference: float, tol_rel: float, tol_abs: float) -> bool:
-    return (
-        abs(residual) <= tol_abs
-        or abs(residual) / max(1.0, abs(reference)) <= tol_rel
-    )
+    return abs(residual) <= tol_abs or abs(residual) / max(1.0, abs(reference)) <= tol_rel
 
 
 def _check_mva_leg(
-    f: pd.DataFrame, leg: str, ret_scen: pd.Series, class_name: str,
-    tol_rel: float, tol_abs: float,
+    f: pd.DataFrame,
+    leg: str,
+    ret_scen: pd.Series,
+    class_name: str,
+    tol_rel: float,
+    tol_abs: float,
 ) -> Iterable[IdentityViolation]:
     mva_col = f"mva_{leg}"
     cf_col = f"net_cf_{leg}"
@@ -98,15 +97,23 @@ def _check_mva_leg(
         residual = actual - expected
         if not _within_tol(residual, expected, tol_rel, tol_abs):
             yield IdentityViolation(
-                year_index=i, class_name=class_name, leg=leg,
+                year_index=i,
+                class_name=class_name,
+                leg=leg,
                 identity="mva_rollforward",
-                expected=expected, actual=actual, residual=residual,
+                expected=expected,
+                actual=actual,
+                residual=residual,
             )
 
 
 def _check_aal_leg(
-    f: pd.DataFrame, leg: str, dr: float, class_name: str,
-    tol_rel: float, tol_abs: float,
+    f: pd.DataFrame,
+    leg: str,
+    dr: float,
+    class_name: str,
+    tol_rel: float,
+    tol_abs: float,
 ) -> Iterable[IdentityViolation]:
     aal_col = f"aal_{leg}"
     nc_col = f"nc_{leg}"
@@ -123,22 +130,33 @@ def _check_aal_leg(
     gl = f[gl_col].to_numpy()
     for i in range(1, len(f)):
         expected = _aal_rollforward(
-            aal_prev=aal[i - 1], nc=nc[i], ben=ben[i],
-            refund=refund[i], liab_gl=gl[i], dr=dr,
+            aal_prev=aal[i - 1],
+            nc=nc[i],
+            ben=ben[i],
+            refund=refund[i],
+            liab_gl=gl[i],
+            dr=dr,
         )
         actual = aal[i]
         residual = actual - expected
         if not _within_tol(residual, expected, tol_rel, tol_abs):
             yield IdentityViolation(
-                year_index=i, class_name=class_name, leg=leg,
+                year_index=i,
+                class_name=class_name,
+                leg=leg,
                 identity="aal_rollforward",
-                expected=expected, actual=actual, residual=residual,
+                expected=expected,
+                actual=actual,
+                residual=residual,
             )
 
 
 def _check_nc_dollar(
-    f: pd.DataFrame, class_name: str, has_cb: bool,
-    tol_rel: float, tol_abs: float,
+    f: pd.DataFrame,
+    class_name: str,
+    has_cb: bool,
+    tol_rel: float,
+    tol_abs: float,
 ) -> Iterable[IdentityViolation]:
     """``nc = nc_rate × payroll`` per leg.
 
@@ -147,15 +165,15 @@ def _check_nc_dollar(
     ``nc_new = nc_rate_db_new * payroll_db_new + nc_rate_cb_new * payroll_cb_new``.
     """
     if {"nc_legacy", "nc_rate_db_legacy", "payroll_db_legacy"} <= set(f.columns):
-        legacy_expected = (
-            f["nc_rate_db_legacy"].to_numpy() * f["payroll_db_legacy"].to_numpy()
-        )
+        legacy_expected = f["nc_rate_db_legacy"].to_numpy() * f["payroll_db_legacy"].to_numpy()
         legacy_actual = f["nc_legacy"].to_numpy()
         for i in range(1, len(f)):
             residual = legacy_actual[i] - legacy_expected[i]
             if not _within_tol(residual, legacy_expected[i], tol_rel, tol_abs):
                 yield IdentityViolation(
-                    year_index=i, class_name=class_name, leg="legacy",
+                    year_index=i,
+                    class_name=class_name,
+                    leg="legacy",
                     identity="nc_dollar",
                     expected=float(legacy_expected[i]),
                     actual=float(legacy_actual[i]),
@@ -163,9 +181,7 @@ def _check_nc_dollar(
                 )
 
     if {"nc_new", "nc_rate_db_new", "payroll_db_new"} <= set(f.columns):
-        new_expected = (
-            f["nc_rate_db_new"].to_numpy() * f["payroll_db_new"].to_numpy()
-        )
+        new_expected = f["nc_rate_db_new"].to_numpy() * f["payroll_db_new"].to_numpy()
         if has_cb and {"nc_rate_cb_new", "payroll_cb_new"} <= set(f.columns):
             new_expected = new_expected + (
                 f["nc_rate_cb_new"].to_numpy() * f["payroll_cb_new"].to_numpy()
@@ -175,7 +191,9 @@ def _check_nc_dollar(
             residual = new_actual[i] - new_expected[i]
             if not _within_tol(residual, new_expected[i], tol_rel, tol_abs):
                 yield IdentityViolation(
-                    year_index=i, class_name=class_name, leg="new",
+                    year_index=i,
+                    class_name=class_name,
+                    leg="new",
                     identity="nc_dollar",
                     expected=float(new_expected[i]),
                     actual=float(new_actual[i]),
@@ -190,7 +208,7 @@ def check_funding_identities(
     dr_new: float,
     ret_scen: pd.Series,
     has_cb: bool,
-    skip_classes: Optional[set[str]] = None,
+    skip_classes: set[str] | None = None,
     tol_rel: float = 1e-9,
     tol_abs: float = 1e-3,
 ) -> None:
@@ -236,15 +254,9 @@ def check_funding_identities(
         if "year" not in frame.columns:
             continue
         for leg, dr in (("legacy", dr_current), ("new", dr_new)):
-            violations.extend(
-                _check_mva_leg(frame, leg, ret_scen, class_name, tol_rel, tol_abs)
-            )
-            violations.extend(
-                _check_aal_leg(frame, leg, dr, class_name, tol_rel, tol_abs)
-            )
-        violations.extend(
-            _check_nc_dollar(frame, class_name, has_cb, tol_rel, tol_abs)
-        )
+            violations.extend(_check_mva_leg(frame, leg, ret_scen, class_name, tol_rel, tol_abs))
+            violations.extend(_check_aal_leg(frame, leg, dr, class_name, tol_rel, tol_abs))
+        violations.extend(_check_nc_dollar(frame, class_name, has_cb, tol_rel, tol_abs))
 
     if violations:
         raise IdentityCheckError(violations)

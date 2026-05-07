@@ -9,10 +9,10 @@ Raw inputs:
   - Reports/extracted inputs/: retirement and DROP entry xlsx files
 """
 
-import numpy as np
-import pandas as pd
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 
 # Class → search text mapping for retirement/DROP tables
 _RETIRE_CLASS_MAP = {
@@ -22,7 +22,11 @@ _RETIRE_CLASS_MAP = {
     "eco": {"drop": "other", "normal": "eco_eso_jud", "early": "eco_eso_jud"},
     "eso": {"drop": "other", "normal": "eco_eso_jud", "early": "eco_eso_jud"},
     "judges": {"drop": "other", "normal": "eco_eso_jud", "early": "eco_eso_jud"},
-    "senior_management": {"drop": "other", "normal": "senior_management", "early": "senior_management"},
+    "senior_management": {
+        "drop": "other",
+        "normal": "senior_management",
+        "early": "senior_management",
+    },
 }
 
 # Withdrawal rate sheet names by class
@@ -61,13 +65,13 @@ def _clean_retire_rate_table(raw: pd.DataFrame, col_names: list) -> pd.DataFrame
             break
 
     # Slice to body
-    body = raw.iloc[age_row + 1:last_na].copy()
+    body = raw.iloc[age_row + 1 : last_na].copy()
     body = body.dropna(axis=1, how="all").reset_index(drop=True)
 
     # Apply column names
     if len(body.columns) != len(col_names):
         # Trim or pad columns
-        body = body.iloc[:, :len(col_names)]
+        body = body.iloc[:, : len(col_names)]
     body.columns = col_names
 
     # Handle "70-79" row: expand to individual ages
@@ -78,7 +82,7 @@ def _clean_retire_rate_table(raw: pd.DataFrame, col_names: list) -> pd.DataFrame
         row_data["age"] = "70"
         extra = pd.DataFrame([row_data.to_dict()] * 10)
         extra["age"] = [str(a) for a in range(70, 80)]
-        body = pd.concat([body.iloc[:idx], extra, body.iloc[idx + 1:]], ignore_index=True)
+        body = pd.concat([body.iloc[:idx], extra, body.iloc[idx + 1 :]], ignore_index=True)
 
     body["age"] = pd.to_numeric(body["age"].astype(str).str.strip(), errors="coerce")
     for c in body.columns:
@@ -116,7 +120,9 @@ def _read_withdrawal_table(excel_path: Path, sheet_name: str, max_yos: int = 70)
 
 
 def build_withdrawal_rate_table(
-    excel_path: Path, class_name: str, max_yos: int = 70,
+    excel_path: Path,
+    class_name: str,
+    max_yos: int = 70,
 ) -> pd.DataFrame:
     """
     Build gender-averaged withdrawal rate table for a class.
@@ -137,7 +143,9 @@ def build_withdrawal_rate_table(
 
 
 def build_retirement_rate_tables(
-    frs_inputs_path: Path, extracted_inputs_dir: Path, class_name: str,
+    frs_inputs_path: Path,
+    extracted_inputs_dir: Path,
+    class_name: str,
 ) -> dict:
     """
     Build per-class normal and early retirement rate tables.
@@ -152,29 +160,58 @@ def build_retirement_rate_tables(
     mapping = _RETIRE_CLASS_MAP[class_name]
 
     # Column name templates
-    drop_col_names = ["age", "regular_inst_female", "regular_inst_male",
-                      "regular_non_inst_female", "regular_non_inst_male",
-                      "special_risk_non_leo_female", "special_risk_non_leo_male",
-                      "special_risk_leo_female", "special_risk_leo_male",
-                      "other_female", "other_male"]
+    drop_col_names = [
+        "age",
+        "regular_inst_female",
+        "regular_inst_male",
+        "regular_non_inst_female",
+        "regular_non_inst_male",
+        "special_risk_non_leo_female",
+        "special_risk_non_leo_male",
+        "special_risk_leo_female",
+        "special_risk_leo_male",
+        "other_female",
+        "other_male",
+    ]
 
-    normal_col_names = ["age", "regular_inst_female", "regular_inst_male",
-                        "regular_non_inst_female", "regular_non_inst_male",
-                        "special_risk_female", "special_risk_male",
-                        "eco_eso_jud_female", "eco_eso_jud_male",
-                        "senior_management_female", "senior_management_male"]
+    normal_col_names = [
+        "age",
+        "regular_inst_female",
+        "regular_inst_male",
+        "regular_non_inst_female",
+        "regular_non_inst_male",
+        "special_risk_female",
+        "special_risk_male",
+        "eco_eso_jud_female",
+        "eco_eso_jud_male",
+        "senior_management_female",
+        "senior_management_male",
+    ]
 
-    early_col_names = ["age", "regular_non_inst_female", "regular_non_inst_male",
-                       "special_risk_female", "special_risk_male",
-                       "eco_eso_jud_female", "eco_eso_jud_male",
-                       "senior_management_female", "senior_management_male"]
+    early_col_names = [
+        "age",
+        "regular_non_inst_female",
+        "regular_non_inst_male",
+        "special_risk_female",
+        "special_risk_male",
+        "eco_eso_jud_female",
+        "eco_eso_jud_male",
+        "senior_management_female",
+        "senior_management_male",
+    ]
 
     result = {}
     for tier_num in [1, 2]:
         # Read raw tables
-        drop_raw = pd.read_excel(extracted_inputs_dir / f"drop entry tier {tier_num}.xlsx", header=None)
-        normal_raw = pd.read_excel(extracted_inputs_dir / f"normal retirement tier {tier_num}.xlsx", header=None)
-        early_raw = pd.read_excel(extracted_inputs_dir / f"early retirement tier {tier_num}.xlsx", header=None)
+        drop_raw = pd.read_excel(
+            extracted_inputs_dir / f"drop entry tier {tier_num}.xlsx", header=None
+        )
+        normal_raw = pd.read_excel(
+            extracted_inputs_dir / f"normal retirement tier {tier_num}.xlsx", header=None
+        )
+        early_raw = pd.read_excel(
+            extracted_inputs_dir / f"early retirement tier {tier_num}.xlsx", header=None
+        )
 
         drop_table = _clean_retire_rate_table(drop_raw, drop_col_names)
         normal_table = _clean_retire_rate_table(normal_raw, normal_col_names)
@@ -193,7 +230,11 @@ def build_retirement_rate_tables(
         if mapping["drop"] == "special":
             # R pre-averages LEO and non-LEO into single female/male columns
             sr_cols_f = [c for c in drop_table.columns if "special_risk" in c and "female" in c]
-            sr_cols_m = [c for c in drop_table.columns if "special_risk" in c and "male" in c and "female" not in c]
+            sr_cols_m = [
+                c
+                for c in drop_table.columns
+                if "special_risk" in c and "male" in c and "female" not in c
+            ]
             drop_table["special_risk_female"] = drop_table[sr_cols_f].mean(axis=1)
             drop_table["special_risk_male"] = drop_table[sr_cols_m].mean(axis=1)
             # Use ONLY the averaged columns, not the originals

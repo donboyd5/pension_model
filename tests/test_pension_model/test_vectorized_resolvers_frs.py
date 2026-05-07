@@ -4,8 +4,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-pytestmark = [pytest.mark.unit]
-
 from pension_model.plan_config import (
     get_ben_mult,
     get_reduce_factor,
@@ -23,6 +21,8 @@ from ._vectorized_resolver_test_support import (
     scalar_cola,
     vec_tier_components,
 )
+
+pytestmark = [pytest.mark.unit]
 
 
 def test_resolve_tiers_vec_matches_scalar_frs():
@@ -44,13 +44,14 @@ def test_resolve_tiers_vec_matches_scalar_frs():
     )[0]
     if len(mismatches) > 0:
         diffs = [
-            (rows[i], (expected_names[i], expected_statuses[i]),
-             (actual_names[i], actual_statuses[i]))
+            (
+                rows[i],
+                (expected_names[i], expected_statuses[i]),
+                (actual_names[i], actual_statuses[i]),
+            )
             for i in mismatches[:10]
         ]
-        pytest.fail(
-            f"{len(mismatches)} / {len(rows)} mismatches. First 10: {diffs}"
-        )
+        pytest.fail(f"{len(mismatches)} / {len(rows)} mismatches. First 10: {diffs}")
 
 
 def test_resolve_tiers_vec_accepts_categorical_class_name():
@@ -59,9 +60,7 @@ def test_resolve_tiers_vec_accepts_categorical_class_name():
     cn, ey, age, yos = rows_to_arrays(rows)
 
     expected_tier_id, expected_ret_status = resolve_tiers_vec(config, cn, ey, age, yos)
-    actual_tier_id, actual_ret_status = resolve_tiers_vec(
-        config, pd.Categorical(cn), ey, age, yos
-    )
+    actual_tier_id, actual_ret_status = resolve_tiers_vec(config, pd.Categorical(cn), ey, age, yos)
 
     assert np.array_equal(actual_tier_id, expected_tier_id)
     assert np.array_equal(actual_ret_status, expected_ret_status)
@@ -95,15 +94,16 @@ def test_resolve_cola_vec_matches_scalar_frs():
     tier_names, _ = vec_tier_components(config, cn, ey, age, yos)
     tier_id, _ = resolve_tiers_vec(config, cn, ey, age, yos)
 
-    expected = np.array([
-        scalar_cola(config, tier_names[i], int(ey[i]), int(yos[i]))
-        for i in range(len(rows))
-    ], dtype=np.float64)
+    expected = np.array(
+        [scalar_cola(config, tier_names[i], int(ey[i]), int(yos[i])) for i in range(len(rows))],
+        dtype=np.float64,
+    )
 
     actual = resolve_cola_vec(config, tier_id, ey, yos)
 
-    assert np.allclose(actual, expected, equal_nan=True), \
-        f"COLA mismatch. Max diff: {np.nanmax(np.abs(actual - expected))}"
+    assert np.allclose(
+        actual, expected, equal_nan=True
+    ), f"COLA mismatch. Max diff: {np.nanmax(np.abs(actual - expected))}"
 
 
 def test_resolve_ben_mult_vec_matches_scalar_frs():
@@ -115,16 +115,27 @@ def test_resolve_ben_mult_vec_matches_scalar_frs():
     tier_id, ret_status = resolve_tiers_vec(config, cn, ey, age, yos)
     dist_year = ey + yos
 
-    expected = np.array([
-        get_ben_mult(config, rows[i][0], tier_names[i], statuses[i],
-                     int(age[i]), int(yos[i]), int(dist_year[i]))
-        for i in range(len(rows))
-    ], dtype=np.float64)
+    expected = np.array(
+        [
+            get_ben_mult(
+                config,
+                rows[i][0],
+                tier_names[i],
+                statuses[i],
+                int(age[i]),
+                int(yos[i]),
+                int(dist_year[i]),
+            )
+            for i in range(len(rows))
+        ],
+        dtype=np.float64,
+    )
 
     actual = resolve_ben_mult_vec(config, cn, tier_id, ret_status, age, yos, dist_year)
 
-    assert np.allclose(actual, expected, equal_nan=True), \
-        f"ben_mult mismatch. Max diff: {np.nanmax(np.abs(actual - expected))}"
+    assert np.allclose(
+        actual, expected, equal_nan=True
+    ), f"ben_mult mismatch. Max diff: {np.nanmax(np.abs(actual - expected))}"
 
 
 def test_resolve_ben_mult_vec_accepts_categorical_class_name():
@@ -134,9 +145,7 @@ def test_resolve_ben_mult_vec_accepts_categorical_class_name():
     tier_id, ret_status = resolve_tiers_vec(config, cn, ey, age, yos)
     dist_year = ey + yos
 
-    expected = resolve_ben_mult_vec(
-        config, cn, tier_id, ret_status, age, yos, dist_year
-    )
+    expected = resolve_ben_mult_vec(config, cn, tier_id, ret_status, age, yos, dist_year)
     actual = resolve_ben_mult_vec(
         config, pd.Categorical(cn), tier_id, ret_status, age, yos, dist_year
     )
@@ -152,26 +161,27 @@ def test_resolve_reduce_factor_vec_matches_scalar_frs():
     tier_names, statuses = vec_tier_components(config, cn, ey, age, yos)
     tier_id, ret_status = resolve_tiers_vec(config, cn, ey, age, yos)
 
-    expected = np.array([
-        get_reduce_factor(config, rows[i][0], tier_names[i], statuses[i],
-                          int(age[i]), int(yos[i]), int(ey[i]))
-        for i in range(len(rows))
-    ], dtype=np.float64)
+    expected = np.array(
+        [
+            get_reduce_factor(
+                config, rows[i][0], tier_names[i], statuses[i], int(age[i]), int(yos[i]), int(ey[i])
+            )
+            for i in range(len(rows))
+        ],
+        dtype=np.float64,
+    )
 
     actual = resolve_reduce_factor_vec(config, cn, tier_id, ret_status, age, yos, ey)
 
     nan_match = np.isnan(expected) == np.isnan(actual)
-    val_match = np.where(np.isnan(expected), True,
-                         np.isclose(actual, expected, equal_nan=True))
+    val_match = np.where(np.isnan(expected), True, np.isclose(actual, expected, equal_nan=True))
     mismatches = np.where(~(nan_match & val_match))[0]
     if len(mismatches) > 0:
         diffs = [
-            (rows[i], (tier_names[i], statuses[i]), expected[i], actual[i])
-            for i in mismatches[:10]
+            (rows[i], (tier_names[i], statuses[i]), expected[i], actual[i]) for i in mismatches[:10]
         ]
         pytest.fail(
-            f"{len(mismatches)} / {len(rows)} reduce_factor mismatches. "
-            f"First 10: {diffs}"
+            f"{len(mismatches)} / {len(rows)} reduce_factor mismatches. " f"First 10: {diffs}"
         )
 
 
@@ -187,7 +197,5 @@ def test_resolve_reduce_factor_vec_accepts_categorical_class_name():
     )
 
     nan_match = np.isnan(expected) == np.isnan(actual)
-    val_match = np.where(
-        np.isnan(expected), True, np.isclose(actual, expected, equal_nan=True)
-    )
+    val_match = np.where(np.isnan(expected), True, np.isclose(actual, expected, equal_nan=True))
     assert np.all(nan_match & val_match)

@@ -9,21 +9,19 @@ diagnostic scripts each go through here.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _scenario_path(scenario: Optional[str]) -> Optional[Path]:
+def _scenario_path(scenario: str | None) -> Path | None:
     if scenario is None or scenario == "baseline":
         return None
     return PROJECT_ROOT / "scenarios" / f"{scenario}.json"
 
 
-def run_truth_table(plan: str, scenario: Optional[str] = None) -> pd.DataFrame:
+def run_truth_table(plan: str, scenario: str | None = None) -> pd.DataFrame:
     """Run the full pipeline for ``(plan, scenario)`` and return its truth table.
 
     ``scenario=None`` and ``scenario="baseline"`` both mean "no scenario

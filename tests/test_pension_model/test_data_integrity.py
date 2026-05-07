@@ -4,6 +4,7 @@ Verifies that classes sharing the same underlying decrement source have
 byte-identical data files. This catches accidental drift if someone
 edits one copy and forgets to update the others.
 """
+
 import hashlib
 from pathlib import Path
 

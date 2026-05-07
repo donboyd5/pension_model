@@ -41,14 +41,10 @@ class EligibilitySpec(StrictModel):
         """True if any early-retirement condition matches."""
         return any(c.matches(age, yos) for c in self.early)
 
-    def matches_normal_vec(
-        self, ages: np.ndarray, yos: np.ndarray
-    ) -> np.ndarray:
+    def matches_normal_vec(self, ages: np.ndarray, yos: np.ndarray) -> np.ndarray:
         """Vectorized normal-retirement match. Returns bool array."""
         return _any_match_vec(self.normal, ages, yos)
 
-    def matches_early_vec(
-        self, ages: np.ndarray, yos: np.ndarray
-    ) -> np.ndarray:
+    def matches_early_vec(self, ages: np.ndarray, yos: np.ndarray) -> np.ndarray:
         """Vectorized early-retirement match. Returns bool array."""
         return _any_match_vec(self.early, ages, yos)

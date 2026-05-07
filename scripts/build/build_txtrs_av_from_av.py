@@ -19,13 +19,11 @@ This script intentionally avoids using existing txtrs runtime files as inputs.
 
 from __future__ import annotations
 
-from io import StringIO
-from pathlib import Path
 import re
 import subprocess
+from pathlib import Path
 
 import pandas as pd
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PDF_PATH = PROJECT_ROOT / "prep" / "txtrs-av" / "sources" / "Texas TRS Valuation 2024.pdf"
@@ -50,19 +48,19 @@ RUNTIME_RETIREE_MAX_AGE = 120
 # runtime tail.
 LIFE_ANNUITY_BAND_TO_RUNTIME: dict[str, tuple[int, int]] = {
     "Up to 35": (55, 59),
-    "35-40":    (55, 59),
-    "40-44":    (55, 59),
-    "45-49":    (55, 59),
-    "50-54":    (55, 59),
-    "55-59":    (55, 59),
-    "60-64":    (60, 64),
-    "65-69":    (65, 69),
-    "70-74":    (70, 74),
-    "75-79":    (75, 79),
-    "80-84":    (80, 84),
-    "85-89":    (85, 89),
-    "90-94":    (90, 94),
-    "95-99":    (95, 99),
+    "35-40": (55, 59),
+    "40-44": (55, 59),
+    "45-49": (55, 59),
+    "50-54": (55, 59),
+    "55-59": (55, 59),
+    "60-64": (60, 64),
+    "65-69": (65, 69),
+    "70-74": (70, 74),
+    "75-79": (75, 79),
+    "80-84": (80, 84),
+    "85-89": (85, 89),
+    "90-94": (90, 94),
+    "95-99": (95, 99),
     "100 & up": (100, RUNTIME_RETIREE_MAX_AGE),
 }
 
@@ -160,14 +158,18 @@ def _parse_table17() -> tuple[pd.DataFrame, pd.DataFrame]:
     for band_label, age in AGE_MAP.items():
         count_line = _extract_matching_line(lines, rf"^\s*{re.escape(band_label)}\s")
         count_payload = re.sub(rf"^\s*{re.escape(band_label)}\s*", "", count_line)
-        count_vals = [int(token.replace(",", "")) for token in re.findall(r"\d[\d,]*", count_payload)]
+        count_vals = [
+            int(token.replace(",", "")) for token in re.findall(r"\d[\d,]*", count_payload)
+        ]
         if len(count_vals) < 6:
             raise ValueError(f"Unexpected count row for {band_label}: {count_line}")
         count_vals = count_vals[:-1]
 
         salary_line_idx = lines.index(count_line) + 1
         salary_line = lines[salary_line_idx]
-        salary_vals = [float(token.replace(",", "")) for token in re.findall(r"\$([\d,]+)", salary_line)]
+        salary_vals = [
+            float(token.replace(",", "")) for token in re.findall(r"\$([\d,]+)", salary_line)
+        ]
         if len(salary_vals) < 6:
             raise ValueError(f"Unexpected salary row for {band_label}: {salary_line}")
         salary_vals = salary_vals[:-1]
@@ -177,12 +179,16 @@ def _parse_table17() -> tuple[pd.DataFrame, pd.DataFrame]:
         early_counts = count_vals[:4]
         early_salaries = salary_vals[:4]
         collapsed_count = sum(early_counts)
-        collapsed_salary = sum(c * s for c, s in zip(early_counts, early_salaries)) / collapsed_count
+        collapsed_salary = (
+            sum(c * s for c, s in zip(early_counts, early_salaries, strict=False)) / collapsed_count
+        )
 
         count_rows.append({"age": age, "yos": 2, "count": collapsed_count})
         salary_rows.append({"age": age, "yos": 2, "salary": collapsed_salary})
 
-        for yos, count_val, salary_val in zip(later_yos, count_vals[4:], salary_vals[4:]):
+        for yos, count_val, salary_val in zip(
+            later_yos, count_vals[4:], salary_vals[4:], strict=False
+        ):
             if count_val == 0:
                 continue
             count_rows.append({"age": age, "yos": yos, "count": count_val})
@@ -307,7 +313,7 @@ def _parse_reduction_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
             continue
         yos_label, *pct_vals = match.groups()
         yos = 30 if yos_label == "30 or more" else int(yos_label)
-        for age, pct_val in zip(range(55, 61), pct_vals):
+        for age, pct_val in zip(range(55, 61), pct_vals, strict=False):
             gft_rows.append(
                 {
                     "age": age,
@@ -319,7 +325,7 @@ def _parse_reduction_tables() -> tuple[pd.DataFrame, pd.DataFrame]:
 
     others_line = _extract_matching_line(lines, r"^\s*43%\s+46%\s+50%\s+55%")
     other_pcts = [int(token) for token in re.findall(r"(\d+)%", others_line)]
-    for age, pct_val in zip(range(55, 66), other_pcts):
+    for age, pct_val in zip(range(55, 66), other_pcts, strict=False):
         others_rows.append({"age": age, "reduce_factor": pct_val / 100.0, "tier": "others"})
 
     gft = pd.DataFrame(gft_rows).sort_values(["age", "yos"]).reset_index(drop=True)
@@ -390,11 +396,15 @@ def _parse_termination_rates() -> pd.DataFrame:
 def _parse_retirement_rates() -> pd.DataFrame:
     text = _pdf_page_text(PDF_PATH, RETIREMENT_PDF_PAGE)
     lines = text.splitlines()
-    normal_rates: dict[int, float] = {age: 0.0 for age in range(45, 121)}
-    early_rates: dict[int, float] = {age: 0.0 for age in range(45, 121)}
+    normal_rates: dict[int, float] = dict.fromkeys(range(45, 121), 0.0)
+    early_rates: dict[int, float] = dict.fromkeys(range(45, 121), 0.0)
 
-    single_age_normal = re.compile(r"^\s*(5[0-9]|6[0-4])\s+([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)\s+(4[5-9]|5[0-9])\s+([0-9]+\.[0-9]+)\s*$")
-    band_with_early = re.compile(r"^\s*(65-69|70-74|75\+)\s+([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)\s+(6[0-2])\s+([0-9]+\.[0-9]+)\s*$")
+    single_age_normal = re.compile(
+        r"^\s*(5[0-9]|6[0-4])\s+([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)\s+(4[5-9]|5[0-9])\s+([0-9]+\.[0-9]+)\s*$"
+    )
+    band_with_early = re.compile(
+        r"^\s*(65-69|70-74|75\+)\s+([0-9]+\.[0-9]+)\s+([0-9]+\.[0-9]+)\s+(6[0-2])\s+([0-9]+\.[0-9]+)\s*$"
+    )
     early_only = re.compile(r"^\s*(6[0-4])\s+([0-9]+\.[0-9]+)\s*$")
     continuation_early = re.compile(r"^\s+(6[3-4])\s+([0-9]+\.[0-9]+)\s*$")
 
@@ -435,9 +445,13 @@ def _parse_retirement_rates() -> pd.DataFrame:
 
     rows: list[dict] = []
     for age in range(45, 121):
-        rows.append({"age": age, "tier": "all", "retire_type": "early", "retire_rate": early_rates[age]})
+        rows.append(
+            {"age": age, "tier": "all", "retire_type": "early", "retire_rate": early_rates[age]}
+        )
     for age in range(45, 121):
-        rows.append({"age": age, "tier": "all", "retire_type": "normal", "retire_rate": normal_rates[age]})
+        rows.append(
+            {"age": age, "tier": "all", "retire_type": "normal", "retire_rate": normal_rates[age]}
+        )
     return pd.DataFrame(rows)
 
 
@@ -465,7 +479,9 @@ def _parse_init_funding() -> pd.DataFrame:
     remaining_tokens = re.findall(r"\(?[\d,]+\)?", remaining_2023_line)
     if len(remaining_tokens) < 5:
         raise ValueError(f"Unexpected Table 4 2023 deferral row: {remaining_2023_line}")
-    remaining_after_valuation = -float(remaining_tokens[-1].replace("(", "").replace(")", "").replace(",", ""))
+    remaining_after_valuation = -float(
+        remaining_tokens[-1].replace("(", "").replace(")", "").replace(",", "")
+    )
 
     total_ual_ava = total_aal - total_ava
     total_ual_mva = total_aal - total_mva
@@ -558,12 +574,14 @@ def _build_retiree_distribution() -> pd.DataFrame:
         per_age_total = agg["annual"] / n_ages
         per_age_avg = agg["annual"] / agg["count"]
         for age in range(lo, hi + 1):
-            rows.append({
-                "age": age,
-                "count": per_age_count,
-                "avg_benefit": per_age_avg,
-                "total_benefit": per_age_total,
-            })
+            rows.append(
+                {
+                    "age": age,
+                    "count": per_age_count,
+                    "avg_benefit": per_age_avg,
+                    "total_benefit": per_age_total,
+                }
+            )
 
     return pd.DataFrame(rows).sort_values("age").reset_index(drop=True)
 

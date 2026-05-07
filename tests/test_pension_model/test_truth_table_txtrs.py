@@ -2,19 +2,19 @@
 
 import pytest
 
-pytestmark = [pytest.mark.invariant, pytest.mark.regression]
-
 from pension_model.truth_table import (
     TRUTH_TABLE_COLUMNS,
     build_python_truth_table,
 )
 
+pytestmark = [pytest.mark.invariant, pytest.mark.regression]
+
 
 @pytest.fixture(scope="module")
 def txtrs_truth_table():
     """Run the TXTRS pipeline and build the truth table."""
-    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import load_funding_inputs, run_funding_model
+    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.plan_config import load_plan_config_by_name
 
     constants = load_plan_config_by_name("txtrs")
@@ -42,9 +42,18 @@ def test_txtrs_truth_table_plan_column(txtrs_truth_table):
 
 def test_txtrs_truth_table_no_nan_in_required(txtrs_truth_table):
     """Required columns should have no NaN."""
-    required = ["year", "n_active_boy", "payroll", "benefits",
-                "aal_boy", "mva_boy", "mva_eoy", "ava_boy",
-                "fr_mva_boy", "fr_ava_boy"]
+    required = [
+        "year",
+        "n_active_boy",
+        "payroll",
+        "benefits",
+        "aal_boy",
+        "mva_boy",
+        "mva_eoy",
+        "ava_boy",
+        "fr_mva_boy",
+        "fr_ava_boy",
+    ]
     for col in required:
         assert txtrs_truth_table[col].notna().all(), f"{col} has NaN values"
 

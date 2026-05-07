@@ -34,20 +34,19 @@ def validate_funding_legs(config) -> None:
 
     for ey in range(lo_bound, hi_bound):
         matches = [
-            name for name, lo, hi in legs
-            if (lo is None or ey >= lo) and (hi is None or ey < hi)
+            name for name, lo, hi in legs if (lo is None or ey >= lo) and (hi is None or ey < hi)
         ]
         if len(matches) == 0:
             raise ValueError(
                 f"Plan {config.plan_name!r}: entry_year {ey} is not "
                 f"covered by any funding leg. Legs: "
-                f"{[(n, lo, hi) for n, lo, hi in legs]}."
+                f"{list(legs)}."
             )
         if len(matches) > 1:
             raise ValueError(
                 f"Plan {config.plan_name!r}: entry_year {ey} is covered "
                 f"by multiple funding legs {matches}. Legs must not "
-                f"overlap. Legs: {[(n, lo, hi) for n, lo, hi in legs]}."
+                f"overlap. Legs: {list(legs)}."
             )
 
 
@@ -101,7 +100,8 @@ def validate_config(config) -> list[str]:
                 peer_target = peer_val.total_active_member if peer_val is not None else None
                 if peer_target != target:
                     warnings.append(
-                        f"headcount_group mismatch: '{class_name}' has total_active_member={target} "
+                        f"headcount_group mismatch: '{class_name}' "
+                        f"has total_active_member={target} "
                         f"but peer '{peer}' has {peer_target}."
                     )
                     break

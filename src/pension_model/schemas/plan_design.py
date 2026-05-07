@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import ConfigDict, Field, model_validator
 
 from pension_model.schemas.base import StrictModel
@@ -27,17 +25,17 @@ class PlanDesignRatios(StrictModel):
     or fall through to ``new_db`` (DB).
     """
 
-    before_cutoff: Optional[float] = None
-    after_cutoff: Optional[float] = Field(
+    before_cutoff: float | None = None
+    after_cutoff: float | None = Field(
         default=None,
         description="Defaults to before_cutoff if omitted (no cutoff).",
     )
-    new: Optional[float] = None
-    new_db: Optional[float] = None
-    before_cb: Optional[float] = None
-    after_cb: Optional[float] = None
-    new_cb: Optional[float] = None
-    new_dc: Optional[float] = None
+    new: float | None = None
+    new_db: float | None = None
+    before_cb: float | None = None
+    after_cb: float | None = None
+    new_cb: float | None = None
+    new_dc: float | None = None
 
     def db_triple(self) -> tuple[float, float, float]:
         """Return ``(before, after, new)`` DB ratios with defaults
@@ -47,8 +45,8 @@ class PlanDesignRatios(StrictModel):
         """
         before = self.before_cutoff if self.before_cutoff is not None else 1.0
         after = self.after_cutoff if self.after_cutoff is not None else before
-        new = self.new if self.new is not None else (
-            self.new_db if self.new_db is not None else 1.0
+        new = (
+            self.new if self.new is not None else (self.new_db if self.new_db is not None else 1.0)
         )
         return (before, after, new)
 
@@ -82,10 +80,10 @@ class PlanDesign(StrictModel):
     # the after-validator below.
     model_config = ConfigDict(extra="allow", frozen=True)
 
-    cutoff_year: Optional[int] = None
+    cutoff_year: int | None = None
 
     @model_validator(mode="after")
-    def _promote_groups_to_typed_ratios(self) -> "PlanDesign":
+    def _promote_groups_to_typed_ratios(self) -> PlanDesign:
         """Convert each extra (group) entry to ``PlanDesignRatios``."""
         if not self.model_extra:
             return self
@@ -100,7 +98,7 @@ class PlanDesign(StrictModel):
         object.__setattr__(self, "__pydantic_extra__", promoted)
         return self
 
-    def group(self, name: str) -> Optional[PlanDesignRatios]:
+    def group(self, name: str) -> PlanDesignRatios | None:
         """Look up a group's design ratios by name. Returns None if
         absent (caller decides whether to fall back to ``default``).
         """

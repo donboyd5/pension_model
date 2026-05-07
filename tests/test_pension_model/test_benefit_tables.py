@@ -7,8 +7,9 @@ This ensures end-to-end correctness from raw inputs to final outputs.
 
 import sys
 from pathlib import Path
-import pytest
+
 import pandas as pd
+import pytest
 
 pytestmark = [
     pytest.mark.regression,
@@ -43,6 +44,7 @@ class TestSalaryHeadcountTable:
     def _get_adjustment_ratio(self, class_name):
         """Compute headcount adjustment ratio matching R model."""
         from pension_model.plan_config import load_plan_config_by_name
+
         c = load_plan_config_by_name("frs")
 
         if class_name in ("eco", "eso", "judges"):
@@ -51,9 +53,11 @@ class TestSalaryHeadcountTable:
             eco_hc = pd.read_csv(FRS_BASELINES / "eco_headcount.csv")
             eso_hc = pd.read_csv(FRS_BASELINES / "eso_headcount.csv")
             judges_hc = pd.read_csv(FRS_BASELINES / "judges_headcount.csv")
-            raw = (eco_hc.iloc[:, 1:].sum().sum()
-                   + eso_hc.iloc[:, 1:].sum().sum()
-                   + judges_hc.iloc[:, 1:].sum().sum())
+            raw = (
+                eco_hc.iloc[:, 1:].sum().sum()
+                + eso_hc.iloc[:, 1:].sum().sum()
+                + judges_hc.iloc[:, 1:].sum().sum()
+            )
             return combined_total / raw
         else:
             total = c.class_data[class_name].total_active_member
@@ -96,9 +100,7 @@ class TestSalaryHeadcountTable:
                 * 100
             )
             max_diff = pct_diff.max()
-            assert max_diff < 0.01, (
-                f"{class_name}: entry_salary max diff {max_diff:.4f}%"
-            )
+            assert max_diff < 0.01, f"{class_name}: entry_salary max diff {max_diff:.4f}%"
 
         # count should match
         mask_c = merged["count_r"].notna() & (merged["count_r"].abs() > 0)
@@ -109,9 +111,7 @@ class TestSalaryHeadcountTable:
                 * 100
             )
             max_diff_c = pct_diff_c.max()
-            assert max_diff_c < 0.01, (
-                f"{class_name}: count max diff {max_diff_c:.4f}%"
-            )
+            assert max_diff_c < 0.01, f"{class_name}: count max diff {max_diff_c:.4f}%"
 
 
 class TestSeparationRateTable:
@@ -119,8 +119,12 @@ class TestSeparationRateTable:
 
     # R's separation table class mapping (benefit model line 584-590)
     SEP_CLASS_MAP = {
-        "regular": "regular", "special": "special", "admin": "admin",
-        "eco": "eco", "eso": "regular", "judges": "judges",
+        "regular": "regular",
+        "special": "special",
+        "admin": "admin",
+        "eco": "eco",
+        "eso": "regular",
+        "judges": "judges",
         "senior_management": "senior_management",
     }
 
@@ -128,8 +132,8 @@ class TestSeparationRateTable:
     def test_separation_rate_matches_r(self, class_name):
         """Verify separation rates match R for each class."""
         from pension_model.core.benefit_tables import (
-            build_salary_headcount_table,
             build_entrant_profile,
+            build_salary_headcount_table,
             build_separation_rate_table,
         )
         from pension_model.plan_config import load_plan_config_by_name
@@ -149,9 +153,13 @@ class TestSeparationRateTable:
             )
             adj_ratio = 2075 / combined_raw
         else:
-            adj_ratio = constants.class_data[sep_class].total_active_member / hc.iloc[:, 1:].sum().sum()
+            adj_ratio = (
+                constants.class_data[sep_class].total_active_member / hc.iloc[:, 1:].sum().sum()
+            )
 
-        sh = build_salary_headcount_table(sal, hc, sg, sep_class, adj_ratio, 2022, constants=constants)
+        sh = build_salary_headcount_table(
+            sal, hc, sg, sep_class, adj_ratio, 2022, constants=constants
+        )
         ep = build_entrant_profile(sh)
 
         dt = FRS_BASELINES / "decrement_tables"
@@ -160,11 +168,11 @@ class TestSeparationRateTable:
         sep = build_separation_rate_table(
             term_rate_avg=pd.read_csv(dt / f"{sep_class}_term_rate_avg.csv"),
             normal_retire_rate_by_set={
-                "before_2011":   pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier1.csv"),
+                "before_2011": pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier1.csv"),
                 "2011_or_later": pd.read_csv(dt / f"{sep_class}_normal_retire_rate_tier2.csv"),
             },
             early_retire_rate_by_set={
-                "before_2011":   pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier1.csv"),
+                "before_2011": pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier1.csv"),
                 "2011_or_later": pd.read_csv(dt / f"{sep_class}_early_retire_rate_tier2.csv"),
             },
             entrant_profile=ep,
@@ -179,17 +187,30 @@ class TestSeparationRateTable:
         if mask.any():
             pct = (
                 (m.loc[mask, "separation_rate_py"] - m.loc[mask, "separation_rate_r"]).abs()
-                / m.loc[mask, "separation_rate_r"].abs() * 100
+                / m.loc[mask, "separation_rate_r"].abs()
+                * 100
             )
             assert pct.max() < 0.01, f"{class_name}: separation_rate max diff {pct.max():.4f}%"
 
 
-_EXCEL_MORT = Path(__file__).parent.parent.parent / "R_model" / "R_model_frs" / "pub-2010-headcount-mort-rates.xlsx"
-_EXCEL_IMP = Path(__file__).parent.parent.parent / "R_model" / "R_model_frs" / "mortality-improvement-scale-mp-2018-rates.xlsx"
+_EXCEL_MORT = (
+    Path(__file__).parent.parent.parent
+    / "R_model"
+    / "R_model_frs"
+    / "pub-2010-headcount-mort-rates.xlsx"
+)
+_EXCEL_IMP = (
+    Path(__file__).parent.parent.parent
+    / "R_model"
+    / "R_model_frs"
+    / "mortality-improvement-scale-mp-2018-rates.xlsx"
+)
 _EXCEL_AVAILABLE = _EXCEL_MORT.exists() and _EXCEL_IMP.exists()
 
 
-@pytest.mark.skipif(not _EXCEL_AVAILABLE, reason="R_model/R_model_frs Excel mortality files not available")
+@pytest.mark.skipif(
+    not _EXCEL_AVAILABLE, reason="R_model/R_model_frs Excel mortality files not available"
+)
 class TestAnnFactorTable:
     """Test build_ann_factor_table against R's extracted cum_mort_dr and ann_factor."""
 
@@ -198,8 +219,10 @@ class TestAnnFactorTable:
     def _build_compact_aft(self):
         """Build ann_factor_table from raw Excel for Regular, entry_year=2000 only."""
         from pension_model.core.benefit_tables import (
-            build_ann_factor_table, build_salary_headcount_table,
-            build_entrant_profile, build_salary_benefit_table,
+            build_ann_factor_table,
+            build_entrant_profile,
+            build_salary_benefit_table,
+            build_salary_headcount_table,
         )
         from pension_model.core.mortality_builder import build_compact_mortality_from_excel
         from pension_model.plan_config import load_plan_config_by_name
@@ -241,7 +264,8 @@ class TestAnnFactorTable:
         if mask.any():
             pct = (
                 (m.loc[mask, "cum_mort_dr_py"] - m.loc[mask, "cum_mort_dr_r"]).abs()
-                / m.loc[mask, "cum_mort_dr_r"].abs() * 100
+                / m.loc[mask, "cum_mort_dr_r"].abs()
+                * 100
             )
             assert pct.max() < 0.01, f"cum_mort_dr max diff {pct.max():.4f}%"
 
@@ -262,7 +286,8 @@ class TestAnnFactorTable:
         if mask.any():
             pct = (
                 (m.loc[mask, "ann_factor_py"] - m.loc[mask, "ann_factor_r"]).abs()
-                / m.loc[mask, "ann_factor_r"].abs() * 100
+                / m.loc[mask, "ann_factor_r"].abs()
+                * 100
             )
             assert pct.max() < 0.01, f"ann_factor max diff {pct.max():.4f}%"
 
@@ -274,9 +299,9 @@ class TestSalaryBenefitTable:
     def test_salary_fas_match_r(self, class_name):
         """Verify salary and FAS match R's benefit_data for Regular class."""
         from pension_model.core.benefit_tables import (
-            build_salary_headcount_table,
             build_entrant_profile,
             build_salary_benefit_table,
+            build_salary_headcount_table,
         )
         from pension_model.plan_config import load_plan_config_by_name
 
@@ -286,14 +311,22 @@ class TestSalaryBenefitTable:
         hc = pd.read_csv(FRS_BASELINES / f"{class_name}_headcount.csv")
 
         sh = build_salary_headcount_table(
-            sal, hc, salary_growth, class_name,
-            constants.class_data[class_name].total_active_member, 2022,
+            sal,
+            hc,
+            salary_growth,
+            class_name,
+            constants.class_data[class_name].total_active_member,
+            2022,
             constants=constants,
         )
         ep = build_entrant_profile(sh)
 
         sbt = build_salary_benefit_table(
-            sh, ep, salary_growth, class_name, constants,
+            sh,
+            ep,
+            salary_growth,
+            class_name,
+            constants,
         )
 
         # Load R's benefit_data for comparison

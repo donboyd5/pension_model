@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Scalar config-derived resolvers."""
+
+from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
@@ -35,19 +35,13 @@ def get_tier(
         elif tier.entry_year_in_window(entry_year, config.new_year):
             if tier.not_grandfathered:
                 gf_tier = next(
-                    (
-                        t
-                        for t in config.tier_defs
-                        if t.assignment == "grandfathered_rule"
-                    ),
+                    (t for t in config.tier_defs if t.assignment == "grandfathered_rule"),
                     None,
                 )
                 if gf_tier is not None:
                     effective_entry_age = entry_age if entry_age > 0 else (age - yos)
                     assert gf_tier.grandfathered_params is not None
-                    if gf_tier.grandfathered_params.matches(
-                        entry_year, effective_entry_age
-                    ):
+                    if gf_tier.grandfathered_params.matches(entry_year, effective_entry_age):
                         continue
             matched_tier = tier
             break

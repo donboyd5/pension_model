@@ -27,8 +27,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 @pytest.fixture(scope="module")
 def two_class_gainloss_outputs():
-    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import load_funding_inputs, run_funding_model
+    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.plan_config import load_plan_config_by_name
 
     constants = load_plan_config_by_name("txtrs")
@@ -43,11 +43,13 @@ def two_class_gainloss_outputs():
     one_cal = constants.calibration.get(sole_class) or ClassCalibration()
     init_row = funding_inputs["init_funding"].iloc[0].to_dict()
 
-    new_constants = constants.model_copy(update={
-        "classes": ("a", "b"),
-        "valuation_inputs": {"a": one_vi, "b": one_vi},
-        "calibration": {"a": one_cal, "b": one_cal},
-    })
+    new_constants = constants.model_copy(
+        update={
+            "classes": ("a", "b"),
+            "valuation_inputs": {"a": one_vi, "b": one_vi},
+            "calibration": {"a": one_cal, "b": one_cal},
+        }
+    )
 
     new_liability = {"a": one_liab.copy(), "b": one_liab.copy()}
 
@@ -55,14 +57,16 @@ def two_class_gainloss_outputs():
     # plan_name. Values are 2x the per-class init (both classes share
     # the same TRS starting values).
     agg_row = {
-        k: (2 * v if isinstance(v, (int, float, np.integer, np.floating)) else v)
+        k: (2 * v if isinstance(v, int | float | np.integer | np.floating) else v)
         for k, v in init_row.items()
     }
-    new_init = pd.DataFrame([
-        {**init_row, "class": "a"},
-        {**init_row, "class": "b"},
-        {**agg_row, "class": constants.plan_name},
-    ])
+    new_init = pd.DataFrame(
+        [
+            {**init_row, "class": "a"},
+            {**init_row, "class": "b"},
+            {**agg_row, "class": constants.plan_name},
+        ]
+    )
     new_funding_inputs = {**funding_inputs, "init_funding": new_init}
 
     return run_funding_model(new_liability, new_funding_inputs, new_constants), new_constants
@@ -80,16 +84,19 @@ def test_multi_class_gainloss_class_frames_identical(two_class_gainloss_outputs)
     assert_frame_equal(funding["a"], funding["b"], check_exact=True, check_dtype=True)
 
 
-@pytest.mark.parametrize("col", [
-    "total_payroll",
-    "nc_legacy",
-    "nc_new",
-    "aal_legacy",
-    "total_aal",
-    "ben_payment_legacy",
-    "total_mva",
-    "total_er_cont",
-])
+@pytest.mark.parametrize(
+    "col",
+    [
+        "total_payroll",
+        "nc_legacy",
+        "nc_new",
+        "aal_legacy",
+        "total_aal",
+        "ben_payment_legacy",
+        "total_mva",
+        "total_er_cont",
+    ],
+)
 @pytest.mark.parametrize("i", [1, 5, 15])
 def test_multi_class_gainloss_aggregate_sums_flow_cols(two_class_gainloss_outputs, col, i):
     """Aggregate flow columns accumulate to the sum of per-class values."""

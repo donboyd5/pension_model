@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import Field, model_validator
 
 from pension_model.schemas.base import StrictModel
@@ -17,7 +15,7 @@ class Ranges(StrictModel):
     min_age: int
     max_age: int
     start_year: int
-    new_year: Optional[int] = Field(
+    new_year: int | None = Field(
         default=None,
         description="Year boundary that separates legacy hires from "
         "new hires. Defaults to start_year if omitted.",
@@ -27,7 +25,7 @@ class Ranges(StrictModel):
     max_yos: int = 70
 
     @model_validator(mode="after")
-    def _default_new_year(self) -> "Ranges":
+    def _default_new_year(self) -> Ranges:
         if self.new_year is None:
             object.__setattr__(self, "new_year", self.start_year)
         return self

@@ -1,8 +1,8 @@
-from __future__ import annotations
-
 """Vectorized config-derived resolvers."""
 
-from typing import Optional, TYPE_CHECKING, Tuple
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from pension_model.config_schema import PlanConfig
 
 
-def _encode_class_name_values(class_name) -> Tuple[np.ndarray, np.ndarray]:
+def _encode_class_name_values(class_name) -> tuple[np.ndarray, np.ndarray]:
     """Return integer class codes plus object labels for grouping work.
 
     `class_name` often arrives as a pandas Categorical when called from the
@@ -37,9 +37,9 @@ def _encode_class_name_values(class_name) -> Tuple[np.ndarray, np.ndarray]:
 
 
 def _encode_class_group_values(
-    config: "PlanConfig",
+    config: PlanConfig,
     class_name,
-) -> Tuple[np.ndarray, Tuple[str, ...]]:
+) -> tuple[np.ndarray, tuple[str, ...]]:
     """Return per-row group codes plus the corresponding group labels.
 
     The benefit-table pipeline frequently passes millions of rows with only a
@@ -48,11 +48,16 @@ def _encode_class_group_values(
     """
     class_codes, class_labels = _encode_class_name_values(class_name)
     group_labels = tuple(
-        dict.fromkeys(config.class_to_group.get(class_value, "default") for class_value in class_labels)
+        dict.fromkeys(
+            config.class_to_group.get(class_value, "default") for class_value in class_labels
+        )
     )
     group_to_code = {group_label: i for i, group_label in enumerate(group_labels)}
     class_group_codes = np.array(
-        [group_to_code[config.class_to_group.get(class_value, "default")] for class_value in class_labels],
+        [
+            group_to_code[config.class_to_group.get(class_value, "default")]
+            for class_value in class_labels
+        ],
         dtype=np.int16,
     )
     return class_group_codes[class_codes], group_labels
@@ -62,7 +67,7 @@ def _iter_class_tier_groups(
     class_name,
     tier_id: np.ndarray,
     n_tiers: int,
-    mask: Optional[np.ndarray] = None,
+    mask: np.ndarray | None = None,
 ):
     """Yield `(class_name, tier_id, row_indices)` groups without pandas."""
     class_codes, class_labels = _encode_class_name_values(class_name)
@@ -83,12 +88,10 @@ def _iter_class_tier_groups(
     pair_codes = class_codes.astype(np.int64) * n_tiers + tier_subset.astype(np.int64)
     order = np.argsort(pair_codes, kind="mergesort")
     sorted_pair_codes = pair_codes[order]
-    group_starts = np.flatnonzero(
-        np.r_[True, sorted_pair_codes[1:] != sorted_pair_codes[:-1]]
-    )
+    group_starts = np.flatnonzero(np.r_[True, sorted_pair_codes[1:] != sorted_pair_codes[:-1]])
     group_stops = np.append(group_starts[1:], len(order))
 
-    for start, stop in zip(group_starts, group_stops):
+    for start, stop in zip(group_starts, group_stops, strict=True):
         idx_arr = row_index[order[start:stop]]
         pair_code = int(sorted_pair_codes[start])
         class_code = pair_code // n_tiers
@@ -101,8 +104,8 @@ def resolve_tiers_vec(
     entry_year: np.ndarray,
     age: np.ndarray,
     yos: np.ndarray,
-    entry_age: Optional[np.ndarray] = None,
-) -> Tuple[np.ndarray, np.ndarray]:
+    entry_age: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     entry_year = np.asarray(entry_year, dtype=np.int64)
     age = np.asarray(age, dtype=np.int64)
     yos = np.asarray(yos, dtype=np.int64)
@@ -115,7 +118,9 @@ def resolve_tiers_vec(
 
     group_codes, group_labels = _encode_class_group_values(config, class_name)
     eligibility_by_tier_group = tuple(
-        tuple(tier.resolve_eligibility(group_label, config.tier_defs) for group_label in group_labels)
+        tuple(
+            tier.resolve_eligibility(group_label, config.tier_defs) for group_label in group_labels
+        )
         for tier in config.tier_defs
     )
 
@@ -145,7 +150,7 @@ def resolve_tiers_vec(
     tier_id[tier_id == -1] = len(config.tier_defs) - 1
 
     ret_status = np.full(len(entry_year), NON_VESTED, dtype=np.int8)
-    for tier_index, tier in enumerate(config.tier_defs):
+    for tier_index, _tier in enumerate(config.tier_defs):
         tier_mask = tier_id == tier_index
         if not tier_mask.any():
             continue
@@ -228,9 +233,7 @@ def resolve_ben_mult_vec(
     for class_name_value, tier_index, idx_arr in _iter_class_tier_groups(
         class_name, tier_id, n_tiers
     ):
-        rules = config.resolve_ben_mult(
-            class_name_value, config.tier_id_to_name[tier_index]
-        )
+        rules = config.resolve_ben_mult(class_name_value, config.tier_id_to_name[tier_index])
         if rules is None:
             continue
 

@@ -22,7 +22,7 @@ populate every column.
 
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 import pandas as pd
 
@@ -35,9 +35,7 @@ def _missing_columns(df: pd.DataFrame, expected: Sequence[str]) -> list[str]:
     return [c for c in expected if c not in df.columns]
 
 
-def _columns_with_any_nan(
-    df: pd.DataFrame, columns: Iterable[str]
-) -> dict[str, list[int]]:
+def _columns_with_any_nan(df: pd.DataFrame, columns: Iterable[str]) -> dict[str, list[int]]:
     """Return ``{column: [row_indices_with_nan]}`` for columns containing NaN."""
     out: dict[str, list[int]] = {}
     for col in columns:
@@ -47,9 +45,7 @@ def _columns_with_any_nan(
     return out
 
 
-def _columns_not_all_nan(
-    df: pd.DataFrame, columns: Iterable[str]
-) -> list[str]:
+def _columns_not_all_nan(df: pd.DataFrame, columns: Iterable[str]) -> list[str]:
     return [col for col in columns if not df[col].isna().all()]
 
 
@@ -85,8 +81,7 @@ def assert_output_uniformity(
     missing = _missing_columns(df, canonical_columns)
     if missing:
         raise OutputUniformityError(
-            f"[{plan_name} {output_name}] missing canonical columns: "
-            f"{missing}"
+            f"[{plan_name} {output_name}] missing canonical columns: " f"{missing}"
         )
 
     inapplicable_set = set(inapplicable)

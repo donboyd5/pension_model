@@ -128,13 +128,17 @@ def compute_current_retiree_liability(
 
     projected = pd.concat(projected_groups, ignore_index=True)
 
-    return projected.groupby("year").agg(
-        retire_ben_current_est=("total_ben_current", "sum"),
-        aal_retire_current_est=pd.NamedAgg(
-            "pvfb_retire_current",
-            aggfunc=lambda x: (x * projected.loc[x.index, "n_retire_current"]).sum(),
-        ),
-    ).reset_index()
+    return (
+        projected.groupby("year")
+        .agg(
+            retire_ben_current_est=("total_ben_current", "sum"),
+            aal_retire_current_est=pd.NamedAgg(
+                "pvfb_retire_current",
+                aggfunc=lambda x: (x * projected.loc[x.index, "n_retire_current"]).sum(),
+            ),
+        )
+        .reset_index()
+    )
 
 
 def compute_current_term_vested_liability(

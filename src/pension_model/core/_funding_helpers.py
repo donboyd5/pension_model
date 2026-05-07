@@ -19,7 +19,7 @@ import math
 import numpy as np
 import pandas as pd
 
-from pension_model.core.pipeline import _get_pmt
+from pension_model.core.pipeline_current import _get_pmt
 
 
 def _get_init_row(init_funding: pd.DataFrame, class_name: str) -> pd.Series:
@@ -32,8 +32,14 @@ def _get_init_row(init_funding: pd.DataFrame, class_name: str) -> pd.Series:
 
 
 def _ava_gain_loss_smoothing(
-    ava_prev, net_cf, mva, dr,
-    defer_y1_prev, defer_y2_prev, defer_y3_prev, defer_y4_prev,
+    ava_prev,
+    net_cf,
+    mva,
+    dr,
+    defer_y1_prev,
+    defer_y2_prev,
+    defer_y3_prev,
+    defer_y4_prev,
 ):
     """AVA gain/loss deferral smoothing (4-year phased recognition).
 
@@ -51,51 +57,65 @@ def _ava_gain_loss_smoothing(
     if math.copysign(1, remain_defer_boy) == math.copysign(1, defer_y4_prev) or defer_y4_prev == 0:
         aft_offset_y4 = remain_defer_boy
     else:
-        aft_offset_y4 = math.copysign(
-            max(0, abs(remain_defer_boy) - abs(defer_y4_prev)),
-            remain_defer_boy) if remain_defer_boy != 0 else 0.0
+        aft_offset_y4 = (
+            math.copysign(max(0, abs(remain_defer_boy) - abs(defer_y4_prev)), remain_defer_boy)
+            if remain_defer_boy != 0
+            else 0.0
+        )
     if math.copysign(1, aft_offset_y4) == math.copysign(1, defer_y3_prev) or defer_y3_prev == 0:
         new_y4 = defer_y3_prev * 0.5
     else:
-        new_y4 = math.copysign(
-            max(0, abs(defer_y3_prev) - abs(aft_offset_y4)),
-            defer_y3_prev) * 0.5 if defer_y3_prev != 0 else 0.0
+        new_y4 = (
+            math.copysign(max(0, abs(defer_y3_prev) - abs(aft_offset_y4)), defer_y3_prev) * 0.5
+            if defer_y3_prev != 0
+            else 0.0
+        )
 
     # Step 2: offset defer_y3
     if math.copysign(1, aft_offset_y4) == math.copysign(1, defer_y3_prev) or defer_y3_prev == 0:
         aft_offset_y3 = aft_offset_y4
     else:
-        aft_offset_y3 = math.copysign(
-            max(0, abs(aft_offset_y4) - abs(defer_y3_prev)),
-            aft_offset_y4) if aft_offset_y4 != 0 else 0.0
+        aft_offset_y3 = (
+            math.copysign(max(0, abs(aft_offset_y4) - abs(defer_y3_prev)), aft_offset_y4)
+            if aft_offset_y4 != 0
+            else 0.0
+        )
     if math.copysign(1, aft_offset_y3) == math.copysign(1, defer_y2_prev) or defer_y2_prev == 0:
         new_y3 = defer_y2_prev * (2 / 3)
     else:
-        new_y3 = math.copysign(
-            max(0, abs(defer_y2_prev) - abs(aft_offset_y3)),
-            defer_y2_prev) * (2 / 3) if defer_y2_prev != 0 else 0.0
+        new_y3 = (
+            math.copysign(max(0, abs(defer_y2_prev) - abs(aft_offset_y3)), defer_y2_prev) * (2 / 3)
+            if defer_y2_prev != 0
+            else 0.0
+        )
 
     # Step 3: offset defer_y2
     if math.copysign(1, aft_offset_y3) == math.copysign(1, defer_y2_prev) or defer_y2_prev == 0:
         aft_offset_y2 = aft_offset_y3
     else:
-        aft_offset_y2 = math.copysign(
-            max(0, abs(aft_offset_y3) - abs(defer_y2_prev)),
-            aft_offset_y3) if aft_offset_y3 != 0 else 0.0
+        aft_offset_y2 = (
+            math.copysign(max(0, abs(aft_offset_y3) - abs(defer_y2_prev)), aft_offset_y3)
+            if aft_offset_y3 != 0
+            else 0.0
+        )
     if math.copysign(1, aft_offset_y2) == math.copysign(1, defer_y1_prev) or defer_y1_prev == 0:
         new_y2 = defer_y1_prev * (3 / 4)
     else:
-        new_y2 = math.copysign(
-            max(0, abs(defer_y1_prev) - abs(aft_offset_y2)),
-            defer_y1_prev) * (3 / 4) if defer_y1_prev != 0 else 0.0
+        new_y2 = (
+            math.copysign(max(0, abs(defer_y1_prev) - abs(aft_offset_y2)), defer_y1_prev) * (3 / 4)
+            if defer_y1_prev != 0
+            else 0.0
+        )
 
     # Step 4: offset defer_y1
     if math.copysign(1, aft_offset_y2) == math.copysign(1, defer_y1_prev) or defer_y1_prev == 0:
         aft_offset_y1 = aft_offset_y2
     else:
-        aft_offset_y1 = math.copysign(
-            max(0, abs(aft_offset_y2) - abs(defer_y1_prev)),
-            aft_offset_y2) if aft_offset_y2 != 0 else 0.0
+        aft_offset_y1 = (
+            math.copysign(max(0, abs(aft_offset_y2) - abs(defer_y1_prev)), aft_offset_y2)
+            if aft_offset_y2 != 0
+            else 0.0
+        )
     new_y1 = aft_offset_y1 * (4 / 5)
 
     remain_defer_eoy = new_y1 + new_y2 + new_y3 + new_y4
@@ -134,11 +154,7 @@ def _aal_rollforward(aal_prev, nc, ben, refund, liab_gl, dr):
     precomputed ``sqrt_factor`` — so the floating-point operations match
     the original inline expression bit-for-bit (see bit-identity risk #1).
     """
-    return (
-        aal_prev * (1 + dr)
-        + (nc - ben - refund) * (1 + dr) ** 0.5
-        + liab_gl
-    )
+    return aal_prev * (1 + dr) + (nc - ben - refund) * (1 + dr) ** 0.5 + liab_gl
 
 
 def _mva_rollforward(mva_prev, net_cf, roa):
@@ -204,15 +220,18 @@ def _roll_amort_layer(debt, pay, per, i, max_col, ual, dr, amo_pay_growth):
     intentionally NOT unified — see the build_amort_period_tables
     helper and the TRS-side diagonal-shift code.
     """
-    debt[i, 1:max_col + 1] = (
-        debt[i - 1, :max_col] * (1 + dr)
-        - pay[i - 1, :max_col] * (1 + dr) ** 0.5
+    debt[i, 1 : max_col + 1] = (
+        debt[i - 1, :max_col] * (1 + dr) - pay[i - 1, :max_col] * (1 + dr) ** 0.5
     )
-    debt[i, 0] = ual - debt[i, 1:max_col + 1].sum()
+    debt[i, 0] = ual - debt[i, 1 : max_col + 1].sum()
     for j in range(max_col):
         if per[i, j] > 0 and abs(debt[i, j]) > 1e-6:
             pay[i, j] = _get_pmt(
-                dr, amo_pay_growth, int(per[i, j]), debt[i, j], t=0.5,
+                dr,
+                amo_pay_growth,
+                int(per[i, j]),
+                debt[i, j],
+                t=0.5,
             )
         else:
             pay[i, j] = 0
@@ -240,16 +259,12 @@ def _populate_calibrated_nc_rates(f, liab, nc_cal, n_years):
     TRS's fallback chain (bit-identity risk #2 in the plan).
     """
     nc_legacy = liab["nc_rate_db_legacy_est"].values * nc_cal
-    nc_new_db = liab.get(
-        "nc_rate_db_new_est", pd.Series(np.zeros(n_years))
-    ).values * nc_cal
+    nc_new_db = liab.get("nc_rate_db_new_est", pd.Series(np.zeros(n_years))).values * nc_cal
     f.loc[1:, "nc_rate_db_legacy"] = nc_legacy[:-1]
     f.loc[1:, "nc_rate_db_new"] = nc_new_db[:-1]
 
     if "payroll_cb_new_est" in liab.columns:
-        nc_new_cb = liab.get(
-            "nc_rate_cb_new_est", pd.Series(np.zeros(n_years))
-        ).values
+        nc_new_cb = liab.get("nc_rate_cb_new_est", pd.Series(np.zeros(n_years))).values
         f.loc[1:, "nc_rate_cb_new"] = nc_new_cb[:-1]
 
 

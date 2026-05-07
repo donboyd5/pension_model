@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import ConfigDict, Field
 
 from pension_model.schemas.base import StrictModel
@@ -36,7 +34,7 @@ class Cola(StrictModel):
     current_retire: float = 0.0
     current_retire_one_time: float = 0.0
     one_time_cola: bool = False
-    proration_cutoff_year: Optional[int] = None
+    proration_cutoff_year: int | None = None
 
 
 class CashBalance(StrictModel):
@@ -74,11 +72,11 @@ class Benefit(StrictModel):
     db_ee_interest_rate: float = 0.0
     retire_refund_ratio: float = 1.0
     fas_years_default: int
-    fas_years_grandfathered: Optional[int] = Field(
+    fas_years_grandfathered: int | None = Field(
         default=None,
         description="Override fas_years for grandfathered tiers (TXTRS).",
     )
-    min_benefit_monthly: Optional[float] = Field(
+    min_benefit_monthly: float | None = Field(
         default=None,
         description="Floor on monthly benefit at retirement (TXTRS).",
     )
@@ -89,5 +87,5 @@ class Benefit(StrictModel):
     )
     benefit_types: list[str] = Field(default_factory=lambda: ["db"])
     cola: Cola = Field(default_factory=Cola)
-    cash_balance: Optional[CashBalance] = None
-    dc: Optional[DcSpec] = None
+    cash_balance: CashBalance | None = None
+    dc: DcSpec | None = None

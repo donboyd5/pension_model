@@ -36,7 +36,6 @@ import pandas as pd
 
 from pension_model.core.pipeline_current import _get_pmt, _npv, _recur_grow3
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PLAN_DIR = PROJECT_ROOT / "plans" / "frs"
 CONFIG_PATH = PLAN_DIR / "config" / "plan_config.json"
@@ -59,9 +58,7 @@ def build_class_stream(
     """
     if pvfb_term_current == 0:
         return [0.0] * amo_period
-    first_payment = _get_pmt(
-        cashflow_rate, payroll_growth, amo_period, pvfb_term_current, t=1
-    )
+    first_payment = _get_pmt(cashflow_rate, payroll_growth, amo_period, pvfb_term_current, t=1)
     return list(_recur_grow3(first_payment, payroll_growth, amo_period))
 
 

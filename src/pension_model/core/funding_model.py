@@ -57,8 +57,11 @@ def load_funding_inputs(funding_dir: Path) -> dict:
 
 
 def build_amort_period_tables(
-    amort_layers: pd.DataFrame, class_name: str,
-    amo_period_new: int, funding_lag: int, model_period: int,
+    amort_layers: pd.DataFrame,
+    class_name: str,
+    amo_period_new: int,
+    funding_lag: int,
+    model_period: int,
 ) -> tuple:
     """
     Build amortization period matrices for current and future hires.
@@ -72,11 +75,15 @@ def build_amort_period_tables(
     # R converts "n/a" to amo_period_new, then groups by period
     class_layers["amo_period"] = pd.to_numeric(
         class_layers["amo_period"].replace("n/a", str(amo_period_new))
-    ).fillna(amo_period_new)  # Also handle numeric NaN from CSV loading
+    ).fillna(
+        amo_period_new
+    )  # Also handle numeric NaN from CSV loading
     # R groups by (class, amo_period) and sums balances
-    class_layers = (class_layers.groupby("amo_period", as_index=False)
-                    .agg({"amo_balance": "sum"})
-                    .sort_values("amo_period", ascending=False))
+    class_layers = (
+        class_layers.groupby("amo_period", as_index=False)
+        .agg({"amo_balance": "sum"})
+        .sort_values("amo_period", ascending=False)
+    )
 
     current_periods_init = class_layers["amo_period"].dropna().values
     # max_col must accommodate all existing layers AND future layers
@@ -90,7 +97,7 @@ def build_amort_period_tables(
 
     # Current hire periods
     current = np.zeros((n_rows, max_col))
-    current[0, :len(current_periods_init)] = current_periods_init
+    current[0, : len(current_periods_init)] = current_periods_init
     future_period = amo_period_new + funding_lag
     for row in range(1, n_rows):
         current[row, 0] = future_period

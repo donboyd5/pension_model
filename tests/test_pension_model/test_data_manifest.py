@@ -8,7 +8,6 @@ templates, and returns missing required files.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 
@@ -18,7 +17,6 @@ from pension_model.config_validation import (
     _resolve_manifest_path,
     validate_data_manifest,
 )
-
 
 pytestmark = [pytest.mark.unit]
 
@@ -52,22 +50,25 @@ def test_missing_required_file_reported(tmp_path):
     data_dir = plan_root / "data"
     (data_dir / "demographics").mkdir(parents=True)
     (plan_root / "data_manifest.json").write_text(
-        json.dumps({
-            "schema_version": 1,
-            "files": [
-                {
-                    "path": "demographics/retiree_distribution.csv",
-                    "scope": "plan",
-                    "required": True,
-                    "purpose": "test",
-                },
-            ],
-        })
+        json.dumps(
+            {
+                "schema_version": 1,
+                "files": [
+                    {
+                        "path": "demographics/retiree_distribution.csv",
+                        "scope": "plan",
+                        "required": True,
+                        "purpose": "test",
+                    },
+                ],
+            }
+        )
     )
 
     class FakeConfig:
         classes = ("all",)
         plan_name = "plan_x"
+
         def resolve_data_dir(self):
             return data_dir
 
@@ -85,23 +86,26 @@ def test_fallback_path_satisfies_requirement(tmp_path):
     # Only the fallback file exists, not the per-class primary
     (data_dir / "demographics" / "salary_growth.csv").write_text("yos,growth\n")
     (plan_root / "data_manifest.json").write_text(
-        json.dumps({
-            "schema_version": 1,
-            "files": [
-                {
-                    "path": "demographics/{class_name}_salary_growth.csv",
-                    "scope": "per_class",
-                    "required": True,
-                    "fallback": "demographics/salary_growth.csv",
-                    "purpose": "test",
-                },
-            ],
-        })
+        json.dumps(
+            {
+                "schema_version": 1,
+                "files": [
+                    {
+                        "path": "demographics/{class_name}_salary_growth.csv",
+                        "scope": "per_class",
+                        "required": True,
+                        "fallback": "demographics/salary_growth.csv",
+                        "purpose": "test",
+                    },
+                ],
+            }
+        )
     )
 
     class FakeConfig:
         classes = ("all",)
         plan_name = "plan_x"
+
         def resolve_data_dir(self):
             return data_dir
 
@@ -114,22 +118,25 @@ def test_optional_files_are_not_required(tmp_path):
     data_dir = plan_root / "data"
     data_dir.mkdir(parents=True)
     (plan_root / "data_manifest.json").write_text(
-        json.dumps({
-            "schema_version": 1,
-            "files": [
-                {
-                    "path": "demographics/entrant_profile.csv",
-                    "scope": "plan",
-                    "required": False,
-                    "purpose": "test",
-                },
-            ],
-        })
+        json.dumps(
+            {
+                "schema_version": 1,
+                "files": [
+                    {
+                        "path": "demographics/entrant_profile.csv",
+                        "scope": "plan",
+                        "required": False,
+                        "purpose": "test",
+                    },
+                ],
+            }
+        )
     )
 
     class FakeConfig:
         classes = ("all",)
         plan_name = "plan_x"
+
         def resolve_data_dir(self):
             return data_dir
 

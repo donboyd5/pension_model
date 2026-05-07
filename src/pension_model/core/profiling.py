@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-import tracemalloc
 import time
+import tracemalloc
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import median
@@ -97,7 +97,9 @@ def summarize_runtime_samples(samples: list[dict]) -> dict:
         "liability_timing": float(median(sample["liability_timing"] for sample in samples)),
         "funding_timing": _median_or_none([sample["funding_timing"] for sample in samples]),
         "prepare_peak_bytes": _median_or_none([sample["prepare_peak_bytes"] for sample in samples]),
-        "liability_peak_bytes": _median_or_none([sample["liability_peak_bytes"] for sample in samples]),
+        "liability_peak_bytes": _median_or_none(
+            [sample["liability_peak_bytes"] for sample in samples]
+        ),
         "funding_peak_bytes": _median_or_none([sample["funding_peak_bytes"] for sample in samples]),
     }
 

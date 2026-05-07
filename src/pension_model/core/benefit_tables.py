@@ -15,16 +15,19 @@ Design for generalization:
 
 import numpy as np
 import pandas as pd
+
 from pension_model.config_schema import EARLY, NORM, VESTED, PlanConfig
 
 try:
     from numba import njit as _njit
 except ImportError:
+
     def _njit(func=None, **kwargs):
         """No-op fallback when numba is not installed."""
         if func is not None:
             return func
         return lambda f: f
+
 
 def _get_salary_growth_col(class_name: str, constants=None) -> str:
     """Resolve salary growth column name for a class.
@@ -42,6 +45,7 @@ def _get_salary_growth_col(class_name: str, constants=None) -> str:
 # ---------------------------------------------------------------------------
 # 1. Salary / headcount table construction
 # ---------------------------------------------------------------------------
+
 
 def _is_long_format(df: pd.DataFrame, value_col: str) -> bool:
     """Check if a DataFrame is already in long format (age, yos, value)."""
@@ -87,10 +91,7 @@ def build_salary_headcount_table(
     sg = sg.rename(columns={growth_col: "salary_increase"})
 
     # Extend to cover all possible yos values (up to max yos in headcount)
-    max_possible_yos = (
-        constants.max_age - constants.min_age
-        if constants is not None else 102
-    )
+    max_possible_yos = constants.max_age - constants.min_age if constants is not None else 102
     if sg["yos"].max() < max_possible_yos:
         extra = pd.DataFrame({"yos": range(sg["yos"].max() + 1, max_possible_yos + 1)})
         sg = pd.concat([sg, extra], ignore_index=True)
@@ -130,7 +131,9 @@ def build_salary_headcount_table(
     merged = merged.merge(sg[["yos", "cumprod_salary_increase"]], on="yos", how="left")
     merged["entry_salary"] = merged["salary"] / merged["cumprod_salary_increase"]
 
-    result = merged[["entry_year", "entry_age", "age", "yos", "count", "entry_salary"]].reset_index(drop=True)
+    result = merged[["entry_year", "entry_age", "age", "yos", "count", "entry_salary"]].reset_index(
+        drop=True
+    )
     result["class_name"] = class_name
     return result
 
@@ -149,14 +152,18 @@ def build_entrant_profile(salary_headcount: pd.DataFrame) -> pd.DataFrame:
     recent = salary_headcount[salary_headcount["entry_year"] == max_year].copy()
     total = recent["count"].sum()
     recent["entrant_dist"] = recent["count"] / total
-    return recent[["entry_age", "entry_salary"]].rename(
-        columns={"entry_salary": "start_sal"}
-    ).assign(entrant_dist=recent["entrant_dist"].values).reset_index(drop=True)
+    return (
+        recent[["entry_age", "entry_salary"]]
+        .rename(columns={"entry_salary": "start_sal"})
+        .assign(entrant_dist=recent["entrant_dist"].values)
+        .reset_index(drop=True)
+    )
 
 
 # ---------------------------------------------------------------------------
 # 2. Salary / benefit table (per cohort: salary, FAS, db_ee_balance)
 # ---------------------------------------------------------------------------
+
 
 def _rolling_mean_lagged(arr: np.ndarray, window: int) -> np.ndarray:
     """
@@ -193,8 +200,9 @@ def _cum_fv(interest_rate: float, contributions: np.ndarray) -> np.ndarray:
     return balance
 
 
-def _cum_fv_vec(interest_vec: np.ndarray, contributions: np.ndarray,
-                first_value: float = 0.0) -> np.ndarray:
+def _cum_fv_vec(
+    interest_vec: np.ndarray, contributions: np.ndarray, first_value: float = 0.0
+) -> np.ndarray:
     """
     Cumulative future value with time-varying interest rates.
 
@@ -219,8 +227,8 @@ def build_salary_benefit_table(
     salary_growth: pd.DataFrame,
     class_name: str,
     constants,
-    actual_icr_series: "Optional[pd.Series]" = None,
-    forward_salary_growth: "Optional[pd.DataFrame]" = None,
+    actual_icr_series: "pd.Series | None" = None,
+    forward_salary_growth: "pd.DataFrame | None" = None,
 ) -> pd.DataFrame:
     """
     Build the salary/benefit table for all cohorts.
@@ -276,8 +284,7 @@ def build_salary_benefit_table(
     entry_ages = np.asarray(entrant_profile["entry_age"].values, dtype=np.int64)
 
     # Vectorized cross product (entry_year, entry_age, yos) → filter term_age <= max_age
-    ey_axis = np.arange(r.entry_year_range.start, r.entry_year_range.stop,
-                        dtype=np.int64)
+    ey_axis = np.arange(r.entry_year_range.start, r.entry_year_range.stop, dtype=np.int64)
     yos_axis = np.arange(0, max_yos + 1, dtype=np.int64)
     mg_ey, mg_ea, mg_yos = np.meshgrid(ey_axis, entry_ages, yos_axis, indexing="ij")
     ey_flat = mg_ey.ravel()
@@ -290,21 +297,28 @@ def build_salary_benefit_table(
     yos_flat = yos_flat[keep]
     term_age_flat = term_age_flat[keep]
 
-    df = pd.DataFrame({
-        "entry_year": ey_flat,
-        "entry_age": ea_flat,
-        "yos": yos_flat,
-        "term_age": term_age_flat,
-    })
+    df = pd.DataFrame(
+        {
+            "entry_year": ey_flat,
+            "entry_age": ea_flat,
+            "yos": yos_flat,
+            "term_age": term_age_flat,
+        }
+    )
 
     # Vectorized tier at term_age (resolve_tiers_vec takes (class, ey, age, yos))
     from pension_model.config_resolvers import resolve_tiers_vec as _resolve_tiers_int
+
     cn_arr = pd.Categorical.from_codes(
         np.zeros(len(df), dtype=np.int8),
         categories=[class_name],
     )
     tier_id_arr, ret_status_arr = _resolve_tiers_int(
-        constants, cn_arr, ey_flat, term_age_flat, yos_flat,
+        constants,
+        cn_arr,
+        ey_flat,
+        term_age_flat,
+        yos_flat,
     )
     df["tier_id"] = tier_id_arr
     df["ret_status"] = ret_status_arr
@@ -332,7 +346,8 @@ def build_salary_benefit_table(
     df["salary"] = np.where(
         df["entry_year"] <= max_hist_year,
         df["entry_salary"] * df["cumprod_salary_increase"],
-        df["start_sal"] * df["cumprod_salary_increase"]
+        df["start_sal"]
+        * df["cumprod_salary_increase"]
         * (1 + econ.payroll_growth) ** (df["entry_year"] - max_hist_year),
     )
 
@@ -345,7 +360,8 @@ def build_salary_benefit_table(
 
     # Compute FAS and db_ee_balance within each (entry_year, entry_age) group.
     # FAS = lagged rolling mean of salary (window = fas_period, NOT including current)
-    # db_ee_balance = cumulative contributions with lag (balance[0]=0, balance[i]=sum of contribs[0..i-1])
+    # db_ee_balance = cumulative contributions, lagged
+    # (balance[0]=0, balance[i]=sum of contribs[0..i-1])
     df = df.sort_values(["entry_year", "entry_age", "yos"]).reset_index(drop=True)
     grp_keys = ["entry_year", "entry_age"]
     g = df.groupby(grp_keys)
@@ -360,7 +376,12 @@ def build_salary_benefit_table(
     for fp in df["fas_period"].unique():
         mask = first_fas == fp
         if mask.any():
-            rolled = sal_shifted.where(mask).groupby([df.loc[mask, c] for c in grp_keys]).rolling(fp, min_periods=1).mean()
+            rolled = (
+                sal_shifted.where(mask)
+                .groupby([df.loc[mask, c] for c in grp_keys])
+                .rolling(fp, min_periods=1)
+                .mean()
+            )
             df.loc[rolled.index.get_level_values(-1), "fas"] = rolled.values
 
     # db_ee_balance: cumsum of lagged contributions with interest
@@ -397,12 +418,12 @@ def build_salary_benefit_table(
             group = group.sort_values("yos")
             cal_years = group["_cal_year"].values
             # Look up actual ICR for each calendar year
-            icr_vals = np.array([actual_icr_series.get(int(y), 0.04)
-                                 for y in cal_years])
+            icr_vals = np.array([actual_icr_series.get(int(y), 0.04) for y in cal_years])
             group["cb_ee_balance"] = _cum_fv_vec(icr_vals, group["cb_ee_cont"].values)
             group["cb_er_balance"] = _cum_fv_vec(icr_vals, group["cb_er_cont"].values)
             group["cb_balance"] = group["cb_ee_balance"] + np.where(
-                group["yos"].values >= cb_vesting, group["cb_er_balance"], 0.0)
+                group["yos"].values >= cb_vesting, group["cb_er_balance"], 0.0
+            )
             return group
 
         cb_parts = []
@@ -414,8 +435,18 @@ def build_salary_benefit_table(
 
     df = df[df["salary"].notna()].copy()
 
-    out_cols = ["entry_year", "entry_age", "yos", "term_age", "tier_id", "ret_status",
-                "salary", "fas", "db_ee_balance", "cumprod_salary_increase"]
+    out_cols = [
+        "entry_year",
+        "entry_age",
+        "yos",
+        "term_age",
+        "tier_id",
+        "ret_status",
+        "salary",
+        "fas",
+        "db_ee_balance",
+        "cumprod_salary_increase",
+    ]
     # Include CB columns if they were computed
     for col in ["cb_ee_cont", "cb_er_cont", "cb_ee_balance", "cb_er_balance", "cb_balance"]:
         if col in df.columns:
@@ -429,6 +460,7 @@ def build_salary_benefit_table(
 # ---------------------------------------------------------------------------
 # 2b. Separation rate table (withdrawal + retirement by tier)
 # ---------------------------------------------------------------------------
+
 
 def build_separation_rate_table(
     term_rate_avg: pd.DataFrame,
@@ -468,11 +500,10 @@ def build_separation_rate_table(
     # Pivot term rates to long format
     term_long = term_rate_avg.melt(id_vars="yos", var_name="age_group", value_name="term_rate")
 
-    entry_ages = set(int(ea) for ea in entrant_profile["entry_age"].values)
+    entry_ages = {int(ea) for ea in entrant_profile["entry_age"].values}
 
     # Vectorized expand_grid: (entry_year, term_age, yos) × filter entry_age in set
-    ey_axis = np.arange(r.entry_year_range.start, r.entry_year_range.stop,
-                        dtype=np.int64)
+    ey_axis = np.arange(r.entry_year_range.start, r.entry_year_range.stop, dtype=np.int64)
     ta_axis = np.arange(r.age_range.start, r.age_range.stop, dtype=np.int64)
     yos_axis = np.arange(r.yos_range.start, r.yos_range.stop, dtype=np.int64)
     mg_ey, mg_ta, mg_yos = np.meshgrid(ey_axis, ta_axis, yos_axis, indexing="ij")
@@ -489,13 +520,15 @@ def build_separation_rate_table(
     ea_flat = ea_flat[keep]
     term_year_flat = ey_flat + yos_flat
 
-    df = pd.DataFrame({
-        "entry_year": ey_flat,
-        "term_age": ta_flat,
-        "yos": yos_flat,
-        "entry_age": ea_flat,
-        "term_year": term_year_flat,
-    })
+    df = pd.DataFrame(
+        {
+            "entry_year": ey_flat,
+            "term_age": ta_flat,
+            "yos": yos_flat,
+            "entry_age": ea_flat,
+            "term_year": term_year_flat,
+        }
+    )
 
     # Assign age groups using pd.cut (matching R's cut())
     df["age_group"] = pd.cut(df["term_age"], bins=breaks, labels=labels, right=True)
@@ -518,9 +551,7 @@ def build_separation_rate_table(
         merge_specs.append((tbl, f"early_retire_rate_{set_name}"))
     for tbl, col_name in merge_specs:
         rate_col = [c for c in tbl.columns if c != "age"][0]
-        sub = tbl[["age", rate_col]].rename(
-            columns={"age": "_ret_age", rate_col: col_name}
-        )
+        sub = tbl[["age", rate_col]].rename(columns={"age": "_ret_age", rate_col: col_name})
         df = df.merge(sub, left_on="term_age", right_on="_ret_age", how="left")
         df = df.drop(columns=["_ret_age"])
 
@@ -533,6 +564,7 @@ def build_separation_rate_table(
 
     # Vectorized tier at term_age
     from pension_model.config_resolvers import resolve_tiers_vec as _resolve_tiers_int
+
     n = len(df)
     cn_arr = pd.Categorical.from_codes(
         np.zeros(n, dtype=np.int8),
@@ -554,9 +586,7 @@ def build_separation_rate_table(
     # fall through to the withdrawal rate.
     is_norm = rs_arr == NORM
     is_early = rs_arr == EARLY
-    rate_set_by_tid = np.array(
-        constants.tier_id_to_retire_rate_set, dtype=object
-    )
+    rate_set_by_tid = np.array(constants.tier_id_to_retire_rate_set, dtype=object)
     rate_set_per_row = rate_set_by_tid[tid_arr]
     sep_rate = df["term_rate"].values.copy()
     for set_name in normal_retire_rate_by_set:
@@ -576,9 +606,19 @@ def build_separation_rate_table(
     df["separation_prob"] = rp_lagged - df["remaining_prob"]
 
     df["class_name"] = class_name
-    return df[["entry_year", "entry_age", "term_age", "yos", "term_year",
-               "separation_rate", "remaining_prob", "separation_prob",
-               "class_name"]].reset_index(drop=True)
+    return df[
+        [
+            "entry_year",
+            "entry_age",
+            "term_age",
+            "yos",
+            "term_year",
+            "separation_rate",
+            "remaining_prob",
+            "separation_prob",
+            "class_name",
+        ]
+    ].reset_index(drop=True)
 
 
 # ---------------------------------------------------------------------------
@@ -667,11 +707,12 @@ def _compute_cb_annuity_metrics(
 
     return surv_icr, ann_factor_acr
 
+
 def build_ann_factor_table(
     salary_benefit_table: pd.DataFrame,
     compact_mortality_by_class: dict,
     constants,
-    expected_icr_by_class: "Optional[dict]" = None,
+    expected_icr_by_class: "dict | None" = None,
 ) -> pd.DataFrame:
     """Build annuity factor table for one or more classes in a single pass.
 
@@ -700,7 +741,11 @@ def build_ann_factor_table(
         when CB is active for any class.
     """
     from pension_model.config_resolvers import (
-        resolve_tiers_vec as _resolve_tiers_int, resolve_cola_vec, EARLY,
+        EARLY,
+        resolve_cola_vec,
+    )
+    from pension_model.config_resolvers import (
+        resolve_tiers_vec as _resolve_tiers_int,
     )
 
     econ = constants.economic
@@ -712,9 +757,9 @@ def build_ann_factor_table(
     # ``salary_benefit_table`` has one row per
     # (class_name, entry_year, entry_age, yos) cohort cell, so an extra
     # ``drop_duplicates`` scan just adds hot-path overhead.
-    cohorts = salary_benefit_table[
-        ["class_name", "entry_year", "entry_age", "yos"]
-    ].reset_index(drop=True)
+    cohorts = salary_benefit_table[["class_name", "entry_year", "entry_age", "yos"]].reset_index(
+        drop=True
+    )
     term_age_c = cohorts["entry_age"].values + cohorts["yos"].values
     cohorts = cohorts[term_age_c <= max_age].reset_index(drop=True)
 
@@ -730,17 +775,16 @@ def build_ann_factor_table(
     ey_arr = np.repeat(cohorts["entry_year"].values, n_per_cohort).astype(np.int64)
     ea_arr = np.repeat(cohorts["entry_age"].values, n_per_cohort).astype(np.int64)
     yos_arr = np.repeat(cohorts["yos"].values, n_per_cohort).astype(np.int64)
-    dist_age_arr = np.concatenate([
-        np.arange(ta, max_age + 1, dtype=np.int64) for ta in term_ages
-    ])
+    dist_age_arr = np.concatenate([np.arange(ta, max_age + 1, dtype=np.int64) for ta in term_ages])
 
     dist_year_arr = ey_arr + dist_age_arr - ea_arr
     term_year_arr = ey_arr + yos_arr
 
     # --- 3. Vectorized tier-at-dist-age resolution (integer) ---
     cn_arr = pd.Categorical.from_codes(class_code_arr, categories=class_labels)
-    tid_da, rs_da = _resolve_tiers_int(constants, cn_arr, ey_arr, dist_age_arr, yos_arr,
-                                        entry_age=ea_arr)
+    tid_da, rs_da = _resolve_tiers_int(
+        constants, cn_arr, ey_arr, dist_age_arr, yos_arr, entry_age=ea_arr
+    )
 
     # --- 4. Discount rate (single value across all current plans) ---
     dr_arr = np.full(len(dist_age_arr), econ.dr_current, dtype=np.float64)
@@ -774,26 +818,28 @@ def build_ann_factor_table(
     ) = _compute_annuity_metrics(mort_arr, dr_arr, cola_arr, n_per_cohort.astype(np.int64))
 
     # --- 8. Assemble DataFrame once, after the heavy array work ---
-    df = pd.DataFrame({
-        "class_name": pd.Categorical.from_codes(class_code_arr, categories=class_labels),
-        "entry_year": ey_arr,
-        "entry_age": ea_arr,
-        "dist_year": dist_year_arr,
-        "dist_age": dist_age_arr,
-        "yos": yos_arr,
-        "term_year": term_year_arr,
-        "mort_final": mort_arr,
-        "tier_id_at_da": tid_da,
-        "ret_status_at_da": rs_da,
-        "dr": dr_arr,
-        "cola": cola_arr,
-        "cum_dr": cum_dr_arr,
-        "cum_mort": cum_mort_arr,
-        "cum_cola": cum_cola_arr,
-        "cum_mort_dr": cum_mort_dr_arr,
-        "cum_mort_dr_cola": cum_mort_dr_cola_arr,
-        "ann_factor": ann_factor_arr,
-    })
+    df = pd.DataFrame(
+        {
+            "class_name": pd.Categorical.from_codes(class_code_arr, categories=class_labels),
+            "entry_year": ey_arr,
+            "entry_age": ea_arr,
+            "dist_year": dist_year_arr,
+            "dist_age": dist_age_arr,
+            "yos": yos_arr,
+            "term_year": term_year_arr,
+            "mort_final": mort_arr,
+            "tier_id_at_da": tid_da,
+            "ret_status_at_da": rs_da,
+            "dr": dr_arr,
+            "cola": cola_arr,
+            "cum_dr": cum_dr_arr,
+            "cum_mort": cum_mort_arr,
+            "cum_cola": cum_cola_arr,
+            "cum_mort_dr": cum_mort_dr_arr,
+            "cum_mort_dr_cola": cum_mort_dr_cola_arr,
+            "ann_factor": ann_factor_arr,
+        }
+    )
 
     # --- 9. CB annuity factors (per class that has CB) ---
     if expected_icr_by_class:
@@ -823,6 +869,7 @@ def build_ann_factor_table(
 # 4. Benefit table (db_benefit, pvfb_db_at_term_age)
 # ---------------------------------------------------------------------------
 
+
 def build_benefit_table(
     ann_factor_table: pd.DataFrame,
     salary_benefit_table: pd.DataFrame,
@@ -849,7 +896,8 @@ def build_benefit_table(
         optionally cb_benefit, pv_cb_benefit added. class_name is preserved.
     """
     from pension_model.config_resolvers import (
-        resolve_ben_mult_vec, resolve_reduce_factor_vec,
+        resolve_ben_mult_vec,
+        resolve_reduce_factor_vec,
     )
 
     cal = constants.benefit.cal_factor
@@ -878,12 +926,12 @@ def build_benefit_table(
 
     # Join salary/benefit data for FAS and db_ee_balance (+ CB columns if present).
     # Join key includes class_name so the merge is stacked-correct.
-    sbt_cols = ["class_name", "entry_year", "entry_age", "yos", "term_age",
-                "fas", "db_ee_balance"]
+    sbt_cols = ["class_name", "entry_year", "entry_age", "yos", "term_age", "fas", "db_ee_balance"]
     has_cb = "cb_balance" in salary_benefit_table.columns
     if has_cb:
-        sbt_cols.extend(["cb_balance", "cb_ee_balance", "cb_er_balance",
-                         "cb_ee_cont", "cb_er_cont"])
+        sbt_cols.extend(
+            ["cb_balance", "cb_ee_balance", "cb_er_balance", "cb_ee_cont", "cb_er_cont"]
+        )
     sbt_values = sbt_cols[5:]
     sbt_filtered = salary_benefit_table.loc[
         salary_benefit_table["term_age"] <= constants.ranges.max_age,
@@ -895,9 +943,8 @@ def build_benefit_table(
     # that contract holds, we can attach salary/FAS data by repeated row take
     # instead of a 7M-row merge. Fall back to the merge if the contract is not
     # met so the function remains correct for plausible future callers.
-    term_row_mask = (
-        df["dist_age"].to_numpy(dtype=np.int64, copy=False)
-        == df["term_age"].to_numpy(dtype=np.int64, copy=False)
+    term_row_mask = df["dist_age"].to_numpy(dtype=np.int64, copy=False) == df["term_age"].to_numpy(
+        dtype=np.int64, copy=False
     )
     ann_term = df.loc[term_row_mask, ["class_name", "entry_year", "entry_age", "yos", "term_age"]]
 
@@ -929,7 +976,11 @@ def build_benefit_table(
         )
 
     if aligned:
-        repeat_counts = constants.ranges.max_age - sbt_filtered["term_age"].to_numpy(dtype=np.int64, copy=False) + 1
+        repeat_counts = (
+            constants.ranges.max_age
+            - sbt_filtered["term_age"].to_numpy(dtype=np.int64, copy=False)
+            + 1
+        )
         lookup_index = np.repeat(np.arange(len(sbt_filtered), dtype=np.int64), repeat_counts)
         for col in sbt_values:
             df[col] = sbt_filtered[col].to_numpy(copy=False)[lookup_index]
@@ -1013,8 +1064,9 @@ def build_benefit_table(
     return df[out_cols]
 
 
-def build_final_benefit_table(benefit_table: pd.DataFrame,
-                              use_earliest_retire: bool = False) -> pd.DataFrame:
+def build_final_benefit_table(
+    benefit_table: pd.DataFrame, use_earliest_retire: bool = False
+) -> pd.DataFrame:
     """
     Determine distribution age and extract final benefit for each cohort.
 
@@ -1039,8 +1091,16 @@ def build_final_benefit_table(benefit_table: pd.DataFrame,
         bt["term_age"] = bt["entry_age"] + bt["yos"]
 
     if len(bt) == 0:
-        out_cols = ["class_name", "entry_year", "entry_age", "term_age", "dist_age",
-                    "db_benefit", "pvfb_db_at_term_age", "ann_factor_term"]
+        out_cols = [
+            "class_name",
+            "entry_year",
+            "entry_age",
+            "term_age",
+            "dist_age",
+            "db_benefit",
+            "pvfb_db_at_term_age",
+            "ann_factor_term",
+        ]
         for col in ["cb_benefit", "pv_cb_benefit", "cb_balance"]:
             if col in bt.columns:
                 out_cols.append(col)
@@ -1102,8 +1162,16 @@ def build_final_benefit_table(benefit_table: pd.DataFrame,
     fbt["db_benefit"] = fbt["db_benefit"].fillna(0)
     fbt["pvfb_db_at_term_age"] = fbt["pvfb_db_at_term_age"].fillna(0)
 
-    out_cols = ["class_name", "entry_year", "entry_age", "term_age", "dist_age",
-                "db_benefit", "pvfb_db_at_term_age", "ann_factor_term"]
+    out_cols = [
+        "class_name",
+        "entry_year",
+        "entry_age",
+        "term_age",
+        "dist_age",
+        "db_benefit",
+        "pvfb_db_at_term_age",
+        "ann_factor_term",
+    ]
     # Pass through CB columns if present
     for col in ["cb_benefit", "pv_cb_benefit", "cb_balance"]:
         if col in fbt.columns:
@@ -1116,6 +1184,7 @@ def build_final_benefit_table(benefit_table: pd.DataFrame,
 # ---------------------------------------------------------------------------
 # 5. Benefit valuation table (PVFB, PVFS, NC)
 # ---------------------------------------------------------------------------
+
 
 @_njit(cache=True)
 def _npv(rate, cashflows):
@@ -1156,7 +1225,7 @@ def _get_pvfb(sep_rate, dr, values):
             lag1_j = sep_rate[i + j - 1]
             # lag2[j]: shift right by 2 → lag2[j] = sr[j-2] if j>=2, else 0
             if j >= 2:
-                cum_surv *= (1.0 - sep_rate[i + j - 2])
+                cum_surv *= 1.0 - sep_rate[i + j - 2]
             sep_prob_j = cum_surv * lag1_j
             val_adj = values[i + j] * sep_prob_j
             total += val_adj / factor
@@ -1197,9 +1266,12 @@ _SEP_TYPE_LABELS = np.array(["non_vested", "vested", "retire"], dtype=object)
 
 
 def _get_pvfb_cb(
-    cb_ee_balance: np.ndarray, cb_ee_cont: np.ndarray,
-    cb_er_balance: np.ndarray, cb_er_cont: np.ndarray,
-    vesting_yos: int, retire_refund_ratio: float,
+    cb_ee_balance: np.ndarray,
+    cb_ee_cont: np.ndarray,
+    cb_er_balance: np.ndarray,
+    cb_er_cont: np.ndarray,
+    vesting_yos: int,
+    retire_refund_ratio: float,
     yos: np.ndarray,
     sep_kind: np.ndarray,
     sep_rate: np.ndarray,
@@ -1252,7 +1324,8 @@ def _get_pvfb_cb(
         # CB wealth by separation type
         sep_slice = sep_kind[i:]
         cb_wealth = np.where(
-            sep_slice == SEP_RETIRE, pv_cb_benefit,
+            sep_slice == SEP_RETIRE,
+            pv_cb_benefit,
             np.where(
                 sep_slice == SEP_VESTED,
                 retire_refund_ratio * pv_cb_benefit + (1 - retire_refund_ratio) * cb_bal_proj,
@@ -1315,8 +1388,8 @@ def build_benefit_val_table(
     benefit_table: pd.DataFrame,
     sep_rate_table: pd.DataFrame,
     constants,
-    expected_icr: "Optional[float]" = None,
-    ann_factor_table: "Optional[pd.DataFrame]" = None,
+    expected_icr: "float | None" = None,
+    ann_factor_table: "pd.DataFrame | None" = None,
 ) -> pd.DataFrame:
     """
     Build benefit valuation table with PVFB, PVFS, and normal cost.
@@ -1345,10 +1418,12 @@ def build_benefit_val_table(
     r = constants.benefit.retire_refund_ratio
     econ = constants.economic
 
-    has_cb = (expected_icr is not None
-              and "cb_balance" in salary_benefit_table.columns
-              and ann_factor_table is not None
-              and "surv_icr" in ann_factor_table.columns)
+    has_cb = (
+        expected_icr is not None
+        and "cb_balance" in salary_benefit_table.columns
+        and ann_factor_table is not None
+        and "surv_icr" in ann_factor_table.columns
+    )
 
     cb_vesting = 5
     if has_cb:
@@ -1361,8 +1436,14 @@ def build_benefit_val_table(
     sbt["term_year"] = sbt["entry_year"] + sbt["yos"]
 
     # Join final_benefit_table on (class_name, entry_year, entry_age, term_age)
-    fbt_cols = ["class_name", "entry_year", "entry_age", "term_age",
-                "db_benefit", "pvfb_db_at_term_age"]
+    fbt_cols = [
+        "class_name",
+        "entry_year",
+        "entry_age",
+        "term_age",
+        "db_benefit",
+        "pvfb_db_at_term_age",
+    ]
     # ``benefit_table`` is already unique on (class_name, entry_year,
     # entry_age, term_age) for current plans, so avoid a redundant scan.
     sbt = sbt.merge(
@@ -1375,16 +1456,14 @@ def build_benefit_val_table(
     # so the sep_rate_table carries class_name matching sbt's class_name.
     sbt = sbt.merge(
         sep_rate_table,
-        on=["class_name", "entry_year", "entry_age", "term_age", "yos",
-            "term_year"],
+        on=["class_name", "entry_year", "entry_age", "term_age", "yos", "term_year"],
         how="left",
     )
 
     ret_status_arr = sbt["ret_status"].to_numpy(dtype=np.int8, copy=False)
     sep_kind_arr = _resolve_sep_kind_vec(ret_status_arr)
     dr_by_tier_id = np.array(
-        [_resolve_econ_rate(econ, k, constants.plan_name)
-         for k in constants.tier_id_to_dr_key],
+        [_resolve_econ_rate(econ, k, constants.plan_name) for k in constants.tier_id_to_dr_key],
         dtype=np.float64,
     )
     dr_arr = dr_by_tier_id[sbt["tier_id"].to_numpy()]
@@ -1393,7 +1472,8 @@ def build_benefit_val_table(
     # Retirees get full annuity PV; vested get retire_refund_ratio-weighted
     # mix of annuity PV and refund (DBEEBalance); non-vested get refund only.
     pvfb_db_wealth_term_arr = np.where(
-        sep_kind_arr == SEP_RETIRE, sbt["pvfb_db_at_term_age"],
+        sep_kind_arr == SEP_RETIRE,
+        sbt["pvfb_db_at_term_age"],
         np.where(
             sep_kind_arr == SEP_VESTED,
             r * sbt["pvfb_db_at_term_age"] + (1 - r) * sbt["db_ee_balance"],
@@ -1478,7 +1558,7 @@ def build_benefit_val_table(
         ann_acr_all = np.nan_to_num(sbt["ann_factor_acr"].to_numpy(dtype=np.float64), nan=0.0)
         ann_adj_all = np.nan_to_num(sbt["ann_factor_adj_dr"].to_numpy(dtype=np.float64), nan=0.0)
 
-    for start, stop in zip(starts, stops):
+    for start, stop in zip(starts, stops, strict=True):
         sep = sep_arr_all[start:stop]
         rp = rp_arr_all[start:stop]
         dr_arr = dr_arr_all[start:stop]
@@ -1535,12 +1615,14 @@ def build_benefit_val_table(
     for col in ["surv_icr", "ann_factor_acr", "ann_factor_adj_dr"]:
         if col in sbt.columns:
             output_cols.append(col)
-    output_cols.extend([
-        "pvfb_db_wealth_at_current_age",
-        "pvfs_at_current_age",
-        "indv_norm_cost",
-        "pvfnc_db",
-    ])
+    output_cols.extend(
+        [
+            "pvfb_db_wealth_at_current_age",
+            "pvfs_at_current_age",
+            "indv_norm_cost",
+            "pvfnc_db",
+        ]
+    )
     for col in ["pvfb_cb_at_current_age", "indv_norm_cost_cb", "pvfnc_cb"]:
         if col in sbt.columns:
             output_cols.append(col)

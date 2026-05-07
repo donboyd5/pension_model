@@ -9,8 +9,6 @@ isn't enough to identify the grandfathered cohort.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 from pydantic import model_validator
 
@@ -25,9 +23,9 @@ class GrandfatheredCondition(StrictModel):
     three fields per condition; the validator enforces that.
     """
 
-    min_age_at_cutoff: Optional[int] = None
-    rule_of_at_cutoff: Optional[int] = None
-    min_yos_at_cutoff: Optional[int] = None
+    min_age_at_cutoff: int | None = None
+    rule_of_at_cutoff: int | None = None
+    min_yos_at_cutoff: int | None = None
 
     @model_validator(mode="after")
     def _check_exactly_one_field(self):
@@ -67,15 +65,16 @@ class GrandfatheredParams(StrictModel):
         for cond in self.conditions:
             if cond.min_age_at_cutoff is not None and age_at_cutoff >= cond.min_age_at_cutoff:
                 return True
-            if cond.rule_of_at_cutoff is not None and (age_at_cutoff + yos_at_cutoff) >= cond.rule_of_at_cutoff:
+            if (
+                cond.rule_of_at_cutoff is not None
+                and (age_at_cutoff + yos_at_cutoff) >= cond.rule_of_at_cutoff
+            ):
                 return True
             if cond.min_yos_at_cutoff is not None and yos_at_cutoff >= cond.min_yos_at_cutoff:
                 return True
         return False
 
-    def matches_vec(
-        self, entry_year: np.ndarray, entry_age: np.ndarray
-    ) -> np.ndarray:
+    def matches_vec(self, entry_year: np.ndarray, entry_age: np.ndarray) -> np.ndarray:
         """Vectorized predicate. Returns bool array."""
         in_range = entry_year <= self.cutoff_year
         yos_at_cutoff = np.minimum(self.cutoff_year - entry_year, 70)

@@ -7,7 +7,8 @@ Produces a CompactMortality object from:
 
 Supports two input formats:
   - Excel: legacy path via _read_base_mort_table / _read_mp_table
-  - CSV: stage 3 format via build_compact_mortality_from_csv (base_rates.csv + improvement_scale.csv)
+  - CSV: stage 3 format via build_compact_mortality_from_csv
+    (base_rates.csv + improvement_scale.csv)
 
 The result is a compact (age, year) → rate lookup for employee and retiree
 mortality, with class-specific base table selection.
@@ -16,16 +17,16 @@ Class → base table mapping is config-driven via ``base_table_map``
 (per-class mapping) or ``mortality.base_table`` (plan-wide default).
 """
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 from pension_model.core.compact_mortality import CompactMortality
 
-
 # Class to base table mapping (R benefit model lines 258-264)
 BASE_TABLE_MAP = {
-    "regular": "regular",        # average of general + teacher
+    "regular": "regular",  # average of general + teacher
     "special": "safety",
     "admin": "safety",
     "eco": "general",
@@ -60,7 +61,7 @@ def _read_base_mort_table(excel_path: Path, sheet_name: str) -> pd.DataFrame:
         raise ValueError(f"Could not find header row with 'Age' in {sheet_name}")
 
     # Extract data below header
-    data = raw.iloc[header_row + 1:].reset_index(drop=True)
+    data = raw.iloc[header_row + 1 :].reset_index(drop=True)
     headers = raw.iloc[header_row].values
 
     # Find the Age columns (there are typically 2: one for female block, one for male)
@@ -72,13 +73,15 @@ def _read_base_mort_table(excel_path: Path, sheet_name: str) -> pd.DataFrame:
         raise ValueError(f"Expected 2 blocks (female/male) in {sheet_name}")
 
     # Female is the first block, Male is the second
-    result = pd.DataFrame({
-        "age": pd.to_numeric(data.iloc[:, age_cols[0]], errors="coerce"),
-        "employee_female": pd.to_numeric(data.iloc[:, emp_cols[0]], errors="coerce"),
-        "healthy_retiree_female": pd.to_numeric(data.iloc[:, ret_cols[0]], errors="coerce"),
-        "employee_male": pd.to_numeric(data.iloc[:, emp_cols[1]], errors="coerce"),
-        "healthy_retiree_male": pd.to_numeric(data.iloc[:, ret_cols[1]], errors="coerce"),
-    })
+    result = pd.DataFrame(
+        {
+            "age": pd.to_numeric(data.iloc[:, age_cols[0]], errors="coerce"),
+            "employee_female": pd.to_numeric(data.iloc[:, emp_cols[0]], errors="coerce"),
+            "healthy_retiree_female": pd.to_numeric(data.iloc[:, ret_cols[0]], errors="coerce"),
+            "employee_male": pd.to_numeric(data.iloc[:, emp_cols[1]], errors="coerce"),
+            "healthy_retiree_male": pd.to_numeric(data.iloc[:, ret_cols[1]], errors="coerce"),
+        }
+    )
 
     result = result.dropna(subset=["age"])
     result["age"] = result["age"].astype(int)
@@ -123,7 +126,9 @@ def _read_mp_table(excel_path: Path, sheet_name: str, min_age: int = 18) -> pd.D
     data.columns = new_cols
 
     # Handle "≤ 20" or "≤20" in age column
-    data["age"] = data["age"].apply(lambda x: 20 if "20" in str(x) and ("≤" in str(x) or "<" in str(x)) else x)
+    data["age"] = data["age"].apply(
+        lambda x: 20 if "20" in str(x) and ("≤" in str(x) or "<" in str(x)) else x
+    )
 
     # Convert all to numeric
     for c in data.columns:
@@ -145,8 +150,9 @@ def _read_mp_table(excel_path: Path, sheet_name: str, min_age: int = 18) -> pd.D
     return data
 
 
-def _build_mp_final(mp_table: pd.DataFrame, gender: str, base_year: int,
-                    min_age: int, max_age: int, max_year: int) -> pd.DataFrame:
+def _build_mp_final(
+    mp_table: pd.DataFrame, gender: str, base_year: int, min_age: int, max_age: int, max_year: int
+) -> pd.DataFrame:
     """
     Build mortality improvement cumulative adjustment factors.
 
@@ -160,7 +166,8 @@ def _build_mp_final(mp_table: pd.DataFrame, gender: str, base_year: int,
     # Ultimate rates = last year's rates
     max_mp_year = mp_long["year"].max()
     mp_ultimate = mp_long[mp_long["year"] == max_mp_year][["age", "mp"]].rename(
-        columns={"mp": "mp_ultimate"})
+        columns={"mp": "mp_ultimate"}
+    )
 
     # Expand to full age × year grid
     ages = range(min_age, max_age + 1)
@@ -172,13 +179,12 @@ def _build_mp_final(mp_table: pd.DataFrame, gender: str, base_year: int,
 
     # Cumulative product within each age group
     grid = grid.sort_values(["age", "year"]).reset_index(drop=True)
-    grid["mp_cumprod_raw"] = grid.groupby("age")["mp_final"].transform(
-        lambda x: (1 - x).cumprod()
-    )
+    grid["mp_cumprod_raw"] = grid.groupby("age")["mp_final"].transform(lambda x: (1 - x).cumprod())
 
     # Adjust: ratio to the base year value
     base_vals = grid[grid["year"] == base_year][["age", "mp_cumprod_raw"]].rename(
-        columns={"mp_cumprod_raw": "base_val"})
+        columns={"mp_cumprod_raw": "base_val"}
+    )
     grid = grid.merge(base_vals, on="age", how="left")
     adj_col = f"{gender}_mp_cumprod_adj"
     grid[adj_col] = grid["mp_cumprod_raw"] / grid["base_val"]
@@ -214,6 +220,7 @@ def build_compact_mortality_from_excel(
     """
     # Read base mortality tables — use config map if available, else fallback map
     from pension_model.config_schema import PlanConfig
+
     if isinstance(constants, PlanConfig) and constants.base_table_map:
         base_type = constants.get_base_table_type(class_name)
     else:
@@ -223,7 +230,12 @@ def build_compact_mortality_from_excel(
         teacher = _read_base_mort_table(pub2010_path, "PubT.H-2010")
         # Regular = average of general and teacher
         base = general.copy()
-        for col in ["employee_female", "employee_male", "healthy_retiree_female", "healthy_retiree_male"]:
+        for col in [
+            "employee_female",
+            "employee_male",
+            "healthy_retiree_female",
+            "healthy_retiree_male",
+        ]:
             base[col] = (general[col] + teacher[col]) / 2
     elif base_type == "safety":
         base = _read_base_mort_table(pub2010_path, "PubS.H-2010")
@@ -247,14 +259,25 @@ def build_compact_mortality_from_excel(
     # Join base rates
     grid = grid.merge(base.rename(columns={"age": "dist_age"}), on="dist_age", how="left")
     # Fill NaN for ages outside base table range
-    for col in ["employee_female", "employee_male", "healthy_retiree_female", "healthy_retiree_male"]:
+    for col in [
+        "employee_female",
+        "employee_male",
+        "healthy_retiree_female",
+        "healthy_retiree_male",
+    ]:
         grid[col] = grid[col].fillna(0)
 
     # Join improvement factors
-    grid = grid.merge(male_mp_final.rename(columns={"age": "dist_age", "year": "dist_year"}),
-                      on=["dist_age", "dist_year"], how="left")
-    grid = grid.merge(female_mp_final.rename(columns={"age": "dist_age", "year": "dist_year"}),
-                      on=["dist_age", "dist_year"], how="left")
+    grid = grid.merge(
+        male_mp_final.rename(columns={"age": "dist_age", "year": "dist_year"}),
+        on=["dist_age", "dist_year"],
+        how="left",
+    )
+    grid = grid.merge(
+        female_mp_final.rename(columns={"age": "dist_age", "year": "dist_year"}),
+        on=["dist_age", "dist_year"],
+        how="left",
+    )
     grid["male_mp_cumprod_adj"] = grid["male_mp_cumprod_adj"].fillna(1.0)
     grid["female_mp_cumprod_adj"] = grid["female_mp_cumprod_adj"].fillna(1.0)
 
@@ -270,9 +293,11 @@ def build_compact_mortality_from_excel(
     ) / 2
 
     employee_rates = grid[["dist_age", "dist_year", "employee_mort"]].rename(
-        columns={"employee_mort": "mort_final"})
+        columns={"employee_mort": "mort_final"}
+    )
     retiree_rates = grid[["dist_age", "dist_year", "retiree_mort"]].rename(
-        columns={"retiree_mort": "mort_final"})
+        columns={"retiree_mort": "mort_final"}
+    )
 
     return CompactMortality(employee_rates, retiree_rates)
 
@@ -293,10 +318,7 @@ def _read_base_mort_csv(csv_path: Path, table_name: str) -> pd.DataFrame:
     ).reset_index()
 
     # Flatten MultiIndex columns: ('employee', 'female') → 'employee_female'
-    result.columns = [
-        f"{mt}_{g}" if g else str(mt)
-        for mt, g in result.columns
-    ]
+    result.columns = [f"{mt}_{g}" if g else str(mt) for mt, g in result.columns]
     # Rename to match expected column names
     rename_map = {
         "retiree_female": "healthy_retiree_female",
@@ -375,6 +397,7 @@ def build_compact_mortality_from_csv(
     """
     # For "regular" base_type: average of general and teacher tables
     from pension_model.config_schema import PlanConfig
+
     if isinstance(constants, PlanConfig) and constants.base_table_map:
         base_type = constants.get_base_table_type(class_name)
     else:
@@ -384,8 +407,12 @@ def build_compact_mortality_from_csv(
         general = _read_base_mort_csv(base_rates_path, "general")
         teacher = _read_base_mort_csv(base_rates_path, "teacher")
         base = general.copy()
-        for col in ["employee_female", "employee_male",
-                     "healthy_retiree_female", "healthy_retiree_male"]:
+        for col in [
+            "employee_female",
+            "employee_male",
+            "healthy_retiree_female",
+            "healthy_retiree_male",
+        ]:
             base[col] = (general[col] + teacher[col]) / 2
     else:
         base = _read_base_mort_csv(base_rates_path, table_name)
@@ -410,20 +437,27 @@ def build_compact_mortality_from_csv(
     # Build final rates (same logic as build_compact_mortality_from_excel)
     ages = range(min_age, max_age + 1)
     years = range(min_year, max_year + 1)
-    grid = pd.DataFrame([(a, y) for a in ages for y in years],
-                        columns=["dist_age", "dist_year"])
+    grid = pd.DataFrame([(a, y) for a in ages for y in years], columns=["dist_age", "dist_year"])
 
     grid = grid.merge(base.rename(columns={"age": "dist_age"}), on="dist_age", how="left")
-    for col in ["employee_female", "employee_male",
-                "healthy_retiree_female", "healthy_retiree_male"]:
+    for col in [
+        "employee_female",
+        "employee_male",
+        "healthy_retiree_female",
+        "healthy_retiree_male",
+    ]:
         grid[col] = grid[col].fillna(0)
 
     grid = grid.merge(
         male_mp_final.rename(columns={"age": "dist_age", "year": "dist_year"}),
-        on=["dist_age", "dist_year"], how="left")
+        on=["dist_age", "dist_year"],
+        how="left",
+    )
     grid = grid.merge(
         female_mp_final.rename(columns={"age": "dist_age", "year": "dist_year"}),
-        on=["dist_age", "dist_year"], how="left")
+        on=["dist_age", "dist_year"],
+        how="left",
+    )
     grid["male_mp_cumprod_adj"] = grid["male_mp_cumprod_adj"].fillna(1.0)
     grid["female_mp_cumprod_adj"] = grid["female_mp_cumprod_adj"].fillna(1.0)
 
@@ -438,12 +472,13 @@ def build_compact_mortality_from_csv(
     ) / 2
 
     employee_rates = grid[["dist_age", "dist_year", "employee_mort"]].rename(
-        columns={"employee_mort": "mort_final"})
+        columns={"employee_mort": "mort_final"}
+    )
     retiree_rates = grid[["dist_age", "dist_year", "retiree_mort"]].rename(
-        columns={"retiree_mort": "mort_final"})
+        columns={"retiree_mort": "mort_final"}
+    )
 
     return CompactMortality(employee_rates, retiree_rates)
-
 
 
 def build_ann_factor_retire_table(
@@ -494,17 +529,19 @@ def build_ann_factor_retire_table(
             age = base_age + k
             year = start_year + k
             if year <= start_year + model_period:
-                rows.append({
-                    "base_age": base_age,
-                    "age": age,
-                    "year": year,
-                    "mort_final": mort[k],
-                    "cola": cola,
-                    "dr": dr,
-                    "cum_mort": cum_mort[k],
-                    "cum_dr": cum_dr[k],
-                    "cum_mort_dr": cum_mort_dr[k],
-                    "ann_factor_retire": ann_factor[k],
-                })
+                rows.append(
+                    {
+                        "base_age": base_age,
+                        "age": age,
+                        "year": year,
+                        "mort_final": mort[k],
+                        "cola": cola,
+                        "dr": dr,
+                        "cum_mort": cum_mort[k],
+                        "cum_dr": cum_dr[k],
+                        "cum_mort_dr": cum_mort_dr[k],
+                        "ann_factor_retire": ann_factor[k],
+                    }
+                )
 
     return pd.DataFrame(rows)

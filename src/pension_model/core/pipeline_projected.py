@@ -9,7 +9,11 @@ from pension_model.config_schema import PlanConfig
 def _get_bt_columns(bt: str) -> dict:
     """Map benefit type to its column names in benefit_val_table."""
     if bt == "db":
-        return {"pvfb": "pvfb_db_wealth_at_current_age", "pvfnc": "pvfnc_db", "nc": "indv_norm_cost"}
+        return {
+            "pvfb": "pvfb_db_wealth_at_current_age",
+            "pvfnc": "pvfnc_db",
+            "nc": "indv_norm_cost",
+        }
     if bt == "cb":
         return {"pvfb": "pvfb_cb_at_current_age", "pvfnc": "pvfnc_cb", "nc": "indv_norm_cost_cb"}
     return {"pvfb": None, "pvfnc": None, "nc": None}
@@ -35,7 +39,8 @@ def _allocate_members(wf, benefit_types, design_ratios, legs, design_cutoff_year
     for bt in benefit_types:
         before, after, new = design_ratios[bt]
         wf[f"n_{bt}_{legacy_name}"] = np.where(
-            ey < cutoff, np.where(ey < design_cutoff_year, n * before, n * after), 0.0)
+            ey < cutoff, np.where(ey < design_cutoff_year, n * before, n * after), 0.0
+        )
         wf[f"n_{bt}_{new_name}"] = np.where(ey < cutoff, 0.0, n * new)
     return wf
 
@@ -45,7 +50,9 @@ def _get_design_ratios(constants: PlanConfig, class_name: str):
     return constants.get_design_ratios(class_name), list(constants.benefit_types)
 
 
-def _filter_lookup_to_runtime(lookup: pd.DataFrame, wf: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+def _filter_lookup_to_runtime(
+    lookup: pd.DataFrame, wf: pd.DataFrame, columns: list[str]
+) -> pd.DataFrame:
     """Trim a prepared lookup to the runtime year slices actually used."""
     if lookup.empty or wf.empty:
         return lookup
@@ -71,13 +78,15 @@ def _allocate_term(wf, pop_col, design_ratios, benefit_types, legs, design_cutof
     for bt in benefit_types:
         before, after, new = design_ratios[bt]
         wf[f"n_{base}_{bt}_{legacy_name}"] = np.where(
-            ey < cutoff, np.where(ey < design_cutoff_year, n * before, n * after), 0.0)
+            ey < cutoff, np.where(ey < design_cutoff_year, n * before, n * after), 0.0
+        )
         wf[f"n_{base}_{bt}_{new_name}"] = np.where(ey < cutoff, 0.0, n * new)
     return wf
 
 
-def compute_active_liability(wf_active: pd.DataFrame, active_benefit_lookup: pd.DataFrame,
-                             class_name: str, constants) -> pd.DataFrame:
+def compute_active_liability(
+    wf_active: pd.DataFrame, active_benefit_lookup: pd.DataFrame, class_name: str, constants
+) -> pd.DataFrame:
     """Compute active member liability by year."""
     r = constants.ranges
     design_cutoff = constants.plan_design_cutoff_year or r.new_year
@@ -133,7 +142,8 @@ def compute_active_liability(wf_active: pd.DataFrame, active_benefit_lookup: pd.
             payroll_arr = result[pay_col].values
             nc_num = result[f"_nc_num_{bt}_{period}"].values
             result[f"nc_rate_{bt}_{period}_est"] = np.divide(
-                nc_num, payroll_arr, out=np.zeros_like(payroll_arr), where=payroll_arr != 0)
+                nc_num, payroll_arr, out=np.zeros_like(payroll_arr), where=payroll_arr != 0
+            )
 
             pvfb_col = f"pvfb_active_{bt}_{period}_est"
             pvfnc_col = f"pvfnc_{bt}_{period}_est"
@@ -142,20 +152,27 @@ def compute_active_liability(wf_active: pd.DataFrame, active_benefit_lookup: pd.
             result = result.drop(columns=[f"_nc_num_{bt}_{period}"])
 
     if "payroll_db_legacy_est" in result.columns:
-        result["payroll_db_est"] = result["payroll_db_legacy_est"] + result.get("payroll_db_new_est", 0)
+        result["payroll_db_est"] = result["payroll_db_legacy_est"] + result.get(
+            "payroll_db_new_est", 0
+        )
 
     return result
 
 
-def compute_term_liability(wf_term: pd.DataFrame, term_liability_lookup: pd.DataFrame,
-                           class_name: str,
-                           constants: PlanConfig) -> pd.DataFrame:
+def compute_term_liability(
+    wf_term: pd.DataFrame,
+    term_liability_lookup: pd.DataFrame,
+    class_name: str,
+    constants: PlanConfig,
+) -> pd.DataFrame:
     """Compute projected terminated vested liability by year."""
     r = constants.ranges
     design_ratios, benefit_types = _get_design_ratios(constants, class_name)
     design_cutoff = constants.plan_design_cutoff_year or r.new_year
 
-    wf = wf_term[(wf_term["year"] <= r.start_year + r.model_period) & (wf_term["n_term"] > 0)].copy()
+    wf = wf_term[
+        (wf_term["year"] <= r.start_year + r.model_period) & (wf_term["n_term"] > 0)
+    ].copy()
     wf["entry_year"] = wf["year"] - (wf["age"] - wf["entry_age"])
     term_liability_lookup = _filter_lookup_to_runtime(
         term_liability_lookup,
@@ -170,7 +187,9 @@ def compute_term_liability(wf_term: pd.DataFrame, term_liability_lookup: pd.Data
     )
 
     wf["pvfb_db_term"] = wf["pvfb_db_at_term_age"] / wf["cum_mort_dr"]
-    wf = _allocate_term(wf, "n_term", design_ratios, benefit_types, constants.funding_legs, design_cutoff)
+    wf = _allocate_term(
+        wf, "n_term", design_ratios, benefit_types, constants.funding_legs, design_cutoff
+    )
     sum_cols = []
     for bt in benefit_types:
         if bt == "dc":
@@ -187,14 +206,17 @@ def compute_term_liability(wf_term: pd.DataFrame, term_liability_lookup: pd.Data
     return wf.groupby("year", as_index=False)[sum_cols].sum()
 
 
-def compute_refund_liability(wf_refund: pd.DataFrame, refund_lookup: pd.DataFrame,
-                             class_name: str, constants: PlanConfig) -> pd.DataFrame:
+def compute_refund_liability(
+    wf_refund: pd.DataFrame, refund_lookup: pd.DataFrame, class_name: str, constants: PlanConfig
+) -> pd.DataFrame:
     """Compute refund liability by year."""
     r = constants.ranges
     design_ratios, benefit_types = _get_design_ratios(constants, class_name)
     design_cutoff = constants.plan_design_cutoff_year or r.new_year
 
-    wf = wf_refund[(wf_refund["year"] <= r.start_year + r.model_period) & (wf_refund["n_refund"] > 0)].copy()
+    wf = wf_refund[
+        (wf_refund["year"] <= r.start_year + r.model_period) & (wf_refund["n_refund"] > 0)
+    ].copy()
     wf["entry_year"] = wf["year"] - (wf["age"] - wf["entry_age"])
     refund_lookup = _filter_lookup_to_runtime(
         refund_lookup,
@@ -209,7 +231,9 @@ def compute_refund_liability(wf_refund: pd.DataFrame, refund_lookup: pd.DataFram
         how="left",
     )
 
-    wf = _allocate_term(wf, "n_refund", design_ratios, benefit_types, constants.funding_legs, design_cutoff)
+    wf = _allocate_term(
+        wf, "n_refund", design_ratios, benefit_types, constants.funding_legs, design_cutoff
+    )
     sum_cols = []
     for bt in benefit_types:
         if bt == "dc":
@@ -227,9 +251,13 @@ def compute_refund_liability(wf_refund: pd.DataFrame, refund_lookup: pd.DataFram
     return wf.groupby("year", as_index=False)[sum_cols].sum()
 
 
-def compute_retire_liability(wf_retire: pd.DataFrame, retire_benefit_lookup: pd.DataFrame,
-                             retire_annuity_lookup: pd.DataFrame, class_name: str,
-                             constants: PlanConfig) -> pd.DataFrame:
+def compute_retire_liability(
+    wf_retire: pd.DataFrame,
+    retire_benefit_lookup: pd.DataFrame,
+    retire_annuity_lookup: pd.DataFrame,
+    class_name: str,
+    constants: PlanConfig,
+) -> pd.DataFrame:
     """Compute projected retiree liability by year."""
     r = constants.ranges
     design_ratios, benefit_types = _get_design_ratios(constants, class_name)
@@ -265,10 +293,14 @@ def compute_retire_liability(wf_retire: pd.DataFrame, retire_benefit_lookup: pd.
     wf["pvfb_db_retire"] = wf["db_benefit_final"] * (wf["ann_factor"] - 1)
 
     if has_cb_ben:
-        wf["cb_benefit_final"] = wf["cb_benefit"] * (1 + wf["cola"]) ** (wf["year"] - wf["retire_year"])
+        wf["cb_benefit_final"] = wf["cb_benefit"] * (1 + wf["cola"]) ** (
+            wf["year"] - wf["retire_year"]
+        )
         wf["pvfb_cb_retire"] = wf["cb_benefit_final"] * (wf["ann_factor"] - 1)
 
-    wf = _allocate_term(wf, "n_retire", design_ratios, benefit_types, constants.funding_legs, design_cutoff)
+    wf = _allocate_term(
+        wf, "n_retire", design_ratios, benefit_types, constants.funding_legs, design_cutoff
+    )
     sum_cols = []
     for bt in benefit_types:
         if bt == "dc":

@@ -7,6 +7,8 @@ Production pipeline for pension modeling:
 - funding_model: Funding projection (assets, contributions, amortization)
 """
 
+from .data_loader import load_plan_inputs
+from .funding_model import load_funding_inputs, run_funding_model
 from .pipeline import (
     PreparedPlanRun,
     build_plan_benefit_tables,
@@ -15,9 +17,6 @@ from .pipeline import (
     run_prepared_plan_pipeline,
     summarize_prepared_plan_run,
 )
-from .runtime_contracts import ClassRuntimeTables
-from .data_loader import load_plan_inputs
-from .funding_model import load_funding_inputs, run_funding_model
 from .profiling import (
     build_runtime_baseline,
     compare_runtime_baselines,
@@ -26,6 +25,7 @@ from .profiling import (
     summarize_runtime_samples,
     write_runtime_baseline,
 )
+from .runtime_contracts import ClassRuntimeTables
 
 __all__ = [
     "ClassRuntimeTables",

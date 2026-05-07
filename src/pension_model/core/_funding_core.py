@@ -17,7 +17,6 @@ implementation):
     write order; do not convert to bulk ``f.loc[i, cols] = values``.
 """
 
-import numpy as np
 import pandas as pd
 
 from pension_model.core._funding_helpers import _maybe_accumulate
@@ -49,7 +48,9 @@ from pension_model.core._funding_setup import (
 )
 
 
-def _accumulate_class_payroll(ctx: FundingContext, agg: pd.DataFrame, f: pd.DataFrame, i: int) -> None:
+def _accumulate_class_payroll(
+    ctx: FundingContext, agg: pd.DataFrame, f: pd.DataFrame, i: int
+) -> None:
     """Accumulate class payroll columns into the aggregate row."""
     _maybe_accumulate(ctx, agg, f, i, ["total_payroll", "payroll_db_legacy", "payroll_db_new"])
     if ctx.has_dc:
@@ -64,9 +65,13 @@ def _write_benefit_refund_totals(f: pd.DataFrame, i: int) -> None:
         f.loc[i, "total_refund"] = f.loc[i, "refund_legacy"] + f.loc[i, "refund_new"]
 
 
-def _accumulate_benefits_refunds(ctx: FundingContext, agg: pd.DataFrame, f: pd.DataFrame, i: int) -> None:
+def _accumulate_benefits_refunds(
+    ctx: FundingContext, agg: pd.DataFrame, f: pd.DataFrame, i: int
+) -> None:
     """Accumulate per-class benefit/refund columns into the aggregate row."""
-    _maybe_accumulate(ctx, agg, f, i, ["ben_payment_legacy", "refund_legacy", "ben_payment_new", "refund_new"])
+    _maybe_accumulate(
+        ctx, agg, f, i, ["ben_payment_legacy", "refund_legacy", "ben_payment_new", "refund_new"]
+    )
     if "total_ben_payment" in f.columns:
         _maybe_accumulate(ctx, agg, f, i, ["total_ben_payment", "total_refund"])
 
@@ -92,9 +97,17 @@ def _set_dc_rates(f: pd.DataFrame, i: int, cn: str, ctx: FundingContext, constan
     f.loc[i, "er_dc_rate_new"] = dc_rate
 
 
-def _accumulate_db_contributions(ctx: FundingContext, agg: pd.DataFrame, f: pd.DataFrame, i: int) -> None:
+def _accumulate_db_contributions(
+    ctx: FundingContext, agg: pd.DataFrame, f: pd.DataFrame, i: int
+) -> None:
     """Accumulate DB employer contribution columns into the aggregate row."""
-    _maybe_accumulate(ctx, agg, f, i, ["er_nc_cont_legacy", "er_nc_cont_new", "er_amo_cont_legacy", "er_amo_cont_new"])
+    _maybe_accumulate(
+        ctx,
+        agg,
+        f,
+        i,
+        ["er_nc_cont_legacy", "er_nc_cont_new", "er_amo_cont_legacy", "er_amo_cont_new"],
+    )
     if "total_er_db_cont" in f.columns:
         _maybe_accumulate(ctx, agg, f, i, ["total_er_db_cont"])
 
@@ -117,11 +130,20 @@ def _set_total_contribution_rate(f: pd.DataFrame, i: int) -> None:
     total_payroll = f.loc[i, "total_payroll"]
     f.loc[i, "tot_cont_rate"] = (
         (
-            f.loc[i, "ee_nc_cont_legacy"] + f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_amo_cont_legacy"]
-            + f.loc[i, "ee_nc_cont_new"] + f.loc[i, "er_nc_cont_new"] + f.loc[i, "er_amo_cont_new"]
-            + f.loc[i, "solv_cont"]
-        ) / total_payroll
-    ) if total_payroll > 0 else 0
+            (
+                f.loc[i, "ee_nc_cont_legacy"]
+                + f.loc[i, "er_nc_cont_legacy"]
+                + f.loc[i, "er_amo_cont_legacy"]
+                + f.loc[i, "ee_nc_cont_new"]
+                + f.loc[i, "er_nc_cont_new"]
+                + f.loc[i, "er_amo_cont_new"]
+                + f.loc[i, "solv_cont"]
+            )
+            / total_payroll
+        )
+        if total_payroll > 0
+        else 0
+    )
 
 
 def _finalize_aggregate_row(agg: pd.DataFrame, i: int) -> None:
@@ -130,7 +152,9 @@ def _finalize_aggregate_row(agg: pd.DataFrame, i: int) -> None:
     total_payroll = agg.loc[i, "total_payroll"]
     agg.loc[i, "fr_mva"] = agg.loc[i, "total_mva"] / total_aal if total_aal != 0 else 0
     agg.loc[i, "fr_ava"] = agg.loc[i, "total_ava"] / total_aal if total_aal != 0 else 0
-    agg.loc[i, "total_er_cont_rate"] = agg.loc[i, "total_er_cont"] / total_payroll if total_payroll > 0 else 0
+    agg.loc[i, "total_er_cont_rate"] = (
+        agg.loc[i, "total_er_cont"] / total_payroll if total_payroll > 0 else 0
+    )
 
 
 def _run_phase1_for_class(
@@ -192,14 +216,18 @@ def _run_phase2_for_class(
     if ctx.builds_aggregate_in_loop:
         if "total_er_db_cont" in ctx.init_funding.columns:
             f.loc[i, "total_er_db_cont"] = (
-                f.loc[i, "er_nc_cont_legacy"] + f.loc[i, "er_nc_cont_new"]
-                + f.loc[i, "er_amo_cont_legacy"] + f.loc[i, "er_amo_cont_new"]
+                f.loc[i, "er_nc_cont_legacy"]
+                + f.loc[i, "er_nc_cont_new"]
+                + f.loc[i, "er_amo_cont_legacy"]
+                + f.loc[i, "er_amo_cont_new"]
             )
         _accumulate_db_contributions(ctx, agg, f, i)
 
     if ctx.has_dc:
         _phase_dc_contributions(f, i)
-        _maybe_accumulate(ctx, agg, f, i, ["er_dc_cont_legacy", "er_dc_cont_new", "total_er_dc_cont"])
+        _maybe_accumulate(
+            ctx, agg, f, i, ["er_dc_cont_legacy", "er_dc_cont_new", "total_er_dc_cont"]
+        )
 
     roa = _resolve_roa(ret_scen, year, dr_current)
     f.loc[i, "roa"] = roa
@@ -240,6 +268,8 @@ def _run_phase3_for_class(
     _set_total_contribution_rate(f, i)
 
     funding[cn] = f
+
+
 def _compute_funding(
     liability_results: dict,
     funding_inputs: dict,
@@ -292,8 +322,18 @@ def _compute_funding(
         # --- Phase 2: contributions, ROA, cash flow, MVA, AVA prep ---
         for cn in ctx.all_classes:
             _run_phase2_for_class(
-                cn, i, year, funding, agg, amort_state, ctx, constants,
-                ctx.cont_strategy, ret_scen, dr_current, dr_new,
+                cn,
+                i,
+                year,
+                funding,
+                agg,
+                amort_state,
+                ctx,
+                constants,
+                ctx.cont_strategy,
+                ret_scen,
+                dr_current,
+                dr_new,
             )
 
         if ctx.ava_strategy.aggregation_level == "plan":

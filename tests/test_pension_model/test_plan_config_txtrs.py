@@ -2,9 +2,9 @@
 
 import pytest
 
-pytestmark = [pytest.mark.unit]
-
 from pension_model.plan_config import load_plan_config_by_name
+
+pytestmark = [pytest.mark.unit]
 
 
 def test_txtrs_loads():

@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
 from pension_model.schemas.base import StrictModel
-
 
 # ---------------------------------------------------------------------------
 # AVA smoothing — method-discriminated union
@@ -41,7 +40,7 @@ class GainLossAvaSmoothing(StrictModel):
 # Discriminated union by ``method``. Pydantic dispatches to the right
 # concrete model based on the method tag.
 AvaSmoothing = Annotated[
-    Union[CorridorAvaSmoothing, GainLossAvaSmoothing],
+    CorridorAvaSmoothing | GainLossAvaSmoothing,
     Field(discriminator="method"),
 ]
 
@@ -75,13 +74,13 @@ class RateComponentSpec(StrictModel):
 
     name: str
     payroll_share: float = 1.0
-    schedule: Optional[list[RateScheduleEntry]] = None
-    initial_rate: Optional[float] = None
-    ramp: Optional[RampSpec] = None
-    start_year: Optional[int] = None
+    schedule: list[RateScheduleEntry] | None = None
+    initial_rate: float | None = None
+    ramp: RampSpec | None = None
+    start_year: int | None = None
 
     @model_validator(mode="after")
-    def _check_rate_form(self) -> "RateComponentSpec":
+    def _check_rate_form(self) -> RateComponentSpec:
         has_schedule = self.schedule is not None
         has_ramp = self.ramp is not None
         if not has_schedule and not has_ramp:
@@ -123,10 +122,10 @@ class LegDef(StrictModel):
     """
 
     name: str
-    entry_year_min: Optional[int] = None
-    entry_year_max: Optional[int] = None
-    entry_year_min_param: Optional[Literal["new_year"]] = None
-    entry_year_max_param: Optional[Literal["new_year"]] = None
+    entry_year_min: int | None = None
+    entry_year_max: int | None = None
+    entry_year_min_param: Literal["new_year"] | None = None
+    entry_year_max_param: Literal["new_year"] | None = None
 
 
 def _default_legs() -> list[LegDef]:
@@ -156,19 +155,19 @@ class Funding(StrictModel):
     amo_pay_growth: float
     funding_lag: int = 1
 
-    amo_period_current: Optional[int] = None
+    amo_period_current: int | None = None
     amo_period_term: int = 50
     amo_term_growth: float = 0.03
 
     has_drop: bool = False
-    drop_reference_class: Optional[str] = None
+    drop_reference_class: str | None = None
 
     ava_smoothing: AvaSmoothing
-    statutory_rates: Optional[StatutoryRates] = None
+    statutory_rates: StatutoryRates | None = None
     legs: list[LegDef] = Field(default_factory=_default_legs)
 
     @model_validator(mode="after")
-    def _check_statutory_rates_present(self) -> "Funding":
+    def _check_statutory_rates_present(self) -> Funding:
         if self.contribution_strategy == "statutory" and self.statutory_rates is None:
             raise ValueError(
                 "funding.contribution_strategy is 'statutory' but "

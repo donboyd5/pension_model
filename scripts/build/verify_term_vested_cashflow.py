@@ -28,7 +28,6 @@ from pension_model.core.pipeline_current import (
     _recur_grow3,
 )
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -42,18 +41,14 @@ def runtime_growing_annuity_stream(
     return _recur_grow3(first, growth, amo_period)
 
 
-def runtime_bell_curve_stream(
-    pvfb: float, rate: float, amo_period: int
-) -> np.ndarray:
+def runtime_bell_curve_stream(pvfb: float, rate: float, amo_period: int) -> np.ndarray:
     """Mirror the runtime bell_curve branch."""
     if pvfb == 0:
         return np.zeros(amo_period)
     mid = amo_period / 2
     spread = amo_period / 5
     seq = np.arange(1, amo_period + 1)
-    weights = (1 / (spread * np.sqrt(2 * np.pi))) * np.exp(
-        -0.5 * ((seq - mid) / spread) ** 2
-    )
+    weights = (1 / (spread * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((seq - mid) / spread) ** 2)
     ratio = weights / weights[0]
     first = pvfb / _npv(rate, ratio)
     return first * ratio
@@ -83,9 +78,7 @@ def verify_legacy(plan: str, runtime_fn, **kwargs) -> bool:
         pvfb = class_cal["pvfb_term_current"]
         runtime_stream = runtime_fn(pvfb, rate, amo_period=amo_period, **kwargs)
         csv_stream = (
-            df[df["class_name"] == class_name]
-            .sort_values("year_offset")["payment"]
-            .to_numpy()
+            df[df["class_name"] == class_name].sort_values("year_offset")["payment"].to_numpy()
         )
         if not np.array_equal(runtime_stream, csv_stream):
             max_abs = float(np.max(np.abs(runtime_stream - csv_stream)))
@@ -107,11 +100,7 @@ def verify_npv_identity(plan: str) -> bool:
     ok = True
     for class_name, class_cal in calibration["classes"].items():
         pvfb = class_cal["pvfb_term_current"]
-        stream = (
-            df[df["class_name"] == class_name]
-            .sort_values("year_offset")["payment"]
-            .to_numpy()
-        )
+        stream = df[df["class_name"] == class_name].sort_values("year_offset")["payment"].to_numpy()
         npv = _npv(rate, stream)
         if pvfb == 0:
             if npv != 0:

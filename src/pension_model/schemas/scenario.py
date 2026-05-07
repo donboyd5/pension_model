@@ -24,14 +24,11 @@ the best" behavior.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import Field
 
 from pension_model.config_schema import PlanConfig
 from pension_model.schemas.base import StrictModel
 from pension_model.schemas.partial import partial_model
-
 
 # Recursive partial of PlanConfig. Built once at import; ``extra="forbid"``
 # at the top level catches typos there (PlanConfig itself uses

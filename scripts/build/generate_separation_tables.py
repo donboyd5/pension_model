@@ -8,10 +8,9 @@ The R model creates combined separation tables that:
 This script generates these tables as CSV files for each class.
 """
 
-import pandas as pd
-import numpy as np
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+
+import pandas as pd
 
 
 def get_tier(entry_year: int, age: int, yos: int, class_name: str, new_year: int = 2024) -> str:
@@ -109,7 +108,9 @@ def load_withdrawal_table(class_name: str, decrement_dir: Path) -> pd.DataFrame:
         # Average male and female rates
         # Tables have yos, age, withdrawal_rate columns
         combined = male_df.copy()
-        combined['withdrawal_rate'] = (male_df['withdrawal_rate'] + female_df['withdrawal_rate']) / 2
+        combined["withdrawal_rate"] = (
+            male_df["withdrawal_rate"] + female_df["withdrawal_rate"]
+        ) / 2
         return combined
     else:
         raise FileNotFoundError(f"Withdrawal table not found for {class_name}")
@@ -131,7 +132,7 @@ RETIREMENT_CLASS_MAP = {
 }
 
 
-def load_retirement_tables(decrement_dir: Path) -> Dict[str, Dict[str, pd.DataFrame]]:
+def load_retirement_tables(decrement_dir: Path) -> dict[str, dict[str, pd.DataFrame]]:
     """
     Load retirement rate tables for both tiers, organized by class.
 
@@ -146,10 +147,11 @@ def load_retirement_tables(decrement_dir: Path) -> Dict[str, Dict[str, pd.DataFr
     # Organize by class
     class_tables = {}
     for class_name, table_classes in RETIREMENT_CLASS_MAP.items():
+
         def get_class_rates(df, table_classes):
-            filtered = df[df['class_name'].isin(table_classes)]
+            filtered = df[df["class_name"].isin(table_classes)]
             # Group by age and average the retirement_rate
-            return filtered.groupby('age')['retirement_rate'].mean().reset_index()
+            return filtered.groupby("age")["retirement_rate"].mean().reset_index()
 
         class_tables[class_name] = {
             "normal_t1": get_class_rates(normal_t1_raw, table_classes),
@@ -184,34 +186,34 @@ def get_withdrawal_rate(withdrawal_df: pd.DataFrame, age: int, yos: int) -> floa
 
     # The withdrawal table has yos, age, withdrawal_rate columns
     # Filter to find matching row
-    matching = withdrawal_df[(withdrawal_df['yos'] == yos) & (withdrawal_df['age'] == age)]
+    matching = withdrawal_df[(withdrawal_df["yos"] == yos) & (withdrawal_df["age"] == age)]
 
     if len(matching) == 0:
         return 0.0
 
-    return float(matching['withdrawal_rate'].iloc[0])
+    return float(matching["withdrawal_rate"].iloc[0])
 
 
 def get_retirement_rate(retirement_df: pd.DataFrame, age: int) -> float:
     """Get retirement rate for given age from processed table."""
-    if 'age' not in retirement_df.columns or 'retirement_rate' not in retirement_df.columns:
+    if "age" not in retirement_df.columns or "retirement_rate" not in retirement_df.columns:
         return 0.0
 
-    row = retirement_df[retirement_df['age'] == age]
+    row = retirement_df[retirement_df["age"] == age]
     if len(row) == 0:
         return 0.0
-    return row['retirement_rate'].iloc[0]
+    return row["retirement_rate"].iloc[0]
 
 
 def generate_separation_table(
     class_name: str,
     withdrawal_df: pd.DataFrame,
-    retirement_tables: Dict[str, pd.DataFrame],
+    retirement_tables: dict[str, pd.DataFrame],
     entry_year_range: range,
     entry_age_range: range,
     age_range: range,
     yos_range: range,
-    new_year: int = 2024
+    new_year: int = 2024,
 ) -> pd.DataFrame:
     """
     Generate combined separation rate table following R model's get_separation_table function.
@@ -259,15 +261,17 @@ def generate_separation_table(
                 else:
                     sep_rate = 0.0  # Non-vested members don't separate
 
-                rows.append({
-                    'entry_year': entry_year,
-                    'entry_age': entry_age,
-                    'term_age': term_age,
-                    'yos': yos,
-                    'term_year': term_year,
-                    'tier': tier,
-                    'separation_rate': sep_rate
-                })
+                rows.append(
+                    {
+                        "entry_year": entry_year,
+                        "entry_age": entry_age,
+                        "term_age": term_age,
+                        "yos": yos,
+                        "term_year": term_year,
+                        "tier": tier,
+                        "separation_rate": sep_rate,
+                    }
+                )
 
     return pd.DataFrame(rows)
 
@@ -278,7 +282,7 @@ def get_entry_ages_from_workforce(class_name: str, baseline_dir: Path) -> List[i
         wf_file = baseline_dir / f"{class_name}_wf_active.csv"
         if wf_file.exists():
             wf_df = pd.read_csv(wf_file)
-            return sorted(wf_df['entry_age'].unique().tolist())
+            return sorted(wf_df["entry_age"].unique().tolist())
     except Exception as e:
         print(f"Warning: Could not load workforce data for {class_name}: {e}")
     return []
@@ -342,7 +346,7 @@ def main():
             print(f"  Using entry ages from workforce data: {workforce_entry_ages}")
             entry_age_range = workforce_entry_ages
         else:
-            print(f"  Using default entry ages")
+            print("  Using default entry ages")
             entry_age_range = default_entry_ages.get(class_name, range(20, 56))
 
         # Generate separation table
@@ -354,7 +358,7 @@ def main():
             entry_age_range=entry_age_range,
             age_range=age_range,
             yos_range=yos_range,
-            new_year=new_year
+            new_year=new_year,
         )
 
         # Save to CSV

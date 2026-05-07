@@ -57,8 +57,8 @@ config author and used only for the output DataFrame's column names.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import ClassVar, Literal, Optional, Protocol, runtime_checkable
+from dataclasses import dataclass
+from typing import ClassVar, Literal, Protocol, runtime_checkable
 
 import pandas as pd
 
@@ -67,7 +67,6 @@ from pension_model.core._funding_helpers import (
     _ava_gain_loss_smoothing,
     _lookup_rate_schedule,
 )
-
 
 # ---------------------------------------------------------------------------
 # AVA smoothing strategies
@@ -388,12 +387,10 @@ class ActuarialContributions:
 
         # Total NC rates
         f.loc[i, "nc_rate_legacy"] = (
-            f.loc[i, "nc_legacy"] / payroll_db_legacy
-            if payroll_db_legacy > 0 else 0
+            f.loc[i, "nc_legacy"] / payroll_db_legacy if payroll_db_legacy > 0 else 0
         )
         f.loc[i, "nc_rate_new"] = (
-            f.loc[i, "nc_new"] / payroll_new_denom
-            if payroll_new_denom > 0 else 0
+            f.loc[i, "nc_new"] / payroll_new_denom if payroll_new_denom > 0 else 0
         )
 
         # Flat EE rate
@@ -408,12 +405,10 @@ class ActuarialContributions:
         cur_pay = amo_state["cur_pay"]
         fut_pay = amo_state["fut_pay"]
         f.loc[i, "amo_rate_legacy"] = (
-            cur_pay[i - 1].sum() / payroll_db_legacy
-            if payroll_db_legacy > 0 else 0
+            cur_pay[i - 1].sum() / payroll_db_legacy if payroll_db_legacy > 0 else 0
         )
         f.loc[i, "amo_rate_new"] = (
-            fut_pay[i - 1].sum() / payroll_new_denom
-            if payroll_new_denom > 0 else 0
+            fut_pay[i - 1].sum() / payroll_new_denom if payroll_new_denom > 0 else 0
         )
 
 
@@ -447,13 +442,13 @@ class RateComponent:
 
     name: str
     payroll_share: float = 1.0
-    schedule: Optional[list] = None
-    initial_rate: Optional[float] = None
-    ramp: Optional[dict] = None
-    start_year: Optional[int] = None
+    schedule: list | None = None
+    initial_rate: float | None = None
+    ramp: dict | None = None
+    start_year: int | None = None
 
     @classmethod
-    def from_config(cls, cfg: dict) -> "RateComponent":
+    def from_config(cls, cfg: dict) -> RateComponent:
         return cls(
             name=cfg["name"],
             payroll_share=float(cfg.get("payroll_share", 1.0)),
@@ -534,8 +529,7 @@ class StatutoryContributions:
         self.ee_schedule = ee_schedule
         # Accept either a list of RateComponent or a list of raw dicts.
         self.components: list[RateComponent] = [
-            c if isinstance(c, RateComponent) else RateComponent.from_config(c)
-            for c in components
+            c if isinstance(c, RateComponent) else RateComponent.from_config(c) for c in components
         ]
 
     def compute_rates(
@@ -550,12 +544,10 @@ class StatutoryContributions:
 
         # Total NC rates
         f.loc[i, "nc_rate_legacy"] = (
-            f.loc[i, "nc_legacy"] / payroll_db_legacy
-            if payroll_db_legacy > 0 else 0
+            f.loc[i, "nc_legacy"] / payroll_db_legacy if payroll_db_legacy > 0 else 0
         )
         f.loc[i, "nc_rate_new"] = (
-            f.loc[i, "nc_new"] / payroll_new_denom
-            if payroll_new_denom > 0 else 0
+            f.loc[i, "nc_new"] / payroll_new_denom if payroll_new_denom > 0 else 0
         )
 
         # EE rate from schedule
@@ -583,18 +575,14 @@ class StatutoryContributions:
             f.loc[i, "amo_rate_legacy"] = (
                 f.loc[i, "er_stat_eff_rate"] - f.loc[i, "er_nc_rate_legacy"]
             )
-            f.loc[i, "amo_rate_new"] = (
-                f.loc[i, "er_stat_eff_rate"] - f.loc[i, "er_nc_rate_new"]
-            )
+            f.loc[i, "amo_rate_new"] = f.loc[i, "er_stat_eff_rate"] - f.loc[i, "er_nc_rate_new"]
         else:
             cur_pay = amo_state["cur_pay"]
             fut_pay = amo_state["fut_pay"]
             total_payroll = f.loc[i, "total_payroll"]
             f.loc[i, "amo_rate_legacy"] = (
-                cur_pay[i - 1].sum() / total_payroll
-                if total_payroll > 0 else 0
+                cur_pay[i - 1].sum() / total_payroll if total_payroll > 0 else 0
             )
             f.loc[i, "amo_rate_new"] = (
-                fut_pay[i - 1].sum() / payroll_new_denom
-                if payroll_new_denom > 0 else 0
+                fut_pay[i - 1].sum() / payroll_new_denom if payroll_new_denom > 0 else 0
             )

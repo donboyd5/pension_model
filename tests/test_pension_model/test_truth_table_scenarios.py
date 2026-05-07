@@ -91,7 +91,8 @@ def test_truth_table_matches_r_baseline(plan, scenario):
     r = pd.read_csv(r_path)
 
     common_numeric = [
-        c for c in r.columns
+        c
+        for c in r.columns
         if c in py.columns
         and c not in ("plan", "year")
         and pd.api.types.is_numeric_dtype(r[c])
@@ -107,7 +108,8 @@ def test_truth_table_matches_r_baseline(plan, scenario):
         if pd.notna(rel) and rel > 1e-10:
             worst.append((col, float(rel), float(diff.max())))
 
-    assert not worst, (
-        f"{plan}/{scenario or 'baseline'} diverges from R beyond FP noise:\n"
-        + "\n".join(f"  {c}: max rel={r:.2e}, max abs={a:.6e}" for c, r, a in worst)
+    assert (
+        not worst
+    ), f"{plan}/{scenario or 'baseline'} diverges from R beyond FP noise:\n" + "\n".join(
+        f"  {c}: max rel={r:.2e}, max abs={a:.6e}" for c, r, a in worst
     )

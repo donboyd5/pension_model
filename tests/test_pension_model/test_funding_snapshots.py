@@ -50,8 +50,8 @@ def _running_in_update_mode() -> bool:
 
 def _run_funding(plan_name: str) -> dict:
     """Run the full pipeline and return the funding dict for ``plan_name``."""
-    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.core.funding_model import load_funding_inputs, run_funding_model
+    from pension_model.core.pipeline import run_plan_pipeline
     from pension_model.plan_config import load_plan_config_by_name
 
     if plan_name not in ("frs", "txtrs"):
@@ -97,9 +97,7 @@ def _write_snapshot(plan_name: str, funding: dict) -> None:
     meta = {
         "keys": keys,
         "aliases": {
-            key: seen_ids[id(funding[key])]
-            for key in keys
-            if seen_ids[id(funding[key])] != key
+            key: seen_ids[id(funding[key])] for key in keys if seen_ids[id(funding[key])] != key
         },
     }
     _meta_path(plan_name).write_text(json.dumps(meta, indent=2, sort_keys=True))
