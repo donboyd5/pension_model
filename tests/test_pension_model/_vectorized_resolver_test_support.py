@@ -27,7 +27,7 @@ def vec_tier_components(config, cn, ey, age, yos, entry_age=None):
 
     tier_id, ret_status = resolve_tiers_vec(config, cn, ey, age, yos, entry_age)
     tier_names = np.array(
-        [config._tier_id_to_name[t] for t in tier_id], dtype=object
+        [config.tier_id_to_name[t] for t in tier_id], dtype=object
     )
     statuses = np.array(
         [_STATUS_INT_TO_STR[s] for s in ret_status], dtype=object

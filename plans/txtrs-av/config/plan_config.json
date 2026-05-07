@@ -265,18 +265,20 @@
     "improvement_scale": "ump_2021_immediate"
   },
 
-  "source_notes": {
-    "purpose": "First-cut AV-first txtrs-av runtime config.",
-    "scope_rule": "This file is built from valuation-supported plan shape and valuation-linked runtime needs, not by copying txtrs runtime semantics wholesale.",
-    "omitted_runtime_legacy_fields": [
-      "retire_refund_ratio",
-      "use_earliest_retire",
-      "cash_balance",
-      "dc",
-      "calibration"
-    ],
-    "tier_encoding_note": "The valuation distinguishes members vested by August 31, 2014 from those not vested by that date. The current runtime cannot encode that status test directly, so this first cut approximates it with entry_year 2008-2009 versus 2010+.",
-    "mortality_note": "Active and retiree mortality files are still pending. The labels here name the intended txtrs-av AV-first mortality path rather than the older txtrs compatibility path.",
-    "funding_note": "Current-year valuation anchors are source-backed. The gain/loss smoothing method and 4-year recognition period remain runtime settings that should be revisited if the valuation's exact operational smoothing language is later captured more precisely."
+  "notes": {
+    "source_notes": {
+      "purpose": "First-cut AV-first txtrs-av runtime config.",
+      "scope_rule": "This file is built from valuation-supported plan shape and valuation-linked runtime needs, not by copying txtrs runtime semantics wholesale.",
+      "omitted_runtime_legacy_fields": [
+        "retire_refund_ratio",
+        "use_earliest_retire",
+        "cash_balance",
+        "dc",
+        "calibration"
+      ],
+      "tier_encoding_note": "The valuation distinguishes members vested by August 31, 2014 from those not vested by that date. The current runtime cannot encode that status test directly, so this first cut approximates it with entry_year 2008-2009 versus 2010+.",
+      "mortality_note": "Active and retiree mortality files are still pending. The labels here name the intended txtrs-av AV-first mortality path rather than the older txtrs compatibility path.",
+      "funding_note": "Current-year valuation anchors are source-backed. The gain/loss smoothing method and 4-year recognition period remain runtime settings that should be revisited if the valuation's exact operational smoothing language is later captured more precisely."
+    }
   }
 }

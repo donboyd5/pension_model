@@ -1,13 +1,14 @@
 """Plan config schema and status constants.
 
-The top-level :class:`PlanConfig` is now a pydantic ``BaseModel``
-that composes every section schema. Strict (``extra="forbid"``) is
-the rule on sub-models; the top-level uses ``extra="ignore"`` so
-plain documentation keys (``*_notes``, ``source_notes``) embedded
-in plan_config.json don't fail validation. Required sections —
-``economic``, ``ranges``, ``decrements``, ``funding``, ``benefit`` —
-are still required, so a typo at the top level surfaces as a
-"missing required field" error, not a silent drop.
+The top-level :class:`PlanConfig` is a pydantic ``BaseModel`` composed
+of every section schema. Strict (``extra="forbid"``) applies at every
+level — top-level *and* sub-models — so a typo at any depth fails
+load with a clear "extra fields not permitted" error.
+
+Plain-text documentation belongs in the typed ``notes`` block
+(``notes: {section_name: free-text-or-dict}``). Top-level ``*_notes``
+keys are not accepted; if you need to document a section, put the
+content inside ``notes`` instead.
 """
 
 from __future__ import annotations
@@ -48,16 +49,23 @@ NORM = 3
 class PlanConfig(BaseModel):
     """Top-level plan_config.json model.
 
-    Section sub-models (`economic`, `funding`, etc.) are validated
-    strictly. The top level itself ignores unknown keys so that
-    embedded documentation (``*_notes``, ``source_notes``,
-    ``_scenario_name``) doesn't fail load. ``frozen=True`` keeps
-    configs immutable; the few lookup tables computed at load time
-    use ``object.__setattr__`` in :func:`build_plan_config_from_raw`.
+    Strict at every level: unknown keys at the top *or* inside any
+    sub-model fail validation. ``frozen=True`` keeps configs
+    immutable; the few lookup tables computed at load time use
+    ``object.__setattr__`` in :func:`build_plan_config_from_raw`.
+
+    To document a field, use the typed ``notes`` block:
+
+    .. code-block:: json
+
+        "notes": {
+            "design_ratio_group_map": "admin maps to regular_group ...",
+            "valuation_inputs": "AAL figures from 2023 AV Table B-2"
+        }
     """
 
     model_config = ConfigDict(
-        extra="ignore",
+        extra="forbid",
         frozen=True,
         populate_by_name=True,
         arbitrary_types_allowed=True,
@@ -90,6 +98,17 @@ class PlanConfig(BaseModel):
     salary_growth_col_map: Dict[str, str] = Field(default_factory=dict)
     base_table_map: Dict[str, str] = Field(default_factory=dict)
     design_ratio_group_map: Dict[str, str] = Field(default_factory=dict)
+
+    # Output-uniformity declaration: columns in the canonical summary
+    # and truth-table outputs that are structurally inapplicable to
+    # this plan (e.g., AAL on a pure DC plan). Today both reference
+    # plans populate every column, so this is empty; it exists so a
+    # future plan can be honest about what it does and does not
+    # produce, and the runtime can assert the rest are populated.
+    inapplicable_summary_columns: Tuple[str, ...] = ()
+    inapplicable_truth_table_columns: Tuple[str, ...] = ()
+
+    notes: Dict[str, Any] = Field(default_factory=dict)
 
     scenario_name: Optional[str] = Field(default=None, alias="_scenario_name")
 
@@ -453,37 +472,3 @@ class PlanConfig(BaseModel):
     def validate_data_files(self) -> list:
         from pension_model.config_validation import validate_data_files
         return validate_data_files(self)
-
-    # ------------------------------------------------------------------
-    # Underscore-name aliases for legacy resolver code that still reads
-    # ``config._class_to_group`` etc. Defined as @property so they
-    # don't conflict with pydantic's field-name expectations.
-    # ------------------------------------------------------------------
-
-    @property
-    def _class_to_group(self) -> Dict[str, str]:
-        return self.class_to_group
-
-    @property
-    def _tier_name_to_id(self) -> Dict[str, int]:
-        return self.tier_name_to_id
-
-    @property
-    def _tier_id_to_name(self) -> Tuple[str, ...]:
-        return self.tier_id_to_name
-
-    @property
-    def _tier_id_to_cola_key(self) -> Tuple[str, ...]:
-        return self.tier_id_to_cola_key
-
-    @property
-    def _tier_id_to_fas_years(self) -> Tuple[int, ...]:
-        return self.tier_id_to_fas_years
-
-    @property
-    def _tier_id_to_dr_key(self) -> Tuple[str, ...]:
-        return self.tier_id_to_dr_key
-
-    @property
-    def _tier_id_to_retire_rate_set(self) -> Tuple[str, ...]:
-        return self.tier_id_to_retire_rate_set

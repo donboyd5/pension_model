@@ -1508,7 +1508,8 @@
       "type": "object"
     }
   },
-  "description": "Top-level plan_config.json model.\n\nSection sub-models (`economic`, `funding`, etc.) are validated\nstrictly. The top level itself ignores unknown keys so that\nembedded documentation (``*_notes``, ``source_notes``,\n``_scenario_name``) doesn't fail load. ``frozen=True`` keeps\nconfigs immutable; the few lookup tables computed at load time\nuse ``object.__setattr__`` in :func:`build_plan_config_from_raw`.",
+  "additionalProperties": false,
+  "description": "Top-level plan_config.json model.\n\nStrict at every level: unknown keys at the top *or* inside any\nsub-model fail validation. ``frozen=True`` keeps configs\nimmutable; the few lookup tables computed at load time use\n``object.__setattr__`` in :func:`build_plan_config_from_raw`.\n\nTo document a field, use the typed ``notes`` block:\n\n.. code-block:: json\n\n    \"notes\": {\n        \"design_ratio_group_map\": \"admin maps to regular_group ...\",\n        \"valuation_inputs\": \"AAL figures from 2023 AV Table B-2\"\n    }",
   "properties": {
     "_scenario_name": {
       "anyOf": [
@@ -1585,6 +1586,22 @@
     "funding": {
       "$ref": "#/$defs/Funding"
     },
+    "inapplicable_summary_columns": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Inapplicable Summary Columns",
+      "type": "array"
+    },
+    "inapplicable_truth_table_columns": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Inapplicable Truth Table Columns",
+      "type": "array"
+    },
     "modeling": {
       "$ref": "#/$defs/Modeling"
     },
@@ -1598,6 +1615,11 @@
         }
       ],
       "default": null
+    },
+    "notes": {
+      "additionalProperties": true,
+      "title": "Notes",
+      "type": "object"
     },
     "plan_description": {
       "default": "",

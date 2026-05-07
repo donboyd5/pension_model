@@ -77,7 +77,6 @@
     "special_group": ["special", "admin"]
   },
 
-  "design_ratio_group_map_notes": "Override for DB/DC design ratios only. R's liability model uses 'if (class_name == \"special\")' so only the literal 'special' class gets special-group design ratios; admin (in special_group for tier eligibility) gets regular-group design ratios.",
   "design_ratio_group_map": {
     "admin": "regular_group"
   },
@@ -254,8 +253,11 @@
     }
   },
 
-  "valuation_inputs_notes": {
-    "ben_payment": "Initial-year pension benefit payments to current retirees. Derived as: per-class ACFR outflow * plan-wide ben_payment_ratio (0.935839). The ratio comes from ACFR totals: pension_payment / (pension_payment + contribution_refunds + disbursement_to_ip + admin_expense) = 11,944,986,866 / 12,763,932,044. See GH issue for investigation of whether this derivation is correct."
+  "notes": {
+    "design_ratio_group_map": "Override for DB/DC design ratios only. R's liability model uses 'if (class_name == \"special\")' so only the literal 'special' class gets special-group design ratios; admin (in special_group for tier eligibility) gets regular-group design ratios.",
+    "valuation_inputs": {
+      "ben_payment": "Initial-year pension benefit payments to current retirees. Derived as: per-class ACFR outflow * plan-wide ben_payment_ratio (0.935839). The ratio comes from ACFR totals: pension_payment / (pension_payment + contribution_refunds + disbursement_to_ip + admin_expense) = 11,944,986,866 / 12,763,932,044. See GH issue for investigation of whether this derivation is correct."
+    }
   },
 
   "valuation_inputs": {

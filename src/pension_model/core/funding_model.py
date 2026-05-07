@@ -121,6 +121,10 @@ def run_funding_model(
     liability_results: dict,
     funding_inputs: dict,
     constants,
+    *,
+    check_identities: bool = False,
+    identity_tol_rel: float = 1e-9,
+    identity_tol_abs: float = 1e-3,
 ) -> dict:
     """Run the funding model for any plan.
 
@@ -128,9 +132,34 @@ def run_funding_model(
     method, contribution policy, and capability flags are dispatched
     inside via the resolved :class:`FundingContext`.
 
+    Parameters
+    ----------
+    check_identities:
+        If true, verify the MVA roll, AAL roll, and NC-dollar identities
+        on the resulting funding frames after the year loop completes.
+        Off by default; zero cost on normal runs.
+
     Returns:
         Dict mapping class_name -> funding DataFrame, plus an
         aggregate frame keyed by ``constants.plan_name`` and an
         optional ``"drop"`` frame for plans with ``has_drop=true``.
     """
-    return _compute_funding(liability_results, funding_inputs, constants)
+    funding = _compute_funding(liability_results, funding_inputs, constants)
+
+    if check_identities:
+        from pension_model.core._funding_setup import resolve_funding_context
+        from pension_model.core.identity_checks import check_funding_identities
+
+        ctx = resolve_funding_context(constants, funding_inputs)
+        check_funding_identities(
+            funding,
+            dr_current=ctx.dr_current,
+            dr_new=ctx.dr_new,
+            ret_scen=ctx.ret_scen,
+            has_cb=ctx.has_cb,
+            skip_classes={"drop"} if ctx.has_drop else set(),
+            tol_rel=identity_tol_rel,
+            tol_abs=identity_tol_abs,
+        )
+
+    return funding

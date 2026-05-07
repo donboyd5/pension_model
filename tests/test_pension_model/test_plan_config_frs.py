@@ -35,9 +35,9 @@ class TestPlanConfigLoad:
         assert acfr["nc_cal"] != 1.0
 
     def test_frs_tier_lookups(self, frs_config):
-        assert frs_config._tier_name_to_id == {"tier_1": 0, "tier_2": 1, "tier_3": 2}
-        assert frs_config._tier_id_to_name == ("tier_1", "tier_2", "tier_3")
-        assert frs_config._tier_id_to_fas_years == (5, 8, 8)
+        assert frs_config.tier_name_to_id == {"tier_1": 0, "tier_2": 1, "tier_3": 2}
+        assert frs_config.tier_id_to_name == ("tier_1", "tier_2", "tier_3")
+        assert frs_config.tier_id_to_fas_years == (5, 8, 8)
 
 
 class TestBaselineDrCurrentSnapshot:

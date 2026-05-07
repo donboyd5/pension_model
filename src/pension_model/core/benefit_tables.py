@@ -337,7 +337,7 @@ def build_salary_benefit_table(
     )
 
     # FAS period: direct lookup from tier_id
-    fas_by_tier = np.array(constants._tier_id_to_fas_years, dtype=np.int64)
+    fas_by_tier = np.array(constants.tier_id_to_fas_years, dtype=np.int64)
     df["fas_period"] = fas_by_tier[df["tier_id"].values]
 
     # Drop rows with NaN salary (entry_age not in profile)
@@ -450,7 +450,7 @@ def build_separation_rate_table(
         normal_retire_rate_by_set: Mapping {rate_set_name: DataFrame[age, normal_retire_rate]}.
         early_retire_rate_by_set: Mapping {rate_set_name: DataFrame[age, early_retire_rate]}.
             Each plan tier resolves to one of these keys via
-            ``constants._tier_id_to_retire_rate_set``.
+            ``constants.tier_id_to_retire_rate_set``.
         entrant_profile: Entrant profile with entry_age column.
         class_name: Membership class name.
         constants: PlanConfig.
@@ -549,13 +549,13 @@ def build_separation_rate_table(
     df["ret_status"] = rs_arr
 
     # Separation rate depends on tier_id and ret_status. Each plan
-    # tier maps to a named rate set via _tier_id_to_retire_rate_set
+    # tier maps to a named rate set via tier_id_to_retire_rate_set
     # (e.g., FRS tier_3 → "2011_or_later"). Vested and non-vested rows
     # fall through to the withdrawal rate.
     is_norm = rs_arr == NORM
     is_early = rs_arr == EARLY
     rate_set_by_tid = np.array(
-        constants._tier_id_to_retire_rate_set, dtype=object
+        constants.tier_id_to_retire_rate_set, dtype=object
     )
     rate_set_per_row = rate_set_by_tid[tid_arr]
     sep_rate = df["term_rate"].values.copy()
@@ -1384,7 +1384,7 @@ def build_benefit_val_table(
     sep_kind_arr = _resolve_sep_kind_vec(ret_status_arr)
     dr_by_tier_id = np.array(
         [_resolve_econ_rate(econ, k, constants.plan_name)
-         for k in constants._tier_id_to_dr_key],
+         for k in constants.tier_id_to_dr_key],
         dtype=np.float64,
     )
     dr_arr = dr_by_tier_id[sbt["tier_id"].to_numpy()]

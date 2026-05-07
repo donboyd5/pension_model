@@ -50,9 +50,7 @@ class ValuationInputs(StrictModel):
 class ClassData(StrictModel):
     """Per-class merged view of valuation_inputs + calibration.
 
-    Replaces the ``SimpleNamespace`` from
-    ``config_compat.build_class_data_namespace``. Same access pattern
-    (e.g. ``config.class_data[cn].nc_cal``) but type-checked.
+    Access via ``config.class_data[cn].nc_cal`` etc.
     """
 
     ben_payment: float

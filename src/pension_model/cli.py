@@ -227,6 +227,17 @@ def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
         )
 
         df = build_python_truth_table(plan_name, liability, funding, constants)
+
+        from pension_model.output_uniformity import assert_output_uniformity
+        from pension_model.truth_table import TRUTH_TABLE_COLUMNS
+        assert_output_uniformity(
+            df,
+            canonical_columns=TRUTH_TABLE_COLUMNS,
+            inapplicable=constants.inapplicable_truth_table_columns,
+            plan_name=plan_name,
+            output_name="truth_table",
+        )
+
         scenario = getattr(constants, "scenario_name", None)
 
         def _sheet_token(value):
@@ -281,7 +292,7 @@ def _emit_truth_table(plan_name, liability, funding, constants, output_dir):
 # Pipeline executor
 # ---------------------------------------------------------------------------
 
-def _execute_pipeline(constants):
+def _execute_pipeline(constants, *, check_identities: bool = False):
     """Run liability + funding pipeline for any plan.
 
     Returns (liability_dict, funding_dict, liability_stacked).
@@ -329,7 +340,10 @@ def _execute_pipeline(constants):
     funding_dir = constants.resolve_data_dir() / "funding"
     funding_inputs = load_funding_inputs(funding_dir)
 
-    funding = run_funding_model(liability, funding_inputs, constants)
+    funding = run_funding_model(
+        liability, funding_inputs, constants,
+        check_identities=check_identities,
+    )
 
     return liability, funding, liability_stacked
 
@@ -352,7 +366,10 @@ def _run_plan(constants, args):
 
     t0 = time.time()
     print_parameters(constants)
-    liability, funding, liability_stacked = _execute_pipeline(constants)
+    liability, funding, liability_stacked = _execute_pipeline(
+        constants,
+        check_identities=getattr(args, "check_identities", False),
+    )
     elapsed = time.time() - t0
     print(f"  Pipeline complete: {elapsed:.0f}s")
 
@@ -362,6 +379,16 @@ def _run_plan(constants, args):
     else:
         output_dir = OUTPUT_BASE / plan_name
     summary = build_plan_summary(plan_name, liability, funding, constants)
+
+    from pension_model.output_uniformity import assert_output_uniformity
+    assert_output_uniformity(
+        summary,
+        canonical_columns=SUMMARY_COLUMNS,
+        inapplicable=constants.inapplicable_summary_columns,
+        plan_name=plan_name,
+        output_name="summary",
+    )
+
     print_summary_table(summary)
     _write_outputs(summary, liability_stacked, output_dir)
 
@@ -672,6 +699,8 @@ def main():
                        help="Write R-vs-Python truth table to CSV and Excel")
     run_p.add_argument("--scenario", type=str, default=None,
                        help="Path to scenario JSON file (overrides baseline assumptions)")
+    run_p.add_argument("--check-identities", action="store_true",
+                       help="Verify MVA, AAL, and NC-dollar identities on funding output")
 
     cal = subparsers.add_parser("calibrate", help="Compute calibration factors")
     cal.add_argument("plan_name", choices=discovered or None,
